@@ -133,10 +133,7 @@ mod test {
         let bad_meta = Bytes::from_slice(&env, &[0u8; 32]); // 32 bytes, not 64
 
         let result = client.try_register_keys(&registrant, &scheme_id, &bad_meta);
-        assert_eq!(
-            result,
-            Err(Ok(RegistryError::InvalidMetaAddressLength))
-        );
+        assert_eq!(result, Err(Ok(RegistryError::InvalidMetaAddressLength)));
     }
 
     #[test]

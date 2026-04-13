@@ -1,8 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, Address, Bytes,
-    BytesN, Env, Vec,
+    contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env, Vec,
 };
 
 /// Storage keys.
@@ -68,7 +67,9 @@ impl StealthSenderContract {
         if env.storage().instance().has(&DataKey::Announcer) {
             return Err(SenderError::AlreadyInitialized);
         }
-        env.storage().instance().set(&DataKey::Announcer, &announcer);
+        env.storage()
+            .instance()
+            .set(&DataKey::Announcer, &announcer);
         Ok(())
     }
 
@@ -134,10 +135,7 @@ impl StealthSenderContract {
         sender.require_auth();
 
         let len = stealth_addresses.len();
-        if ephemeral_pub_keys.len() != len
-            || metadatas.len() != len
-            || amounts.len() != len
-        {
+        if ephemeral_pub_keys.len() != len || metadatas.len() != len || amounts.len() != len {
             return Err(SenderError::LengthMismatch);
         }
 

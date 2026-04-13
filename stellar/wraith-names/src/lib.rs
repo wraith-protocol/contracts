@@ -83,7 +83,8 @@ impl WraithNamesContract {
         env.storage().instance().set(&name_key, &entry);
 
         // Reverse lookup
-        let meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
+        let meta_hash =
+            BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
         env.storage()
             .instance()
             .set(&DataKey::Reverse(meta_hash), &name_hash);
@@ -124,7 +125,10 @@ impl WraithNamesContract {
         }
 
         // Remove old reverse
-        let old_meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
+        let old_meta_hash = BytesN::from_array(
+            &env,
+            &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
+        );
         env.storage()
             .instance()
             .remove(&DataKey::Reverse(old_meta_hash));
@@ -138,7 +142,8 @@ impl WraithNamesContract {
         env.storage().instance().set(&name_key, &new_entry);
 
         // New reverse
-        let new_meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&new_meta_address).to_array());
+        let new_meta_hash =
+            BytesN::from_array(&env, &env.crypto().sha256(&new_meta_address).to_array());
         env.storage()
             .instance()
             .set(&DataKey::Reverse(new_meta_hash), &name_hash);
@@ -169,7 +174,10 @@ impl WraithNamesContract {
         }
 
         // Remove reverse
-        let meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
+        let meta_hash = BytesN::from_array(
+            &env,
+            &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
+        );
         env.storage()
             .instance()
             .remove(&DataKey::Reverse(meta_hash));
@@ -196,7 +204,8 @@ impl WraithNamesContract {
 
     /// Reverse lookup: find the name for a given stealth meta-address.
     pub fn name_of(env: Env, stealth_meta_address: Bytes) -> Result<String, NamesError> {
-        let meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
+        let meta_hash =
+            BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
         let name_hash: BytesN<32> = env
             .storage()
             .instance()
