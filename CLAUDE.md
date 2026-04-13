@@ -317,6 +317,10 @@ jobs:
       - run: cargo test --workspace
 ```
 
+## README
+
+Create a README.md covering: what these contracts do (stealth address infrastructure for Wraith Protocol), the EVM contracts (Announcer, Registry, Sender, Names, Withdrawer) with brief descriptions, the Stellar contracts (announcer, registry, sender, names), how to compile and test each (npx hardhat test for EVM, cargo test for Stellar), deployment instructions, and a deployed addresses table (leave empty for now). Keep it concise and technical.
+
 ## Rules
 
 - NEVER add Co-Authored-By lines to commits
