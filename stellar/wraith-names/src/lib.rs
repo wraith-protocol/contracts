@@ -245,3 +245,110 @@ impl WraithNamesContract {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{Bytes, Env, String};
+
+    #[test]
+    fn test_register_and_resolve() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[42u8; 64]);
+
+        client.register(&owner, &name, &meta);
+
+        let resolved = client.resolve(&name);
+        assert_eq!(resolved, meta);
+    }
+
+    #[test]
+    fn test_name_taken() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner1 = Address::generate(&env);
+        let owner2 = Address::generate(&env);
+        let name = String::from_str(&env, "bob");
+        let meta1 = Bytes::from_slice(&env, &[1u8; 64]);
+        let meta2 = Bytes::from_slice(&env, &[2u8; 64]);
+
+        client.register(&owner1, &name, &meta1);
+        let result = client.try_register(&owner2, &name, &meta2);
+        assert_eq!(result, Err(Ok(NamesError::NameTaken)));
+    }
+
+    #[test]
+    fn test_name_of_reverse() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "charlie");
+        let meta = Bytes::from_slice(&env, &[99u8; 64]);
+
+        client.register(&owner, &name, &meta);
+
+        let found_name = client.name_of(&meta);
+        assert_eq!(found_name, name);
+    }
+
+    #[test]
+    fn test_release() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "dave");
+        let meta = Bytes::from_slice(&env, &[88u8; 64]);
+
+        client.register(&owner, &name, &meta);
+        client.release(&owner, &name);
+
+        let result = client.try_resolve(&name);
+        assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
+
+        // Can re-register after release
+        let owner2 = Address::generate(&env);
+        let meta2 = Bytes::from_slice(&env, &[77u8; 64]);
+        client.register(&owner2, &name, &meta2);
+        assert_eq!(client.resolve(&name), meta2);
+    }
+
+    #[test]
+    fn test_invalid_name() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let meta = Bytes::from_slice(&env, &[1u8; 64]);
+
+        // Too short
+        let result = client.try_register(&owner, &String::from_str(&env, "ab"), &meta);
+        assert_eq!(result, Err(Ok(NamesError::NameTooShort)));
+
+        // Invalid chars
+        let result = client.try_register(&owner, &String::from_str(&env, "Alice"), &meta);
+        assert_eq!(result, Err(Ok(NamesError::InvalidNameCharacter)));
+    }
+}
