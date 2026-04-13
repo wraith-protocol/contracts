@@ -7,14 +7,21 @@
     "test": "hardhat test",
     "clean": "hardhat clean",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
-    "node": "hardhat node"
+    "node": "hardhat node",
+    "format": "prettier --write --ignore-path ../.prettierignore .",
+    "format:check": "prettier --check --ignore-path ../.prettierignore ."
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.5.0",
+    "@commitlint/config-conventional": "^20.5.0",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.1.0",
+    "@types/node": "^22.0.0",
     "hardhat": "^2.22.0",
-    "typescript": "^5.7.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.8.2",
+    "prettier-plugin-solidity": "^2.3.1",
     "ts-node": "^10.9.0",
-    "@types/node": "^22.0.0"
+    "typescript": "^5.7.0"
   }
 }

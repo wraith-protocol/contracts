@@ -1,0 +1,31 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  evm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx prettier --check --ignore-path ../.prettierignore .
+      - run: npx hardhat compile
+      - run: npx hardhat test
+  stellar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: stellar/setup-soroban@v1
+      - run: cargo fmt --check --manifest-path Cargo.toml
+      - run: cargo test --workspace

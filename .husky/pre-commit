@@ -1,0 +1,1 @@
+cd evm && npx prettier --check --ignore-path ../.prettierignore . && npx hardhat compile && npx hardhat test

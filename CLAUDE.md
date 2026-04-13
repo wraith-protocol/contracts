@@ -227,13 +227,105 @@ contracts/
     docs/                       # implementation specs
 ```
 
+## Code Quality Tooling
+
+### Prettier (EVM only — Solidity + TypeScript)
+
+Add `.prettierrc` in repo root:
+```json
+{
+  "semi": true,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "printWidth": 100,
+  "tabWidth": 2,
+  "overrides": [
+    {
+      "files": "*.sol",
+      "options": { "printWidth": 120 }
+    }
+  ]
+}
+```
+
+Add `.prettierignore`:
+```
+node_modules
+artifacts
+cache
+typechain-types
+reference
+stellar
+```
+
+Add format scripts to `evm/package.json`:
+```json
+{
+  "format": "prettier --write .",
+  "format:check": "prettier --check ."
+}
+```
+
+### Husky + Commitlint (in evm/ directory)
+
+Install: `husky`, `@commitlint/cli`, `@commitlint/config-conventional`, `prettier`, `prettier-plugin-solidity`
+
+Add `commitlint.config.js` in repo root:
+```js
+module.exports = { extends: ['@commitlint/config-conventional'] };
+```
+
+Husky hooks:
+- `.husky/pre-commit`: `cd evm && npx prettier --check . && npx hardhat compile && npx hardhat test`
+- `.husky/commit-msg`: `npx --no -- commitlint --edit $1`
+
+### CI
+
+Add `.github/workflows/ci.yml`:
+
+```yaml
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  evm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: evm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx prettier --check .
+      - run: npx hardhat compile
+      - run: npx hardhat test
+  stellar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: stellar/setup-soroban@v1
+      - run: cargo fmt --check --manifest-path Cargo.toml
+      - run: cargo test --workspace
+```
+
 ## Rules
 
 - NEVER add Co-Authored-By lines to commits
 - NEVER commit, modify, or delete anything in the reference/ folder — it is gitignored and read-only
 - NEVER add numbered step comments in code
 - NEVER strip existing NatSpec/docs from reference code when porting
+- All commit messages MUST follow conventional commits format (feat:, fix:, chore:, docs:, test:, refactor:)
 - Commit after each completed step
+- Push to origin after each completed step
 - EVM and Stellar can be done in parallel (separate agents)
 - EVM tests use Hardhat + chai
 - Stellar tests use native `#[cfg(test)]` with soroban-sdk test utilities
