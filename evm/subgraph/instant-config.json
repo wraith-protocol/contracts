@@ -1,0 +1,26 @@
+{
+  "version": "1",
+  "name": "wraith-protocol",
+  "abis": {
+    "ERC5564Announcer": {
+      "path": "./abis/ERC5564Announcer.json"
+    },
+    "ERC6538Registry": {
+      "path": "./abis/ERC6538Registry.json"
+    }
+  },
+  "instances": [
+    {
+      "abi": "ERC5564Announcer",
+      "address": "0x8AE65c05E7eb48B9bA652781Bc0a3DBA09A484F3",
+      "chain": "horizen-testnet",
+      "startBlock": 14202900
+    },
+    {
+      "abi": "ERC6538Registry",
+      "address": "0x953E6cEdcdfAe321796e7637d33653F6Ce05c527",
+      "chain": "horizen-testnet",
+      "startBlock": 14202900
+    }
+  ]
+}
