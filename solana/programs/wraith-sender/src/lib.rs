@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
-use anchor_spl::token;
+use anchor_spl::token::{self, Token, TokenAccount};
 
 declare_id!("E6J7GBSTjKbYANWjfTo5HfnXZ4Tg3LAasN7NrvCwn5Dq");
 
@@ -89,10 +89,10 @@ pub struct SendSpl<'info> {
     #[account(mut)]
     pub sender: Signer<'info>,
     #[account(mut)]
-    pub sender_token_account: Account<'info, token::TokenAccount>,
+    pub sender_token_account: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub stealth_token_account: Account<'info, token::TokenAccount>,
-    pub token_program: Program<'info, token::Token>,
+    pub stealth_token_account: Account<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
 }
 
 #[event]
