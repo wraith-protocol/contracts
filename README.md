@@ -1,6 +1,6 @@
 # Wraith Protocol Contracts
 
-Stealth address smart contracts for the [Wraith Protocol](https://github.com/wraith-protocol) multichain privacy platform. EVM contracts in Solidity (Hardhat), Stellar contracts in Soroban/Rust.
+Stealth address smart contracts for the [Wraith Protocol](https://github.com/wraith-protocol) multichain privacy platform. EVM contracts in Solidity (Hardhat), Stellar contracts in Soroban/Rust, Solana programs in Anchor/Rust.
 
 Every payment generates a fresh one-time stealth address so on-chain observers cannot link sender, recipient, or transaction history.
 
@@ -23,12 +23,21 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 | **stealth-sender** | Atomic token transfer + announcement via the announcer contract. Supports batch sends. |
 | **wraith-names** | Name registry with SHA-256 hashed storage keys, reverse lookup, and lowercase alphanumeric validation (3-32 chars). |
 
+## Solana Programs (Anchor/Rust)
+
+| Program | Description |
+|---|---|
+| **wraith-announcer** | Stateless event emitter for stealth address announcements via Anchor `emit!()`. |
+| **wraith-sender** | Atomic SOL transfer + announcement in one instruction. Also supports SPL token sends. |
+| **wraith-names** | PDA-based name registry. Names are 3-32 chars (lowercase alphanumeric/hyphens), stored as PDA seeds. |
+
 ## Getting Started
 
 ### Prerequisites
 
 - Node.js 22+
 - Rust toolchain with `cargo`
+- Anchor CLI and Solana CLI (for Solana programs)
 
 ### EVM
 
@@ -46,6 +55,14 @@ cd stellar
 cargo test --workspace
 ```
 
+### Solana
+
+```bash
+cd solana
+anchor build
+anchor test
+```
+
 ## Project Structure
 
 ```
@@ -58,6 +75,12 @@ stellar/
   stealth-registry/   # Soroban contract
   stealth-sender/     # Soroban contract
   wraith-names/       # Soroban contract
+solana/
+  programs/
+    wraith-announcer/ # Anchor program
+    wraith-sender/    # Anchor program
+    wraith-names/     # Anchor program
+  tests/              # TypeScript tests
 ```
 
 ## Deployed Addresses
@@ -80,6 +103,14 @@ stellar/
 | stealth-registry | TBD |
 | stealth-sender | TBD |
 | wraith-names | TBD |
+
+### Solana Devnet
+
+| Program | Program ID |
+|---|---|
+| wraith-announcer | `9Ko7TuXHpLUH1ZsZWQEpeA9Tv7hX325ooWk5SD7Y9nuq` |
+| wraith-sender | `E6J7GBSTjKbYANWjfTo5HfnXZ4Tg3LAasN7NrvCwn5Dq` |
+| wraith-names | `4JrrQh5aK7iLvx6MgtEQk7K7X3SsWfTLxVJu1jXEwNjD` |
 
 ## License
 
