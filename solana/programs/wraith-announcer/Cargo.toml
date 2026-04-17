@@ -1,0 +1,20 @@
+[package]
+name = "wraith-announcer"
+version = "0.1.0"
+description = "Stealth address announcement program for Wraith Protocol"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "wraith_announcer"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "0.30.1"
