@@ -4,8 +4,32 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      evm: ${{ steps.filter.outputs.evm }}
+      stellar: ${{ steps.filter.outputs.stellar }}
+      solana: ${{ steps.filter.outputs.solana }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            evm:
+              - 'evm/**'
+            stellar:
+              - 'stellar/**'
+            solana:
+              - 'solana/**'
+
   evm:
+    needs: changes
+    if: needs.changes.outputs.evm == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -19,7 +43,10 @@ jobs:
       - run: npx prettier --check --ignore-path ../.prettierignore .
       - run: npx hardhat compile
       - run: npx hardhat test
+
   stellar:
+    needs: changes
+    if: needs.changes.outputs.stellar == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -31,7 +58,10 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all --check
       - run: cargo test --workspace
+
   solana:
+    needs: changes
+    if: needs.changes.outputs.solana == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
