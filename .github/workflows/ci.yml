@@ -14,6 +14,7 @@ jobs:
       evm: ${{ steps.filter.outputs.evm }}
       stellar: ${{ steps.filter.outputs.stellar }}
       solana: ${{ steps.filter.outputs.solana }}
+      ckb: ${{ steps.filter.outputs.ckb }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -26,6 +27,8 @@ jobs:
               - 'stellar/**'
             solana:
               - 'solana/**'
+            ckb:
+              - 'ckb/**'
 
   evm:
     needs: changes
@@ -73,3 +76,18 @@ jobs:
         with:
           anchor-version: 0.30.1
       - run: anchor build
+
+  ckb:
+    needs: changes
+    if: needs.changes.outputs.ckb == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ckb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv64imac-unknown-none-elf
+      - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
+      - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock
