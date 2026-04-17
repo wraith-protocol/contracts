@@ -1,0 +1,13 @@
+[package]
+name = "wraith-stealth-lock"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ckb-std = "0.16"
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+
+[features]
+default = []
+library = []
+native-simulator = ["ckb-std/native-simulator"]
