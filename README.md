@@ -1,6 +1,6 @@
 # Wraith Protocol Contracts
 
-Stealth address smart contracts for the [Wraith Protocol](https://github.com/wraith-protocol) multichain privacy platform. EVM contracts in Solidity (Hardhat), Stellar contracts in Soroban/Rust, Solana programs in Anchor/Rust.
+Stealth address smart contracts for the [Wraith Protocol](https://github.com/wraith-protocol) multichain privacy platform. EVM contracts in Solidity (Hardhat), Stellar contracts in Soroban/Rust, Solana programs in Anchor/Rust, CKB scripts in Rust (RISC-V).
 
 Every payment generates a fresh one-time stealth address so on-chain observers cannot link sender, recipient, or transaction history.
 
@@ -31,6 +31,12 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 | **wraith-sender** | Atomic SOL transfer + announcement in one instruction. Also supports SPL token sends. |
 | **wraith-names** | PDA-based name registry. Names are 3-32 chars (lowercase alphanumeric/hyphens), stored as PDA seeds. |
 
+## CKB Script (Rust/RISC-V)
+
+| Script | Description |
+|---|---|
+| **wraith-stealth-lock** | Lock script that verifies secp256k1 signatures against `blake160(stealth_pubkey)` in `args[33:53]`. Embeds the ephemeral public key in `args[0:33]` — the Cell itself is the announcement. Delegates to on-chain ckb-auth via `exec_cell`. |
+
 ## Getting Started
 
 ### Prerequisites
@@ -38,6 +44,7 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 - Node.js 22+
 - Rust toolchain with `cargo`
 - Anchor CLI and Solana CLI (for Solana programs)
+- `riscv64-elf-gcc` cross-compiler (for CKB scripts)
 
 ### EVM
 
@@ -63,6 +70,13 @@ anchor build
 anchor test
 ```
 
+### CKB
+
+```bash
+cd ckb
+make build
+```
+
 ## Project Structure
 
 ```
@@ -81,6 +95,10 @@ solana/
     wraith-sender/    # Anchor program
     wraith-names/     # Anchor program
   tests/              # TypeScript tests
+ckb/
+  contracts/
+    wraith-stealth-lock/  # CKB lock script (RISC-V)
+  testnet.toml            # Deployed code hash and cell deps
 ```
 
 ## Deployed Addresses
@@ -111,6 +129,13 @@ solana/
 | wraith-announcer | `9Ko7TuXHpLUH1ZsZWQEpeA9Tv7hX325ooWk5SD7Y9nuq` |
 | wraith-sender | `E6J7GBSTjKbYANWjfTo5HfnXZ4Tg3LAasN7NrvCwn5Dq` |
 | wraith-names | `4JrrQh5aK7iLvx6MgtEQk7K7X3SsWfTLxVJu1jXEwNjD` |
+
+### CKB Testnet
+
+| Script | Code Hash | Cell Dep |
+|---|---|---|
+| wraith-stealth-lock | `0x31f6ab9c7e7a26ecba980b838ac3b5bd6c3a2f1b945e75b7cf7e6a46cb19cb87` | `0xde1e8e4bed2d1d7102b9ad3d7a74925ace007800ae49498f9c374cb4968dd32b:0` |
+| ckb-auth (dependency) | `0x0915983bb31584df4566e0946fd00ef1e9a75ad37a39ce70fec9b5cbf3b87021` | `0xa0e99b29fd154385815142b76668d5f4ecf30ae85bc2942bd21e9e51b9066f97:0` |
 
 ## License
 
