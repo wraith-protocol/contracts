@@ -1,0 +1,12 @@
+[package]
+name = "wraith-names-type"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ckb-std = "0.16"
+
+[features]
+default = []
+library = []
+native-simulator = ["ckb-std/native-simulator"]
