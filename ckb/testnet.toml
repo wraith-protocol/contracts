@@ -4,10 +4,15 @@ rpc_url = "https://testnet.ckbapp.dev"
 
 [contracts]
 stealth_lock_code_hash = "0x31f6ab9c7e7a26ecba980b838ac3b5bd6c3a2f1b945e75b7cf7e6a46cb19cb87"
+names_type_code_hash = "0xc133817d433f72ea16a2404adaf961524e9572c8378829a21968710d6182e20d"
 ckb_auth_code_hash = "0x0915983bb31584df4566e0946fd00ef1e9a75ad37a39ce70fec9b5cbf3b87021"
 
 [cell_deps.stealth_lock]
 tx_hash = "0xde1e8e4bed2d1d7102b9ad3d7a74925ace007800ae49498f9c374cb4968dd32b"
+index = 0
+
+[cell_deps.names_type]
+tx_hash = "0x9acd640d35eadd893b358dddd415f4061fe81cb249e8ace51a866fee314141b8"
 index = 0
 
 [cell_deps.ckb_auth]
