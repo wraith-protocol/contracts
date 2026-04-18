@@ -31,11 +31,12 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 | **wraith-sender** | Atomic SOL transfer + announcement in one instruction. Also supports SPL token sends. |
 | **wraith-names** | PDA-based name registry. Names are 3-32 chars (lowercase alphanumeric/hyphens), stored as PDA seeds. |
 
-## CKB Script (Rust/RISC-V)
+## CKB Scripts (Rust/RISC-V)
 
 | Script | Description |
 |---|---|
 | **wraith-stealth-lock** | Lock script that verifies secp256k1 signatures against `blake160(stealth_pubkey)` in `args[33:53]`. Embeds the ephemeral public key in `args[0:33]` — the Cell itself is the announcement. Delegates to on-chain ckb-auth via `exec_cell`. |
+| **wraith-names-type** | Type script for `.wraith` name registration cells. Validates 66-byte cell data (spending + viewing public keys). Ownership proven by the cell's lock script. Supports create, update, and release (destroy). |
 
 ## Getting Started
 
@@ -98,6 +99,7 @@ solana/
 ckb/
   contracts/
     wraith-stealth-lock/  # CKB lock script (RISC-V)
+    wraith-names-type/    # CKB type script (RISC-V)
   testnet.toml            # Deployed code hash and cell deps
 ```
 
@@ -135,6 +137,7 @@ ckb/
 | Script | Code Hash | Cell Dep |
 |---|---|---|
 | wraith-stealth-lock | `0x31f6ab9c7e7a26ecba980b838ac3b5bd6c3a2f1b945e75b7cf7e6a46cb19cb87` | `0xde1e8e4bed2d1d7102b9ad3d7a74925ace007800ae49498f9c374cb4968dd32b:0` |
+| wraith-names-type | `0xc133817d433f72ea16a2404adaf961524e9572c8378829a21968710d6182e20d` | `0x9acd640d35eadd893b358dddd415f4061fe81cb249e8ace51a866fee314141b8:0` |
 | ckb-auth (dependency) | `0x0915983bb31584df4566e0946fd00ef1e9a75ad37a39ce70fec9b5cbf3b87021` | `0xa0e99b29fd154385815142b76668d5f4ecf30ae85bc2942bd21e9e51b9066f97:0` |
 
 ## License
