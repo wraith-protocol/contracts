@@ -63,6 +63,18 @@ cd stellar
 cargo test --workspace
 ```
 
+#### Property Tests
+
+The Stellar Soroban crates include `proptest` integration tests in each crate's `tests/properties.rs`. They cover event emission, register/lookup round-trips, invalid input rejection, batch-send invariants, and name lifecycle behavior.
+
+```bash
+cd stellar
+cargo test --workspace --test properties
+WRAITH_PROPTEST_CASES=16384 cargo test --workspace --test properties
+```
+
+By default each property runs at least 1,024 generated cases. The scheduled `stellar-nightly` CI job raises that to 16,384 cases through `WRAITH_PROPTEST_CASES`. Add new properties beside the contract they cover so failures point directly at the affected crate.
+
 ### Solana
 
 ```bash
