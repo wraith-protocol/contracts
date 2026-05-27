@@ -23,6 +23,10 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 | **stealth-sender** | Atomic token transfer + announcement via the announcer contract. Supports batch sends. |
 | **wraith-names** | Name registry with SHA-256 hashed storage keys, reverse lookup, and lowercase alphanumeric validation (3-32 chars). |
 
+Stellar design notes:
+
+- `stellar/EVENT_TOPIC_DESIGN.md` documents the proposed indexed-topic strategy for `stealth-announcer`.
+
 ## Solana Programs (Anchor/Rust)
 
 | Program | Description |
