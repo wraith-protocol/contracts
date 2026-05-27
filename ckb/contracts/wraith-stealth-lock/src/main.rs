@@ -133,3 +133,26 @@ fn auth() -> Result<(), Error> {
         Ok(())
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn parse_lock_args_roundtrip() {
+        let mut args = [0u8; 53];
+        for i in 0..33 {
+            args[i] = 0xAA;
+        }
+        for i in 33..53 {
+            args[i] = 0xBB;
+        }
+
+        let ephemeral = &args[0..33];
+        let stealth_hash = &args[33..53];
+
+        assert_eq!(ephemeral.len(), 33);
+        assert!(ephemeral.iter().all(|b| *b == 0xAA));
+        assert_eq!(stealth_hash.len(), 20);
+        assert!(stealth_hash.iter().all(|b| *b == 0xBB));
+    }
+}
