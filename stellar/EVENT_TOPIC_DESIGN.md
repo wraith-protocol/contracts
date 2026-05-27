@@ -215,10 +215,10 @@ The implementation should be split into contract and SDK work:
 - Contract: add the v2 topic layout and a stable definition of `view_tag_bucket` and `metadata_kind`.
 - SDK: query `getEvents` with topic filters on `(announce, 2, bucket, *)`, then perform the normal cryptographic validation client-side.
 
-If issue creation is available in the maintainer workflow, file:
+Filed follow-up issues:
 
-- one implementation issue for the Stellar contract change
-- one implementation issue for the SDK/event fetch update
+- `#24` for the Stellar contract-side v2 event schema implementation
+- `#25` for the SDK/RPC fetch-path update
 
 ## Source Notes
 
