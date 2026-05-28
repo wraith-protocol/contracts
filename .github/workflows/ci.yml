@@ -58,11 +58,39 @@ jobs:
         working-directory: stellar
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install Node dependencies
+        run: pnpm install
+        working-directory: .
+
+      - name: Setup Stellar CLI
+        uses: stellar/setup-soroban@v1
+        with:
+          version: "22.0.1"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+          targets: wasm32-unknown-unknown
+
       - run: cargo fmt --all --check
       - run: cargo test --workspace
+
+      - name: Generate Stellar TypeScript bindings
+        run: pnpm bindings:stellar
+        working-directory: .
+
+      - name: Check for bindings drift (diff detection)
+        run: git diff --exit-code
+        working-directory: .
 
   stellar-nightly:
     if: github.event_name == 'schedule'
