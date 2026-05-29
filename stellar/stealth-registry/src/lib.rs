@@ -168,12 +168,38 @@ mod test {
             meta_v1
         );
 
-        // Update to a new meta-address.
         let meta_v2 = Bytes::from_slice(&env, &[2u8; 64]);
         client.register_keys(&registrant, &scheme_id, &meta_v2);
         assert_eq!(
             client.stealth_meta_address_of(&registrant, &scheme_id),
             meta_v2
         );
+    }
+
+    #[cfg(feature = "testutils")]
+    mod fuzz {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn test_registry_fuzz(
+                scheme_id in any::<u32>(),
+                meta_bytes in any::<[u8; 64]>()
+            ) {
+                let env = Env::default();
+                env.mock_all_auths();
+                let contract_id = env.register(StealthRegistryContract, ());
+                let client = StealthRegistryContractClient::new(&env, &contract_id);
+
+                let registrant = Address::generate(&env);
+                let meta_address = Bytes::from_slice(&env, &meta_bytes);
+
+                client.register_keys(&registrant, &scheme_id, &meta_address).unwrap();
+
+                let result = client.stealth_meta_address_of(&registrant, &scheme_id).unwrap();
+                assert_eq!(result, meta_address);
+            }
+        }
     }
 }

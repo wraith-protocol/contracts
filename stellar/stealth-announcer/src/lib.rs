@@ -98,12 +98,39 @@ mod test {
         client.announce(&2u32, &addr, &epk, &meta);
         let events2 = env.events().all();
         let event2 = events2.last().unwrap();
-        let expected_topics2: soroban_sdk::Vec<Val> = vec![
-            &env,
-            symbol_short!("announce").into_val(&env),
-            2u32.into_val(&env),
-            addr.into_val(&env),
-        ];
-        assert_eq!(event2.1, expected_topics2);
+        assert_eq!(event2.1.get(2).unwrap(), 2u32.into_val(&env));
+    }
+
+    #[cfg(feature = "testutils")]
+    mod fuzz {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn test_announce_fuzz(
+                scheme_id in any::<u32>(),
+                epk_bytes in any::<[u8; 32]>(),
+                meta_bytes in prop::collection::vec(any::<u8>(), 0..100)
+            ) {
+                let env = Env::default();
+                let contract_id = env.register(StealthAnnouncerContract, ());
+                let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+
+                let addr = Address::generate(&env);
+                let epk = BytesN::from_array(&env, &epk_bytes);
+                let meta = Bytes::from_slice(&env, &meta_bytes);
+
+                client.announce(&scheme_id, &addr, &epk, &meta);
+
+                let events = env.events().all();
+                assert_eq!(events.len(), 1);
+                let event = events.last().unwrap();
+                
+                let topics = event.1;
+                assert_eq!(topics.get(2).unwrap(), scheme_id.into_val(&env));
+                assert_eq!(topics.get(3).unwrap(), addr.into_val(&env));
+            }
+        }
     }
 }

@@ -129,19 +129,14 @@ impl WraithNamesContract {
             &env,
             &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
         );
-        env.storage()
-            .instance()
-            .remove(&DataKey::Reverse(old_meta_hash));
+        env.storage().instance().remove(&DataKey::Reverse(old_meta_hash));
 
-        // Update
-        let new_entry = NameEntry {
-            name: name.clone(),
-            stealth_meta_address: new_meta_address.clone(),
-            owner,
-        };
+        // Update entry
+        let mut new_entry = entry;
+        new_entry.stealth_meta_address = new_meta_address.clone();
         env.storage().instance().set(&name_key, &new_entry);
 
-        // New reverse
+        // Add new reverse
         let new_meta_hash =
             BytesN::from_array(&env, &env.crypto().sha256(&new_meta_address).to_array());
         env.storage()
@@ -149,14 +144,15 @@ impl WraithNamesContract {
             .set(&DataKey::Reverse(new_meta_hash), &name_hash);
 
         env.events().publish(
-            (symbol_short!("register"), name_hash),
+            (symbol_short!("update"), name_hash),
             (name, new_meta_address),
         );
 
         Ok(())
     }
 
-    /// Release a name, making it available again.
+    /// Release a name, making it available for others.
+    /// Only the current owner can release.
     pub fn release(env: Env, owner: Address, name: String) -> Result<(), NamesError> {
         owner.require_auth();
 
@@ -173,20 +169,17 @@ impl WraithNamesContract {
             return Err(NamesError::NotOwner);
         }
 
-        // Remove reverse
+        // Remove reverse lookup
         let meta_hash = BytesN::from_array(
             &env,
             &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
         );
-        env.storage()
-            .instance()
-            .remove(&DataKey::Reverse(meta_hash));
+        env.storage().instance().remove(&DataKey::Reverse(meta_hash));
 
         // Remove name
         env.storage().instance().remove(&name_key);
 
-        env.events()
-            .publish((symbol_short!("release"), name_hash), name);
+        env.events().publish((symbol_short!("release"), name_hash), name);
 
         Ok(())
     }
@@ -199,10 +192,11 @@ impl WraithNamesContract {
             .instance()
             .get(&DataKey::Name(name_hash))
             .ok_or(NamesError::NameNotFound)?;
+
         Ok(entry.stealth_meta_address)
     }
 
-    /// Reverse lookup: find the name for a given stealth meta-address.
+    /// Reverse lookup: find the name associated with a stealth meta-address.
     pub fn name_of(env: Env, stealth_meta_address: Bytes) -> Result<String, NamesError> {
         let meta_hash =
             BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
@@ -211,28 +205,24 @@ impl WraithNamesContract {
             .instance()
             .get(&DataKey::Reverse(meta_hash))
             .ok_or(NamesError::NameNotFound)?;
+
         let entry: NameEntry = env
             .storage()
             .instance()
             .get(&DataKey::Name(name_hash))
             .ok_or(NamesError::NameNotFound)?;
+
         Ok(entry.name)
     }
 
-    /// Hash a name string to BytesN<32> for use as storage key.
     fn hash_name(env: &Env, name: &String) -> BytesN<32> {
-        let len = name.len() as usize;
-        let mut buf = [0u8; 32];
-        if len > 0 {
-            name.copy_into_slice(&mut buf[..len]);
-        }
-        let bytes = Bytes::from_slice(env, &buf[..len]);
-        BytesN::from_array(env, &env.crypto().sha256(&bytes).to_array())
+        let mut buf = [0u8; 64];
+        name.copy_into_slice(&mut buf[..name.len() as usize]);
+        BytesN::from_array(env, &env.crypto().sha256(&Bytes::from_slice(env, &buf[..name.len() as usize])).to_array())
     }
 
-    /// Validate name: 3-32 chars, lowercase alphanumeric only.
-    fn validate_name(_env: &Env, name: &String) -> Result<(), NamesError> {
-        let len = name.len() as usize;
+    fn validate_name(env: &Env, name: &String) -> Result<(), NamesError> {
+        let len = name.len();
         if len < 3 {
             return Err(NamesError::NameTooShort);
         }
@@ -240,13 +230,12 @@ impl WraithNamesContract {
             return Err(NamesError::NameTooLong);
         }
 
+        // Only allow lowercase alphanumeric
         let mut buf = [0u8; 32];
-        name.copy_into_slice(&mut buf[..len]);
-        for i in 0..len {
+        name.copy_into_slice(&mut buf[..len as usize]);
+        for i in 0..len as usize {
             let c = buf[i];
-            let is_lower = c >= b'a' && c <= b'z';
-            let is_digit = c >= b'0' && c <= b'9';
-            if !is_lower && !is_digit {
+            if !((c >= b'a' && c <= b'z') || (c >= b'0' && c <= b'9')) {
                 return Err(NamesError::InvalidNameCharacter);
             }
         }
@@ -329,6 +318,8 @@ mod test {
         let meta = Bytes::from_slice(&env, &[88u8; 64]);
 
         client.register(&owner, &name, &meta);
+        assert_eq!(client.resolve(&name), meta);
+
         client.release(&owner, &name);
 
         let result = client.try_resolve(&name);
@@ -359,5 +350,32 @@ mod test {
         // Invalid chars
         let result = client.try_register(&owner, &String::from_str(&env, "Alice"), &meta);
         assert_eq!(result, Err(Ok(NamesError::InvalidNameCharacter)));
+    }
+
+    #[cfg(feature = "testutils")]
+    mod fuzz {
+        use super::*;
+        use proptest::prelude::*;
+
+        proptest! {
+            #[test]
+            fn test_names_fuzz(
+                name_str in "[a-z0-9]{3,32}",
+                meta_bytes in any::<[u8; 64]>()
+            ) {
+                let env = Env::default();
+                env.mock_all_auths();
+                let contract_id = env.register(WraithNamesContract, ());
+                let client = WraithNamesContractClient::new(&env, &contract_id);
+
+                let owner = Address::generate(&env);
+                let name = String::from_str(&env, &name_str);
+                let meta = Bytes::from_slice(&env, &meta_bytes);
+
+                client.register(&owner, &name, &meta).unwrap();
+                assert_eq!(client.resolve(&name), meta);
+                assert_eq!(client.name_of(&meta), name);
+            }
+        }
     }
 }
