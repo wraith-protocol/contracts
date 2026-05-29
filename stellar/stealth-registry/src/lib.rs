@@ -49,14 +49,43 @@ impl StealthRegistryContract {
             return Err(RegistryError::InvalidMetaAddressLength);
         }
 
-        // Persist.
+        // Persist using persistent storage to handle large number of users.
         let key = DataKey::MetaAddress(registrant.clone(), scheme_id);
-        env.storage().instance().set(&key, &stealth_meta_address);
+        env.storage().persistent().set(&key, &stealth_meta_address);
 
         // Emit event.
         env.events().publish(
             (symbol_short!("register"), registrant, scheme_id),
             stealth_meta_address,
+        );
+
+        Ok(())
+    }
+
+    /// Remove a previously registered stealth meta-address.
+    ///
+    /// # Arguments
+    /// * `registrant` - The address whose meta-address is being removed (must authorise).
+    /// * `scheme_id`  - The stealth address scheme identifier.
+    pub fn remove_keys(
+        env: Env,
+        registrant: Address,
+        scheme_id: u32,
+    ) -> Result<(), RegistryError> {
+        // Require authorisation from the registrant.
+        registrant.require_auth();
+
+        let key = DataKey::MetaAddress(registrant.clone(), scheme_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(RegistryError::NotRegistered);
+        }
+
+        env.storage().persistent().remove(&key);
+
+        // Emit event.
+        env.events().publish(
+            (symbol_short!("remove"), registrant, scheme_id),
+            (),
         );
 
         Ok(())
@@ -74,7 +103,7 @@ impl StealthRegistryContract {
     ) -> Result<Bytes, RegistryError> {
         let key = DataKey::MetaAddress(registrant, scheme_id);
         env.storage()
-            .instance()
+            .persistent()
             .get(&key)
             .ok_or(RegistryError::NotRegistered)
     }
@@ -175,5 +204,53 @@ mod test {
             client.stealth_meta_address_of(&registrant, &scheme_id),
             meta_v2
         );
+    }
+
+    #[test]
+    fn test_remove_keys() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(StealthRegistryContract, ());
+        let client = StealthRegistryContractClient::new(&env, &contract_id);
+
+        let registrant = Address::generate(&env);
+        let scheme_id: u32 = 1;
+        let meta_address = Bytes::from_slice(&env, &[42u8; 64]);
+
+        client.register_keys(&registrant, &scheme_id, &meta_address);
+        assert_eq!(client.stealth_meta_address_of(&registrant, &scheme_id), meta_address);
+
+        client.remove_keys(&registrant, &scheme_id);
+
+        // Verify event was emitted
+        let events = env.events().all();
+        let event = events.last().unwrap();
+        let expected_topics: soroban_sdk::Vec<Val> = vec![
+            &env,
+            symbol_short!("remove").into_val(&env),
+            registrant.clone().into_val(&env),
+            scheme_id.into_val(&env),
+        ];
+        assert_eq!(event.1, expected_topics);
+
+        // Verify it's gone
+        let result = client.try_stealth_meta_address_of(&registrant, &scheme_id);
+        assert_eq!(result, Err(Ok(RegistryError::NotRegistered)));
+    }
+
+    #[test]
+    fn test_remove_not_registered() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(StealthRegistryContract, ());
+        let client = StealthRegistryContractClient::new(&env, &contract_id);
+
+        let registrant = Address::generate(&env);
+        let scheme_id: u32 = 1;
+
+        let result = client.try_remove_keys(&registrant, &scheme_id);
+        assert_eq!(result, Err(Ok(RegistryError::NotRegistered)));
     }
 }
