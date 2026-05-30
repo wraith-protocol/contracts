@@ -62,6 +62,31 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo test --workspace
 
+  stellar-size-check:
+    needs: changes
+    if: needs.changes.outputs.stellar == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo build --target wasm32-unknown-unknown --release
+      - name: Check Wasm sizes
+        run: |
+          BUDGET=112640 # 110 KB in bytes
+          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+            size=$(stat -c%s "$wasm")
+            name=$(basename "$wasm" .wasm)
+            echo "Contract $name size: $size bytes (Budget: $BUDGET bytes)"
+            if [ "$size" -gt "$BUDGET" ]; then
+              echo "Error: Contract $name exceeds Wasm size budget!"
+              exit 1
+            fi
+          done
+
   solana:
     needs: changes
     if: needs.changes.outputs.solana == 'true'

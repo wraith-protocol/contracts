@@ -9,3 +9,10 @@ resolver = "2"
 
 [workspace.dependencies]
 soroban-sdk = "22.0.0"
+
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = "fat"         # Enable Link Time Optimization (LTO)
+codegen-units = 1   # Reduce parallel code generation units to increase optimization
+panic = "abort"     # Remove panic landing pads
+strip = "symbols"   # Strip symbols from the binary
