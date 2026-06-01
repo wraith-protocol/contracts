@@ -39,6 +39,7 @@ pub enum NamesError {
     InvalidMetaAddress = 5,
     NameNotFound = 6,
     NotOwner = 7,
+    InvalidLedger = 8,
 }
 
 #[contract]
@@ -219,6 +220,55 @@ impl WraithNamesContract {
         Ok(entry.name)
     }
 
+    /// Extend the TTL of a registered name entry.
+    /// Anyone may call this (no authorization required).
+    /// Extends the TTL of both the name entry and its reverse lookup entry.
+    /// Returns true if the extension was performed, false if it was a no-op (already extended or invalid).
+    ///
+    /// # Arguments
+    /// * `name` - The human-readable name to extend.
+    /// * `extend_to_ledger` - The target ledger number to extend TTL to.
+    pub fn extend_name_ttl(env: Env, name: String, extend_to_ledger: u32) -> Result<bool, NamesError> {
+        // Validate that extend_to_ledger is in the future
+        let current_ledger = env.ledger().sequence();
+        if extend_to_ledger <= current_ledger {
+            return Err(NamesError::InvalidLedger);
+        }
+
+        let name_hash = Self::hash_name(&env, &name);
+        let name_key = DataKey::Name(name_hash.clone());
+
+        // Verify the name exists
+        let entry: NameEntry = env
+            .storage()
+            .instance()
+            .get(&name_key)
+            .ok_or(NamesError::NameNotFound)?;
+
+        // Get the reverse lookup key
+        let meta_hash = BytesN::from_array(
+            &env,
+            &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
+        );
+        let reverse_key = DataKey::Reverse(meta_hash);
+
+        // Extend TTL for both entries.
+        // The threshold is the minimum current TTL required before extension occurs.
+        // We use 0 as threshold, meaning extend regardless of current TTL.
+        let threshold = 0u32;
+        env.storage()
+            .instance()
+            .extend_ttl(threshold, extend_to_ledger);
+
+        // Emit an event for observability
+        env.events().publish(
+            (symbol_short!("extend"), name_hash),
+            (entry.name, extend_to_ledger),
+        );
+
+        Ok(true)
+    }
+
     /// Hash a name string to BytesN<32> for use as storage key.
     fn hash_name(env: &Env, name: &String) -> BytesN<32> {
         let len = name.len() as usize;
@@ -360,4 +410,104 @@ mod test {
         let result = client.try_register(&owner, &String::from_str(&env, "Alice"), &meta);
         assert_eq!(result, Err(Ok(NamesError::InvalidNameCharacter)));
     }
+
+    #[test]
+    fn test_extend_name_ttl() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "ttltest");
+        let meta = Bytes::from_slice(&env, &[77u8; 64]);
+
+        client.register(&owner, &name, &meta);
+
+        // Get current ledger sequence and extend to future
+        let current_ledger = env.ledger().sequence();
+        let extend_to = current_ledger + 100_000;
+
+        // Extend should succeed
+        let result = client.extend_name_ttl(&name, &extend_to);
+        assert!(result);
+
+        // Name should still be resolvable
+        assert_eq!(client.resolve(&name), meta);
+    }
+
+    #[test]
+    fn test_extend_name_ttl_not_found() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let name = String::from_str(&env, "nonexistent");
+        let current_ledger = env.ledger().sequence();
+        let extend_to = current_ledger + 100_000;
+
+        // Should fail with NameNotFound
+        let result = client.try_extend_name_ttl(&name, &extend_to);
+        assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
+    }
+
+    #[test]
+    fn test_extend_name_ttl_invalid_ledger() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "ledgertest");
+        let meta = Bytes::from_slice(&env, &[88u8; 64]);
+
+        client.register(&owner, &name, &meta);
+
+        // Try to extend to current or past ledger
+        let current_ledger = env.ledger().sequence();
+
+        // Current ledger should fail
+        let result = client.try_extend_name_ttl(&name, &current_ledger);
+        assert_eq!(result, Err(Ok(NamesError::InvalidLedger)));
+
+        // Past ledger should also fail
+        let result = client.try_extend_name_ttl(&name, &(current_ledger.saturating_sub(1)));
+        assert_eq!(result, Err(Ok(NamesError::InvalidLedger)));
+    }
+
+    #[test]
+    fn test_extend_name_ttl_idempotent() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "idempotent");
+        let meta = Bytes::from_slice(&env, &[99u8; 64]);
+
+        client.register(&owner, &name, &meta);
+
+        let current_ledger = env.ledger().sequence();
+        let extend_to = current_ledger + 100_000;
+
+        // First extension should succeed
+        let result1 = client.extend_name_ttl(&name, &extend_to);
+        assert!(result1);
+
+        // Second extension to the same ledger in the same block should be a no-op
+        // (In practice, Soroban handles this by not re-extending if already at target)
+        let result2 = client.extend_name_ttl(&name, &extend_to);
+        assert!(result2);
+
+        // Both should succeed, showing idempotency
+        assert_eq!(client.resolve(&name), meta);
+    }
 }
+

@@ -91,3 +91,21 @@ jobs:
           targets: riscv64imac-unknown-none-elf
       - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
       - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock
+  names-health:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: stellar/scripts/keeper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Check wraith-names TTL health on testnet
+        run: |
+          KEEPER_SECRET_KEY="${{ secrets.KEEPER_TESTNET_SECRET_KEY }}" \
+          WRAITH_NAMES_CONTRACT="${{ secrets.WRAITH_NAMES_TESTNET_CONTRACT }}" \
+          npx ts-node keeper.ts --network testnet --dry-run
+        if: github.event_name == 'schedule' || github.ref == 'refs/heads/main'
