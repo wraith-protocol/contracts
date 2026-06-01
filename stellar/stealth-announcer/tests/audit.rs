@@ -2,10 +2,7 @@ use soroban_sdk::testutils::{Address as _, EnvTestConfig, Events};
 use soroban_sdk::{
     contract, contractimpl, symbol_short, vec, Address, Bytes, BytesN, Env, FromVal, IntoVal, Val,
 };
-use stealth_announcer::{
-    StealthAnnouncerContract, StealthAnnouncerContractClient, METADATA_KIND_VIEW_TAG,
-    STELLAR_V2_SCHEME_ID,
-};
+use stealth_announcer::{StealthAnnouncerContract, StealthAnnouncerContractClient};
 
 fn audit_env() -> Env {
     Env::new_with_config(EnvTestConfig {
@@ -14,7 +11,7 @@ fn audit_env() -> Env {
 }
 
 #[test]
-fn wa_ann_01_v2_payload_uses_stealth_address_not_caller() {
+fn wa_ann_01_caller_payload_is_contract_not_invoker() {
     let env = audit_env();
     let contract_id = env.register(StealthAnnouncerContract, ());
     let client = StealthAnnouncerContractClient::new(&env, &contract_id);
@@ -24,19 +21,14 @@ fn wa_ann_01_v2_payload_uses_stealth_address_not_caller() {
     let ephemeral_pub_key = BytesN::from_array(&env, &[1u8; 32]);
     let metadata = Bytes::from_slice(&env, &[0u8; 1]);
 
-    client.announce(
-        &STELLAR_V2_SCHEME_ID,
-        &stealth_address,
-        &ephemeral_pub_key,
-        &metadata,
-    );
+    client.announce(&1u32, &stealth_address, &ephemeral_pub_key, &metadata);
 
     let events = env.events().all();
     let event = events.last().unwrap();
     let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
 
     assert_ne!(contract_id, invoker);
-    assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
+    assert_eq!(actual_value, (contract_id, ephemeral_pub_key, metadata));
 }
 
 #[test]
@@ -49,18 +41,13 @@ fn wa_ann_02_oversized_metadata_is_accepted() {
     let ephemeral_pub_key = BytesN::from_array(&env, &[2u8; 32]);
     let metadata = Bytes::from_array(&env, &[7u8; 4096]);
 
-    client.announce(
-        &STELLAR_V2_SCHEME_ID,
-        &stealth_address,
-        &ephemeral_pub_key,
-        &metadata,
-    );
+    client.announce(&1u32, &stealth_address, &ephemeral_pub_key, &metadata);
 
     let events = env.events().all();
     let event = events.last().unwrap();
     let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
 
-    assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
+    assert_eq!(actual_value, (contract_id, ephemeral_pub_key, metadata));
 }
 
 #[test]
@@ -73,12 +60,7 @@ fn wa_ann_03_zero_ephemeral_pub_key_is_accepted() {
     let zero_ephemeral_pub_key = BytesN::from_array(&env, &[0u8; 32]);
     let metadata = Bytes::from_slice(&env, &[0u8; 1]);
 
-    client.announce(
-        &STELLAR_V2_SCHEME_ID,
-        &stealth_address,
-        &zero_ephemeral_pub_key,
-        &metadata,
-    );
+    client.announce(&1u32, &stealth_address, &zero_ephemeral_pub_key, &metadata);
 
     let events = env.events().all();
     let event = events.last().unwrap();
@@ -86,7 +68,7 @@ fn wa_ann_03_zero_ephemeral_pub_key_is_accepted() {
 
     assert_eq!(
         actual_value,
-        (stealth_address, zero_ephemeral_pub_key, metadata)
+        (contract_id, zero_ephemeral_pub_key, metadata)
     );
 }
 
@@ -121,7 +103,7 @@ fn wa_ann_04_cpi_can_emit_announcements_without_auth() {
 
     forwarder.forward(
         &announcer_id,
-        &STELLAR_V2_SCHEME_ID,
+        &1u32,
         &stealth_address,
         &ephemeral_pub_key,
         &metadata,
@@ -132,13 +114,12 @@ fn wa_ann_04_cpi_can_emit_announcements_without_auth() {
     let expected_topics: soroban_sdk::Vec<Val> = vec![
         &env,
         symbol_short!("announce").into_val(&env),
-        STELLAR_V2_SCHEME_ID.into_val(&env),
-        0u32.into_val(&env),
-        METADATA_KIND_VIEW_TAG.into_val(&env),
+        1u32.into_val(&env),
+        stealth_address.into_val(&env),
     ];
     let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
 
     assert_eq!(event.0, announcer_id.clone());
     assert_eq!(event.1, expected_topics);
-    assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
+    assert_eq!(actual_value, (announcer_id, ephemeral_pub_key, metadata));
 }
