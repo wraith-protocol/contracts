@@ -11,7 +11,7 @@ use soroban_sdk::{
 pub enum DataKey {
     /// Maps name hash (BytesN<32>) to NameEntry.
     Name(BytesN<32>),
-    /// Reverse lookup: meta-address hash (BytesN<32>) to name hash (BytesN<32>).
+    /// Reverse lookup: meta-address hash (BytesN<32>) to name string.
     Reverse(BytesN<32>),
 }
 
@@ -87,7 +87,7 @@ impl WraithNamesContract {
             BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
         env.storage()
             .instance()
-            .set(&DataKey::Reverse(meta_hash), &name_hash);
+            .set(&DataKey::Reverse(meta_hash), &name);
 
         env.events().publish(
             (symbol_short!("register"), name_hash),
@@ -146,7 +146,7 @@ impl WraithNamesContract {
             BytesN::from_array(&env, &env.crypto().sha256(&new_meta_address).to_array());
         env.storage()
             .instance()
-            .set(&DataKey::Reverse(new_meta_hash), &name_hash);
+            .set(&DataKey::Reverse(new_meta_hash), &name);
 
         env.events().publish(
             (symbol_short!("register"), name_hash),
@@ -206,17 +206,12 @@ impl WraithNamesContract {
     pub fn name_of(env: Env, stealth_meta_address: Bytes) -> Result<String, NamesError> {
         let meta_hash =
             BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
-        let name_hash: BytesN<32> = env
+        let name: String = env
             .storage()
             .instance()
             .get(&DataKey::Reverse(meta_hash))
             .ok_or(NamesError::NameNotFound)?;
-        let entry: NameEntry = env
-            .storage()
-            .instance()
-            .get(&DataKey::Name(name_hash))
-            .ok_or(NamesError::NameNotFound)?;
-        Ok(entry.name)
+        Ok(name)
     }
 
     /// Hash a name string to BytesN<32> for use as storage key.
