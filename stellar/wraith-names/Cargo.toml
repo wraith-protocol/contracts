@@ -4,12 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
 
 [dev-dependencies]
+proptest = "1.6.0"
 soroban-sdk = { workspace = true, features = ["testutils"] }
 ed25519-dalek = "2"
 proptest = "1"

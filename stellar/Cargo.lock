@@ -1578,6 +1578,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 name = "stealth-announcer"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -1585,6 +1586,7 @@ dependencies = [
 name = "stealth-registry"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -1592,6 +1594,7 @@ dependencies = [
 name = "stealth-sender"
 version = "0.1.0"
 dependencies = [
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -2067,7 +2070,19 @@ version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
  "proptest",
+ "proptest",
  "soroban-sdk",
+]
+
+[[package]]
+name = "wraith-stellar-bench"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stealth-announcer",
+ "stealth-registry",
+ "stealth-sender",
+ "wraith-names",
 ]
 
 [[package]]
