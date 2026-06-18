@@ -1,6 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
+    IntoVal,
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env, Vec,
 };
 
@@ -16,6 +17,8 @@ pub enum DataKey {
     Renounced,
     /// Whether the contract is paused.
     Paused,
+    /// Optional asset policy contract address.
+    AssetPolicy,
 }
 
 /// Errors that the sender contract can produce.
@@ -37,13 +40,17 @@ pub enum SenderError {
     AdminAlreadySet = 6,
     /// Contract is paused.
     ContractPaused = 7,
+    /// Asset not allowed by policy.
+    AssetNotAllowed = 8,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
 /// `env.invoke_contract`. This avoids needing a compiled WASM at build time
 /// (unlike `contractimport!`) and keeps the build self-contained.
 mod announcer_client {
-    use soroban_sdk::{Address, Bytes, BytesN, Env};
+    use soroban_sdk::{
+    IntoVal,
+    Address, Bytes, BytesN, Env};
 
     pub fn announce(
         env: &Env,
@@ -193,6 +200,44 @@ impl StealthSenderContract {
             .unwrap_or(false)
     }
 
+    /// Set the asset policy contract address. Admin only.
+    /// Pass None to clear the policy (allow all assets).
+    pub fn set_asset_policy(env: Env, policy: Option<Address>) -> Result<(), SenderError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(SenderError::NotInitialized)?;
+        admin.require_auth();
+
+        match policy {
+            Some(addr) => env.storage().instance().set(&DataKey::AssetPolicy, &addr),
+            None => env.storage().instance().remove(&DataKey::AssetPolicy),
+        }
+        Ok(())
+    }
+
+    /// Get the current asset policy address, if set.
+    pub fn get_asset_policy(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::AssetPolicy)
+    }
+
+    /// Internal: check if an asset is allowed by the policy.
+    fn check_asset_policy(env: &Env, asset: &Address) -> Result<(), SenderError> {
+        if let Some(policy_addr) = env.storage().instance().get::<_, Address>(&DataKey::AssetPolicy)
+        {
+            let allowed: bool = env.invoke_contract(
+                &policy_addr,
+                &soroban_sdk::symbol_short!("is_allowed"),
+                soroban_sdk::vec![env, asset.into_val(env)],
+            );
+            if !allowed {
+                return Err(SenderError::AssetNotAllowed);
+            }
+        }
+        Ok(())
+    }
+
     /// Internal: revert if paused.
     fn require_not_paused(env: &Env) -> Result<(), SenderError> {
         let paused: bool = env
@@ -227,6 +272,7 @@ impl StealthSenderContract {
         metadata: Bytes,
     ) -> Result<(), SenderError> {
         Self::require_not_paused(&env)?;
+        Self::check_asset_policy(&env, &token)?;
         sender.require_auth();
 
         let announcer: Address = env
@@ -267,6 +313,7 @@ impl StealthSenderContract {
         amounts: Vec<i128>,
     ) -> Result<(), SenderError> {
         Self::require_not_paused(&env)?;
+        Self::check_asset_policy(&env, &token)?;
         sender.require_auth();
 
         let len = stealth_addresses.len();
@@ -306,7 +353,9 @@ impl StealthSenderContract {
 
 #[cfg(test)]
 mod tests {
-    use soroban_sdk::{vec, Address, Bytes, BytesN, Env, Symbol};
+    use soroban_sdk::{
+    IntoVal,
+    vec, Address, Bytes, BytesN, Env, Symbol};
 
     use crate::{StealthSenderContract, StealthSenderContractClient, SenderError};
 
