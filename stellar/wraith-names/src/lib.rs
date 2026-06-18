@@ -13,6 +13,10 @@ pub enum DataKey {
     Name(BytesN<32>),
     /// Reverse lookup: meta-address hash (BytesN<32>) to name hash (BytesN<32>).
     Reverse(BytesN<32>),
+    /// The admin address authorized for pause/unpause.
+    Admin,
+    /// Whether the contract is paused.
+    Paused,
 }
 
 /// A registered name entry.
@@ -39,6 +43,12 @@ pub enum NamesError {
     InvalidMetaAddress = 5,
     NameNotFound = 6,
     NotOwner = 7,
+    /// Caller is not the admin.
+    NotAdmin = 8,
+    /// Contract is paused.
+    ContractPaused = 9,
+    /// Admin has already been set.
+    AdminAlreadySet = 10,
 }
 
 #[contract]
@@ -46,6 +56,70 @@ pub struct WraithNamesContract;
 
 #[contractimpl]
 impl WraithNamesContract {
+    /// Initialise the contract with an admin address for pause control.
+    /// Must be called once before use.
+    pub fn init(env: Env, admin: Address) -> Result<(), NamesError> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            return Err(NamesError::AdminAlreadySet);
+        }
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
+        Ok(())
+    }
+
+    /// Pause the contract. Only callable by admin.
+    /// When paused, register/update/release are blocked.
+    /// Resolve and name_of remain available (read-only).
+    pub fn pause(env: Env) -> Result<(), NamesError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(NamesError::NotAdmin)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        env.events()
+            .publish((symbol_short!("paused"),), ());
+        Ok(())
+    }
+
+    /// Unpause the contract. Only callable by admin.
+    pub fn unpause(env: Env) -> Result<(), NamesError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(NamesError::NotAdmin)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.events()
+            .publish((symbol_short!("unpaused"),), ());
+        Ok(())
+    }
+
+    /// Check if the contract is paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    /// Internal: revert if paused.
+    fn require_not_paused(env: &Env) -> Result<(), NamesError> {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            return Err(NamesError::ContractPaused);
+        }
+        Ok(())
+    }
+
     /// Register a name mapped to a stealth meta-address.
     /// The caller (owner) must authorize. Ownership is tied to the caller's address.
     ///
@@ -59,6 +133,7 @@ impl WraithNamesContract {
         name: String,
         stealth_meta_address: Bytes,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         owner.require_auth();
 
         Self::validate_name(&env, &name)?;
@@ -105,6 +180,7 @@ impl WraithNamesContract {
         name: String,
         new_meta_address: Bytes,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         owner.require_auth();
 
         if new_meta_address.len() != 64 {
@@ -158,6 +234,7 @@ impl WraithNamesContract {
 
     /// Release a name, making it available again.
     pub fn release(env: Env, owner: Address, name: String) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         owner.require_auth();
 
         let name_hash = Self::hash_name(&env, &name);
@@ -192,6 +269,7 @@ impl WraithNamesContract {
     }
 
     /// Resolve a name to its stealth meta-address.
+    /// Available even when paused (read-only).
     pub fn resolve(env: Env, name: String) -> Result<Bytes, NamesError> {
         let name_hash = Self::hash_name(&env, &name);
         let entry: NameEntry = env
@@ -203,6 +281,7 @@ impl WraithNamesContract {
     }
 
     /// Reverse lookup: find the name for a given stealth meta-address.
+    /// Available even when paused (read-only).
     pub fn name_of(env: Env, stealth_meta_address: Bytes) -> Result<String, NamesError> {
         let meta_hash =
             BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
@@ -261,13 +340,148 @@ mod test {
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Bytes, Env, String};
 
+    fn setup_with_admin<'a>(env: &Env) -> (WraithNamesContractClient<'a>, Address) {
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        client.init(&admin);
+        (client, admin)
+    }
+
+    // === PAUSE TESTS ===
+
+    #[test]
+    fn test_admin_can_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        assert!(!client.is_paused());
+        client.pause();
+        assert!(client.is_paused());
+    }
+
+    #[test]
+    fn test_admin_can_unpause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        client.pause();
+        assert!(client.is_paused());
+        client.unpause();
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #9)")]
+    fn test_register_blocked_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        client.pause();
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[42u8; 64]);
+        client.register(&owner, &name, &meta); // Should panic: ContractPaused
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #9)")]
+    fn test_update_blocked_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[42u8; 64]);
+        client.register(&owner, &name, &meta);
+
+        client.pause();
+
+        let new_meta = Bytes::from_slice(&env, &[99u8; 64]);
+        client.update(&owner, &name, &new_meta); // Should panic: ContractPaused
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #9)")]
+    fn test_release_blocked_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[42u8; 64]);
+        client.register(&owner, &name, &meta);
+
+        client.pause();
+
+        client.release(&owner, &name); // Should panic: ContractPaused
+    }
+
+    #[test]
+    fn test_resolve_works_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[42u8; 64]);
+        client.register(&owner, &name, &meta);
+
+        client.pause();
+
+        // Read-only operations still work
+        let resolved = client.resolve(&name);
+        assert_eq!(resolved, meta);
+    }
+
+    #[test]
+    fn test_name_of_works_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[42u8; 64]);
+        client.register(&owner, &name, &meta);
+
+        client.pause();
+
+        let found = client.name_of(&meta);
+        assert_eq!(found, name);
+    }
+
+    #[test]
+    fn test_register_works_after_unpause() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin) = setup_with_admin(&env);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[42u8; 64]);
+
+        client.pause();
+        client.unpause();
+
+        client.register(&owner, &name, &meta);
+        assert_eq!(client.resolve(&name), meta);
+    }
+
+    // === EXISTING TESTS (with admin init) ===
+
     #[test]
     fn test_register_and_resolve() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
+        let (client, _admin) = setup_with_admin(&env);
 
         let owner = Address::generate(&env);
         let name = String::from_str(&env, "alice");
@@ -283,9 +497,7 @@ mod test {
     fn test_name_taken() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
+        let (client, _admin) = setup_with_admin(&env);
 
         let owner1 = Address::generate(&env);
         let owner2 = Address::generate(&env);
@@ -302,9 +514,7 @@ mod test {
     fn test_name_of_reverse() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
+        let (client, _admin) = setup_with_admin(&env);
 
         let owner = Address::generate(&env);
         let name = String::from_str(&env, "charlie");
@@ -320,9 +530,7 @@ mod test {
     fn test_release() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
+        let (client, _admin) = setup_with_admin(&env);
 
         let owner = Address::generate(&env);
         let name = String::from_str(&env, "dave");
@@ -345,9 +553,7 @@ mod test {
     fn test_invalid_name() {
         let env = Env::default();
         env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
+        let (client, _admin) = setup_with_admin(&env);
 
         let owner = Address::generate(&env);
         let meta = Bytes::from_slice(&env, &[1u8; 64]);

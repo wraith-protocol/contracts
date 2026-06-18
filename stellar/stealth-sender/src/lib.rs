@@ -14,6 +14,8 @@ pub enum DataKey {
     Admin,
     /// Whether upgrade authority has been renounced.
     Renounced,
+    /// Whether the contract is paused.
+    Paused,
 }
 
 /// Errors that the sender contract can produce.
@@ -33,6 +35,8 @@ pub enum SenderError {
     UpgradeRenounced = 5,
     /// Admin has already been set.
     AdminAlreadySet = 6,
+    /// Contract is paused.
+    ContractPaused = 7,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -154,6 +158,54 @@ impl StealthSenderContract {
             .unwrap_or(false)
     }
 
+    /// Pause the contract. Only callable by admin.
+    /// When paused, send and batch_send are blocked.
+    pub fn pause(env: Env) -> Result<(), SenderError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(SenderError::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Paused, &true);
+        Ok(())
+    }
+
+    /// Unpause the contract. Only callable by admin.
+    pub fn unpause(env: Env) -> Result<(), SenderError> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(SenderError::NotInitialized)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&DataKey::Paused, &false);
+        Ok(())
+    }
+
+    /// Check if the contract is paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    /// Internal: revert if paused.
+    fn require_not_paused(env: &Env) -> Result<(), SenderError> {
+        let paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if paused {
+            return Err(SenderError::ContractPaused);
+        }
+        Ok(())
+    }
+
     /// Transfer tokens to a stealth address and emit an announcement.
     ///
     /// # Arguments
@@ -174,6 +226,7 @@ impl StealthSenderContract {
         ephemeral_pub_key: BytesN<32>,
         metadata: Bytes,
     ) -> Result<(), SenderError> {
+        Self::require_not_paused(&env)?;
         sender.require_auth();
 
         let announcer: Address = env
@@ -213,6 +266,7 @@ impl StealthSenderContract {
         metadatas: Vec<Bytes>,
         amounts: Vec<i128>,
     ) -> Result<(), SenderError> {
+        Self::require_not_paused(&env)?;
         sender.require_auth();
 
         let len = stealth_addresses.len();
