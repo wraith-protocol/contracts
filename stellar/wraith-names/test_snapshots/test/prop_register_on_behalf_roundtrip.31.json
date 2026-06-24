@@ -1,0 +1,148 @@
+{
+  "generators": {
+    "address": 1,
+    "nonce": 0
+  },
+  "auth": [
+    [],
+    [],
+    []
+  ],
+  "ledger": {
+    "protocol_version": 22,
+    "sequence_number": 0,
+    "timestamp": 0,
+    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
+    "base_reserve": 0,
+    "min_persistent_entry_ttl": 4096,
+    "min_temp_entry_ttl": 16,
+    "max_entry_ttl": 6312000,
+    "ledger_entries": [
+      [
+        {
+          "contract_data": {
+            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+            "key": "ledger_key_contract_instance",
+            "durability": "persistent"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_data": {
+                "ext": "v0",
+                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+                "key": "ledger_key_contract_instance",
+                "durability": "persistent",
+                "val": {
+                  "contract_instance": {
+                    "executable": {
+                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                    },
+                    "storage": [
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Name"
+                            },
+                            {
+                              "bytes": "cf4ac28ea7ba1492a583c9bee7839a4eb4bdc4f68595050965c214a81fcab6c3"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "map": [
+                            {
+                              "key": {
+                                "symbol": "name"
+                              },
+                              "val": {
+                                "string": "sw1"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "owner"
+                              },
+                              "val": {
+                                "address": "GC5H2QOPPUKNLDWE6HCKVMASJ3YFL4UALLX2AMHG42V73DRM6CAL4AIF"
+                              }
+                            },
+                            {
+                              "key": {
+                                "symbol": "stealth_meta_address"
+                              },
+                              "val": {
+                                "bytes": "debe6501f8d7e9c4b0aaaeb5a817e89a4b2afb2cc93a08cf476238dedfe1ac64a67dc46cb159d8a06b1a68774fb285d2421654acecc2d6467cd04a49e4adba3c"
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Replay"
+                            },
+                            {
+                              "bytes": "3448c2807f368e4a1348ca493009e2738e30e31c4b5fb21529f4bbdfc852d418"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bool": true
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Reverse"
+                            },
+                            {
+                              "bytes": "b02841fea6a12f6b3c3128995c9dc7d613f49a8c9d5b9d0ace1e1baad8750a84"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bytes": "cf4ac28ea7ba1492a583c9bee7839a4eb4bdc4f68595050965c214a81fcab6c3"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ],
+      [
+        {
+          "contract_code": {
+            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        [
+          {
+            "last_modified_ledger_seq": 0,
+            "data": {
+              "contract_code": {
+                "ext": "v0",
+                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "code": ""
+              }
+            },
+            "ext": "v0"
+          },
+          4095
+        ]
+      ]
+    ]
+  },
+  "events": []
+}

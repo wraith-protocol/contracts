@@ -10,6 +10,8 @@ use soroban_sdk::{
 pub enum DataKey {
     /// The address of the deployed StealthAnnouncer contract.
     Announcer,
+    /// Optional address of the asset policy contract.
+    AssetPolicy,
 }
 
 /// Errors that the sender contract can produce.
@@ -23,6 +25,8 @@ pub enum SenderError {
     NotInitialized = 2,
     /// The batch input vectors have mismatched lengths.
     LengthMismatch = 3,
+    /// The token is not allowed by the asset policy.
+    TokenNotAllowed = 4,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -63,10 +67,10 @@ pub struct StealthSenderContract;
 
 #[contractimpl]
 impl StealthSenderContract {
-    /// Initialise the contract by storing the announcer address.
+    /// Initialise the contract by storing the announcer address and optional asset policy.
     ///
     /// Must be called exactly once before any `send` or `batch_send`.
-    pub fn init(env: Env, announcer: Address) -> Result<(), SenderError> {
+    pub fn init(env: Env, announcer: Address, asset_policy: Option<Address>) -> Result<(), SenderError> {
         if env.storage().instance().has(&DataKey::Announcer) {
             return Err(SenderError::AlreadyInitialized);
         }
