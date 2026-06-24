@@ -40,6 +40,17 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 
 ## Getting Started
 
+## Network preflight checks
+
+Before deploying, validate the target network is reachable and configured correctly:
+
+\`\`\`
+./scripts/check-network.sh testnet
+\`\`\`
+
+Checks passphrase config, RPC reachability, friendbot (testnet/futurenet), and that
+the deploying identity exists. `deploy.sh` runs this automatically as its first step.
+
 ### Prerequisites
 
 - Node.js 22+
