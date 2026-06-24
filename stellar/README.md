@@ -51,3 +51,24 @@ soroban config network add --rpc-url https://soroban-testnet.stellar.org:443 --n
 ```
 
 The script will deploy all contracts and initialize the `stealth-sender` with the `stealth-announcer` ID.
+
+## Asset Allowlist Policy
+
+To protect the unlinkability and user experience of stealth transfers (preventing clawback-enabled or freeze-enabled assets from being sent, as identified in audit #43), `stealth-sender` supports an optional, configurable on-chain `asset_policy` check.
+
+If an `asset_policy` contract address is supplied during `init`, the `stealth-sender` contract calls it before every transfer to ensure the asset is allowed.
+
+### Custom Policy Interface
+
+Any contract can act as an asset policy as long as it implements the following method:
+
+```rust
+pub fn check_asset(env: Env, asset: Address) -> bool;
+```
+
+- **asset**: The contract address of the Stellar Asset Contract (SAC) being checked.
+- **Returns**: `true` if the asset is allowed for stealth payments, or `false` otherwise. If `false` is returned, `stealth-sender` rejects the transaction with `SenderError::TokenNotAllowed`.
+
+### Reference Implementation
+
+The `wraith-asset-policy` contract provides a default implementation that is controlled by an admin. The admin can add or remove assets from a persistent allowlist. If a caller wants custom rules (such as check-free transfers, or automated query-based enforcement), they can deploy their own contract matching the interface above.

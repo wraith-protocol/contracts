@@ -1,6 +1,6 @@
 /// Mock: Standard issued asset — no issuer flags set.
 /// Transfer always succeeds. No clawback, no auth requirement.
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String, token::TokenInterface as _};
 
 #[contracttype]
 #[derive(Clone)]

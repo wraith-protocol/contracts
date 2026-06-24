@@ -1596,6 +1596,14 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "soroban-sdk",
+ "wraith-asset-policy",
+]
+
+[[package]]
+name = "stealth-splitter"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -2065,11 +2073,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wraith-asset-policy"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "wraith-names"
 version = "0.1.0"
 dependencies = [
  "ed25519-dalek",
- "proptest",
  "proptest",
  "soroban-sdk",
 ]

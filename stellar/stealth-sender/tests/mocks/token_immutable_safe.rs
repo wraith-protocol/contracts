@@ -4,7 +4,7 @@
 /// issued asset and is safe for stealth flows.
 ///
 /// The "immutability" is enforced by the absence of any admin mutation methods.
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String, token::TokenInterface as _};
 
 #[contracttype]
 #[derive(Clone)]
@@ -15,7 +15,6 @@ enum DataKey {
 #[contract]
 pub struct ImmutableSafeToken;
 
-#[contractimpl]
 impl ImmutableSafeToken {
     pub fn mint(env: &Env, to: &Address, amount: i128) {
         let bal: i128 = env

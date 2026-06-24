@@ -18,7 +18,9 @@ use mocks::{
     token_standard::StandardToken,
 };
 use soroban_sdk::{
-    testutils::{Address as _},
+    testutils::Address as _,
+    testutils::Events as _,
+    token::TokenInterface as _,
     Address, Bytes, BytesN, Env,
 };
 
@@ -40,10 +42,16 @@ mod announcer {
             _ephemeral_pub_key: BytesN<32>,
             _metadata: Bytes,
         ) {
+            env.storage().instance().set(&symbol_short!("called"), &true);
+            std::println!("ANNOUNCER CALLED for address: {:?}", stealth_address);
             env.events().publish(
                 (symbol_short!("announce"), stealth_address),
                 (),
             );
+        }
+
+        pub fn is_called(env: Env) -> bool {
+            env.storage().instance().get(&symbol_short!("called")).unwrap_or(false)
         }
     }
 }
@@ -66,10 +74,10 @@ impl Harness {
         env.mock_all_auths();
 
         let announcer_id = env.register(Announcer, ());
-        let sender_id = env.register(StealthSenderContract, ());
+        let sender_id = env.register(stealth_sender::StealthSenderContract, ());
         let sender_client =
             stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
-        sender_client.init(&announcer_id);
+        sender_client.init(&announcer_id, &None);
 
         let sender = Address::generate(&env);
         let stealth = Address::generate(&env);
@@ -87,22 +95,20 @@ impl Harness {
         }
     }
 
-    fn sender_client(&self) -> stealth_sender::StealthSenderContractClient {
+    fn sender_client(&self) -> stealth_sender::StealthSenderContractClient<'_> {
         stealth_sender::StealthSenderContractClient::new(&self.env, &self.sender_id)
     }
 
     /// Assert that exactly one announcement event was emitted.
     fn assert_announced(&self) {
-        let events = self.env.events().all();
-        let announced = events.iter().any(|e| e.0 == self.announcer_id);
-        assert!(announced, "expected announcement event, none found");
+        let client = announcer::AnnouncerClient::new(&self.env, &self.announcer_id);
+        assert!(client.is_called(), "expected announcement, none found");
     }
 
     /// Assert that no announcement event was emitted.
     fn assert_not_announced(&self) {
-        let events = self.env.events().all();
-        let announced = events.iter().any(|e| e.0 == self.announcer_id);
-        assert!(!announced, "unexpected announcement event found");
+        let client = announcer::AnnouncerClient::new(&self.env, &self.announcer_id);
+        assert!(!client.is_called(), "unexpected announcement found");
     }
 }
 
@@ -112,14 +118,16 @@ impl Harness {
 fn native_xlm_send_succeeds() {
     let h = Harness::new();
     let token_id = h.env.register(StandardToken, ());
-    StandardToken::mint(&h.env, &h.sender, 1_000);
+    let token_client = mocks::token_standard::StandardTokenClient::new(&h.env, &token_id);
+    h.env.as_contract(&token_id, || {
+        StandardToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     h.sender_client()
-        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta)
-        .unwrap();
+        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
     assert_eq!(
-        mocks::token_standard::StandardToken::balance(h.env.clone(), h.stealth.clone()),
+        token_client.balance(&h.stealth),
         500
     );
     h.assert_announced();
@@ -131,14 +139,16 @@ fn native_xlm_send_succeeds() {
 fn standard_issued_send_succeeds() {
     let h = Harness::new();
     let token_id = h.env.register(StandardToken, ());
-    StandardToken::mint(&h.env, &h.sender, 1_000);
+    let token_client = mocks::token_standard::StandardTokenClient::new(&h.env, &token_id);
+    h.env.as_contract(&token_id, || {
+        StandardToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     h.sender_client()
-        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta)
-        .unwrap();
+        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
     assert_eq!(
-        mocks::token_standard::StandardToken::balance(h.env.clone(), h.stealth.clone()),
+        token_client.balance(&h.stealth),
         500
     );
     h.assert_announced();
@@ -154,7 +164,9 @@ fn auth_required_send_fails_without_authorization() {
     let token_client =
         mocks::token_auth_required::AuthRequiredTokenClient::new(&h.env, &token_id);
     token_client.init(&admin);
-    AuthRequiredToken::mint(&h.env, &h.sender, 1_000);
+    h.env.as_contract(&token_id, || {
+        AuthRequiredToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     // Stealth address is NOT authorized — transfer must fail.
     let result = h.sender_client().try_send(
@@ -174,17 +186,18 @@ fn auth_required_send_succeeds_when_pre_authorized() {
     let token_client =
         mocks::token_auth_required::AuthRequiredTokenClient::new(&h.env, &token_id);
     token_client.init(&admin);
-    AuthRequiredToken::mint(&h.env, &h.sender, 1_000);
+    h.env.as_contract(&token_id, || {
+        AuthRequiredToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     // Pre-authorize the stealth address.
     token_client.set_authorized(&admin, &h.stealth, &true);
 
     h.sender_client()
-        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta)
-        .unwrap();
+        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
     assert_eq!(
-        mocks::token_auth_required::AuthRequiredToken::balance(h.env.clone(), h.stealth.clone()),
+        token_client.balance(&h.stealth),
         500
     );
     h.assert_announced();
@@ -200,15 +213,16 @@ fn auth_revocable_send_succeeds_then_issuer_freezes() {
     let token_client =
         mocks::token_auth_revocable::AuthRevocableTokenClient::new(&h.env, &token_id);
     token_client.init(&admin);
-    AuthRevocableToken::mint(&h.env, &h.sender, 1_000);
+    h.env.as_contract(&token_id, || {
+        AuthRevocableToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     // Send succeeds — no auth-required flag.
     h.sender_client()
-        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta)
-        .unwrap();
+        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
     assert_eq!(
-        mocks::token_auth_revocable::AuthRevocableToken::balance(h.env.clone(), h.stealth.clone()),
+        token_client.balance(&h.stealth),
         500
     );
     h.assert_announced();
@@ -217,7 +231,7 @@ fn auth_revocable_send_succeeds_then_issuer_freezes() {
     // This freezes the balance — the recipient can no longer spend.
     token_client.set_authorized(&admin, &h.stealth, &false);
     assert!(
-        !mocks::token_auth_revocable::AuthRevocableToken::is_authorized(&h.env, &h.stealth),
+        !token_client.is_authorized(&h.stealth),
         "stealth address should be frozen after revocation"
     );
     // AUDIT NOTE: funds arrived and announcement was emitted, but the recipient
@@ -234,15 +248,16 @@ fn clawback_send_succeeds_then_issuer_claws_back() {
     let token_client =
         mocks::token_clawback::ClawbackTokenClient::new(&h.env, &token_id);
     token_client.init(&admin);
-    ClawbackToken::mint(&h.env, &h.sender, 1_000);
+    h.env.as_contract(&token_id, || {
+        ClawbackToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     // Send succeeds.
     h.sender_client()
-        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta)
-        .unwrap();
+        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
     assert_eq!(
-        mocks::token_clawback::ClawbackToken::balance(h.env.clone(), h.stealth.clone()),
+        token_client.balance(&h.stealth),
         500
     );
     h.assert_announced();
@@ -251,7 +266,7 @@ fn clawback_send_succeeds_then_issuer_claws_back() {
     token_client.clawback(&admin, &h.stealth, &500);
 
     assert_eq!(
-        mocks::token_clawback::ClawbackToken::balance(h.env.clone(), h.stealth.clone()),
+        token_client.balance(&h.stealth),
         0,
         "clawback must drain the stealth address balance"
     );
@@ -266,14 +281,16 @@ fn clawback_send_succeeds_then_issuer_claws_back() {
 fn immutable_safe_send_succeeds() {
     let h = Harness::new();
     let token_id = h.env.register(ImmutableSafeToken, ());
-    ImmutableSafeToken::mint(&h.env, &h.sender, 1_000);
+    let token_client = mocks::token_immutable_safe::ImmutableSafeTokenClient::new(&h.env, &token_id);
+    h.env.as_contract(&token_id, || {
+        ImmutableSafeToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     h.sender_client()
-        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta)
-        .unwrap();
+        .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
     assert_eq!(
-        mocks::token_immutable_safe::ImmutableSafeToken::balance(h.env.clone(), h.stealth.clone()),
+        token_client.balance(&h.stealth),
         500
     );
     h.assert_announced();
@@ -291,7 +308,9 @@ fn immutable_auth_required_send_fails_permanently() {
             &h.env, &token_id,
         );
     token_client.init(&admin);
-    ImmutableAuthRequiredToken::mint(&h.env, &h.sender, 1_000);
+    h.env.as_contract(&token_id, || {
+        ImmutableAuthRequiredToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     // No pre-authorization — transfer must fail.
     let result = h.sender_client().try_send(
@@ -312,7 +331,9 @@ fn fee_token_send_succeeds_but_amount_mismatch() {
     let token_id = h.env.register(FeeToken, ());
     let token_client = mocks::token_fee::FeeTokenClient::new(&h.env, &token_id);
     token_client.init(&treasury);
-    FeeToken::mint(&h.env, &h.sender, 1_000);
+    h.env.as_contract(&token_id, || {
+        FeeToken::mint(&h.env, &h.sender, 1_000);
+    });
 
     let send_amount: i128 = 500;
     h.sender_client()
@@ -324,11 +345,9 @@ fn fee_token_send_succeeds_but_amount_mismatch() {
             &h.stealth,
             &h.epk,
             &h.meta,
-        )
-        .unwrap();
+        );
 
-    let received =
-        mocks::token_fee::FeeToken::balance(h.env.clone(), h.stealth.clone());
+    let received = token_client.balance(&h.stealth);
     let fee = send_amount * 100 / 10_000; // 1%
     assert_eq!(
         received,
@@ -340,4 +359,82 @@ fn fee_token_send_succeeds_but_amount_mismatch() {
     // address only holds 495. Scanners that rely on the announced amount to
     // verify receipt will see a discrepancy. This is a correctness issue, not
     // a security issue, but it breaks the scanning assumption.
+}
+
+// ── 10. WraithAssetPolicy Integration & Adversarial Test ──────────────────────
+
+#[test]
+fn test_policy_allowlist_enforcement() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    // 1. Deploy & init policy contract
+    let admin = Address::generate(&env);
+    let policy_id = env.register(wraith_asset_policy::WraithAssetPolicy, ());
+    let policy_client = wraith_asset_policy::WraithAssetPolicyClient::new(&env, &policy_id);
+    policy_client.init(&admin);
+
+    // 2. Deploy & init stealth-sender with policy
+    let announcer_id = env.register(Announcer, ());
+    let sender_id = env.register(stealth_sender::StealthSenderContract, ());
+    let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
+    sender_client.init(&announcer_id, &Some(policy_id.clone()));
+
+    // 3. Setup tokens
+    let standard_token_id = env.register(StandardToken, ());
+    let clawback_token_id = env.register(ClawbackToken, ());
+
+    let sender = Address::generate(&env);
+    let stealth = Address::generate(&env);
+    let epk = BytesN::from_array(&env, &[0xabu8; 32]);
+    let meta = Bytes::from_slice(&env, &[0x01]);
+
+    // Mint tokens to sender
+    env.as_contract(&standard_token_id, || {
+        StandardToken::mint(&env, &sender, 1_000);
+    });
+    env.as_contract(&clawback_token_id, || {
+        ClawbackToken::mint(&env, &sender, 1_000);
+    });
+
+    // 4. Try to send ClawbackToken (not on allowlist) - should fail with TokenNotAllowed
+    let result = sender_client.try_send(
+        &sender,
+        &clawback_token_id,
+        &500,
+        &1,
+        &stealth,
+        &epk,
+        &meta,
+    );
+    assert_eq!(result, Err(Ok(stealth_sender::SenderError::TokenNotAllowed)));
+
+    // 5. Try to send StandardToken (not on allowlist yet) - should fail with TokenNotAllowed
+    let result_std = sender_client.try_send(
+        &sender,
+        &standard_token_id,
+        &500,
+        &1,
+        &stealth,
+        &epk,
+        &meta,
+    );
+    assert_eq!(result_std, Err(Ok(stealth_sender::SenderError::TokenNotAllowed)));
+
+    // 6. Allow StandardToken in the policy contract
+    policy_client.add_asset(&standard_token_id);
+
+    // 7. Send StandardToken again - should succeed
+    sender_client.send(
+        &sender,
+        &standard_token_id,
+        &500,
+        &1,
+        &stealth,
+        &epk,
+        &meta,
+    );
+
+    let token_client = mocks::token_standard::StandardTokenClient::new(&env, &standard_token_id);
+    assert_eq!(token_client.balance(&stealth), 500);
 }
