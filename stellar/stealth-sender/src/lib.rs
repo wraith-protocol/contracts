@@ -55,6 +55,9 @@ mod announcer_client {
     use soroban_sdk::IntoVal;
 }
 
+const TTL_THRESHOLD: u32 = 17280;    // ~1 day
+const TTL_EXTEND_TO: u32 = 518400;   // ~30 days
+
 #[contract]
 pub struct StealthSenderContract;
 
@@ -70,6 +73,10 @@ impl StealthSenderContract {
         env.storage()
             .instance()
             .set(&DataKey::Announcer, &announcer);
+
+        // Extend instance TTL
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+
         Ok(())
     }
 
@@ -100,6 +107,9 @@ impl StealthSenderContract {
             .instance()
             .get(&DataKey::Announcer)
             .ok_or(SenderError::NotInitialized)?;
+
+        // Extend instance TTL
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         // Transfer tokens from sender to the stealth address.
         let token_client = token::Client::new(&env, &token);
@@ -145,6 +155,9 @@ impl StealthSenderContract {
             .get(&DataKey::Announcer)
             .ok_or(SenderError::NotInitialized)?;
 
+        // Extend instance TTL
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+
         let token_client = token::Client::new(&env, &token);
 
         for i in 0..len {
@@ -166,5 +179,149 @@ impl StealthSenderContract {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::testutils::storage::Instance;
+    use soroban_sdk::{Env, Bytes, BytesN};
+
+    #[contract]
+    pub struct MockAnnouncer;
+
+    #[contractimpl]
+    impl MockAnnouncer {
+        pub fn announce(
+            env: Env,
+            scheme_id: u32,
+            stealth_address: Address,
+            ephemeral_pub_key: BytesN<32>,
+            metadata: Bytes,
+        ) {
+            env.events().publish(
+                (soroban_sdk::symbol_short!("announce"), scheme_id, stealth_address),
+                (env.current_contract_address(), ephemeral_pub_key, metadata),
+            );
+        }
+    }
+
+    #[test]
+    fn test_sender_workflow() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // Configure test ledger to have large min_persistent_entry_ttl so helper contracts/balances do not expire
+        env.ledger().with_mut(|li| {
+            li.min_persistent_entry_ttl = 600000;
+        });
+
+        // 1. Deploy Mock Announcer
+        let announcer_id = env.register(MockAnnouncer, ());
+
+        // 2. Deploy StealthSenderContract
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        // 3. Register standard asset token contract
+        let token_admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(token_admin).address();
+        let token_client = token::Client::new(&env, &token_id);
+
+        // 4. Initialize StealthSender
+        client.init(&announcer_id);
+
+        // Verify AlreadyInitialized error
+        let init_res = client.try_init(&announcer_id);
+        assert_eq!(init_res, Err(Ok(SenderError::AlreadyInitialized)));
+
+        // Setup transfer accounts and mint tokens
+        let sender = Address::generate(&env);
+        let stealth_address = Address::generate(&env);
+        
+        let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+        token_admin_client.mint(&sender, &1000);
+        
+        assert_eq!(token_client.balance(&sender), 1000);
+        assert_eq!(token_client.balance(&stealth_address), 0);
+
+        // 5. Test send functionality
+        let epk = BytesN::from_array(&env, &[1u8; 32]);
+        let meta = Bytes::from_slice(&env, &[0u8; 1]);
+        
+        client.send(&sender, &token_id, &500, &1, &stealth_address, &epk, &meta);
+
+        // Check balances
+        assert_eq!(token_client.balance(&sender), 500);
+        assert_eq!(token_client.balance(&stealth_address), 500);
+
+        // 6. Test TTL extension behavior
+        let initial_ttl = env.as_contract(&sender_id, || {
+            env.storage().instance().get_ttl()
+        });
+        assert!(initial_ttl > 0);
+
+        // Fast-forward sequence number to reduce TTL below the 17,280 threshold
+        env.ledger().with_mut(|li| {
+            li.sequence_number += 590000;
+        });
+
+        let reduced_ttl = env.as_contract(&sender_id, || {
+            env.storage().instance().get_ttl()
+        });
+        assert!(reduced_ttl < initial_ttl);
+
+        // Invoke send again to trigger TTL extension
+        let stealth_address_2 = Address::generate(&env);
+        client.send(&sender, &token_id, &100, &1, &stealth_address_2, &epk, &meta);
+
+        // Verify TTL is bumped back to max/extend_to value
+        let bumped_ttl = env.as_contract(&sender_id, || {
+            env.storage().instance().get_ttl()
+        });
+        assert!(bumped_ttl > reduced_ttl);
+        assert_eq!(bumped_ttl, 518400); // Should be bumped to TTL_EXTEND_TO
+    }
+
+    #[test]
+    fn test_batch_send() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env.register_stellar_asset_contract_v2(token_admin).address();
+        let token_client = token::Client::new(&env, &token_id);
+        
+        client.init(&announcer_id);
+
+        let sender = Address::generate(&env);
+        let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
+        token_admin_client.mint(&sender, &2000);
+
+        let stealth_addr_1 = Address::generate(&env);
+        let stealth_addr_2 = Address::generate(&env);
+
+        let epk_1 = BytesN::from_array(&env, &[1u8; 32]);
+        let epk_2 = BytesN::from_array(&env, &[2u8; 32]);
+
+        let meta_1 = Bytes::from_slice(&env, &[10u8; 1]);
+        let meta_2 = Bytes::from_slice(&env, &[20u8; 1]);
+
+        let addresses = soroban_sdk::vec![&env, stealth_addr_1.clone(), stealth_addr_2.clone()];
+        let epks = soroban_sdk::vec![&env, epk_1, epk_2];
+        let metadatas = soroban_sdk::vec![&env, meta_1, meta_2];
+        let amounts = soroban_sdk::vec![&env, 700, 800];
+
+        client.batch_send(&sender, &token_id, &1, &addresses, &epks, &metadatas, &amounts);
+
+        assert_eq!(token_client.balance(&sender), 500);
+        assert_eq!(token_client.balance(&stealth_addr_1), 700);
+        assert_eq!(token_client.balance(&stealth_addr_2), 800);
     }
 }

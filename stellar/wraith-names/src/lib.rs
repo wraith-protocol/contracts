@@ -41,6 +41,9 @@ pub enum NamesError {
     NotOwner = 7,
 }
 
+const TTL_THRESHOLD: u32 = 17280;    // ~1 day
+const TTL_EXTEND_TO: u32 = 518400;   // ~30 days
+
 #[contract]
 pub struct WraithNamesContract;
 
@@ -70,7 +73,7 @@ impl WraithNamesContract {
         let name_key = DataKey::Name(name_hash.clone());
 
         // Check not taken
-        if env.storage().instance().has(&name_key) {
+        if env.storage().persistent().has(&name_key) {
             return Err(NamesError::NameTaken);
         }
 
@@ -80,14 +83,18 @@ impl WraithNamesContract {
             owner: owner.clone(),
         };
 
-        env.storage().instance().set(&name_key, &entry);
+        env.storage().persistent().set(&name_key, &entry);
 
         // Reverse lookup
         let meta_hash =
             BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
+        let reverse_key = DataKey::Reverse(meta_hash);
         env.storage()
-            .instance()
-            .set(&DataKey::Reverse(meta_hash), &name_hash);
+            .persistent()
+            .set(&reverse_key, &name_hash);
+
+        // Extend TTLs
+        Self::extend_ttls(&env, &name_key, Some(&reverse_key));
 
         env.events().publish(
             (symbol_short!("register"), name_hash),
@@ -116,7 +123,7 @@ impl WraithNamesContract {
 
         let entry: NameEntry = env
             .storage()
-            .instance()
+            .persistent()
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
 
@@ -130,7 +137,7 @@ impl WraithNamesContract {
             &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
         );
         env.storage()
-            .instance()
+            .persistent()
             .remove(&DataKey::Reverse(old_meta_hash));
 
         // Update
@@ -139,14 +146,18 @@ impl WraithNamesContract {
             stealth_meta_address: new_meta_address.clone(),
             owner,
         };
-        env.storage().instance().set(&name_key, &new_entry);
+        env.storage().persistent().set(&name_key, &new_entry);
 
         // New reverse
         let new_meta_hash =
             BytesN::from_array(&env, &env.crypto().sha256(&new_meta_address).to_array());
+        let reverse_key = DataKey::Reverse(new_meta_hash);
         env.storage()
-            .instance()
-            .set(&DataKey::Reverse(new_meta_hash), &name_hash);
+            .persistent()
+            .set(&reverse_key, &name_hash);
+
+        // Extend TTLs
+        Self::extend_ttls(&env, &name_key, Some(&reverse_key));
 
         env.events().publish(
             (symbol_short!("register"), name_hash),
@@ -165,7 +176,7 @@ impl WraithNamesContract {
 
         let entry: NameEntry = env
             .storage()
-            .instance()
+            .persistent()
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
 
@@ -179,11 +190,14 @@ impl WraithNamesContract {
             &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
         );
         env.storage()
-            .instance()
+            .persistent()
             .remove(&DataKey::Reverse(meta_hash));
 
         // Remove name
-        env.storage().instance().remove(&name_key);
+        env.storage().persistent().remove(&name_key);
+
+        // Extend instance TTL
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         env.events()
             .publish((symbol_short!("release"), name_hash), name);
@@ -194,11 +208,15 @@ impl WraithNamesContract {
     /// Resolve a name to its stealth meta-address.
     pub fn resolve(env: Env, name: String) -> Result<Bytes, NamesError> {
         let name_hash = Self::hash_name(&env, &name);
+        let name_key = DataKey::Name(name_hash);
         let entry: NameEntry = env
             .storage()
-            .instance()
-            .get(&DataKey::Name(name_hash))
+            .persistent()
+            .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
+        
+        Self::extend_ttls(&env, &name_key, None);
+        
         Ok(entry.stealth_meta_address)
     }
 
@@ -206,17 +224,31 @@ impl WraithNamesContract {
     pub fn name_of(env: Env, stealth_meta_address: Bytes) -> Result<String, NamesError> {
         let meta_hash =
             BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
+        let reverse_key = DataKey::Reverse(meta_hash);
         let name_hash: BytesN<32> = env
             .storage()
-            .instance()
-            .get(&DataKey::Reverse(meta_hash))
+            .persistent()
+            .get(&reverse_key)
             .ok_or(NamesError::NameNotFound)?;
+        let name_key = DataKey::Name(name_hash);
         let entry: NameEntry = env
             .storage()
-            .instance()
-            .get(&DataKey::Name(name_hash))
+            .persistent()
+            .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
+        
+        Self::extend_ttls(&env, &name_key, Some(&reverse_key));
+
         Ok(entry.name)
+    }
+
+    /// Private helper to extend TTLs for both the persistent entry and the contract instance.
+    fn extend_ttls(env: &Env, name_key: &DataKey, reverse_key: Option<&DataKey>) {
+        env.storage().persistent().extend_ttl(name_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        if let Some(r_key) = reverse_key {
+            env.storage().persistent().extend_ttl(r_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        }
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
     }
 
     /// Hash a name string to BytesN<32> for use as storage key.
