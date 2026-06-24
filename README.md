@@ -21,7 +21,28 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 | **stealth-announcer** | Emits stealth address announcement events. No storage. |
 | **stealth-registry** | Maps addresses to 64-byte stealth meta-addresses with auth-gated registration. |
 | **stealth-sender** | Atomic token transfer + announcement via the announcer contract. Supports batch sends. |
-| **wraith-names** | Name registry with SHA-256 hashed storage keys, reverse lookup, and lowercase alphanumeric validation (3-32 chars). |
+| **wraith-names** | Name registry with SHA-256 hashed storage keys, reverse lookup, and lowercase alphanumeric validation (3-32 chars per label). Supports one level of hierarchical subdomains (`sub.parent`), where only the current owner of the parent name may register, update, or release subdomains under it. |
+
+### Hierarchical names (`wraith-names`)
+
+A name is either a flat label (`alice`) or a subdomain (`payments.alice`). Each
+dot-separated label is validated independently (3-32 chars, lowercase
+alphanumeric); at most one level of nesting is allowed (`a.b.c` is rejected with
+`NameTooDeep`).
+
+- **Delegation** — A subdomain can only be registered when its parent name
+  already exists, and only the current owner of the parent may register, update,
+  or release subdomains under it. The owner address is re-read from the parent
+  on every management call, so a change of parent ownership transfers control of
+  its subdomains.
+- **Resolution** — `resolve("payments.alice")` returns the subdomain's own
+  meta-address, but walks to the parent first: if `alice` has been released the
+  subdomain no longer resolves (`NameNotFound`).
+- **Migration-safe** — Existing flat names are unaffected; they register with no
+  parent linkage and behave exactly as before.
+
+> SDK follow-up: the off-chain resolver needs to split `sub.parent.wraith` into
+> labels and call `resolve` with `sub.parent`. Tracked as a separate SDK issue.
 
 ## Solana Programs (Anchor/Rust)
 
