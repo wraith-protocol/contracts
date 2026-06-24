@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Vec};
 
 #[contracttype]
 #[derive(Clone)]
@@ -13,11 +13,14 @@ pub struct WraithAssetPolicy;
 
 #[contractimpl]
 impl WraithAssetPolicy {
-    pub fn init(env: Env, admin: Address) {
+    pub fn init(env: Env, admin: Address, default_assets: Vec<Address>) {
         if env.storage().instance().has(&DataKey::Admin) {
             panic!("already initialized");
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
+        for asset in default_assets.iter() {
+            env.storage().persistent().set(&DataKey::Asset(asset), &true);
+        }
     }
 
     pub fn add_asset(env: Env, asset: Address) {
@@ -54,7 +57,7 @@ mod tests {
         let asset_1 = Address::generate(&env);
         let asset_2 = Address::generate(&env);
 
-        client.init(&admin);
+        client.init(&admin, &soroban_sdk::vec![&env]);
 
         // Initially both assets should be blocked.
         assert!(!client.check_asset(&asset_1));
@@ -77,6 +80,26 @@ mod tests {
     }
 
     #[test]
+    fn test_policy_initialize_with_defaults() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let policy_id = env.register(WraithAssetPolicy, ());
+        let client = WraithAssetPolicyClient::new(&env, &policy_id);
+
+        let admin = Address::generate(&env);
+        let asset_1 = Address::generate(&env);
+        let asset_2 = Address::generate(&env);
+
+        client.init(&admin, &soroban_sdk::vec![&env, asset_1.clone()]);
+
+        // asset_1 should be allowed by default.
+        assert!(client.check_asset(&asset_1));
+        // asset_2 should still be blocked.
+        assert!(!client.check_asset(&asset_2));
+    }
+
+    #[test]
     #[should_panic(expected = "already initialized")]
     fn test_cannot_initialize_twice() {
         let env = Env::default();
@@ -84,7 +107,7 @@ mod tests {
         let client = WraithAssetPolicyClient::new(&env, &policy_id);
 
         let admin = Address::generate(&env);
-        client.init(&admin);
-        client.init(&admin);
+        client.init(&admin, &soroban_sdk::vec![&env]);
+        client.init(&admin, &soroban_sdk::vec![&env]);
     }
 }

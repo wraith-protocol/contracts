@@ -368,20 +368,9 @@ fn test_policy_allowlist_enforcement() {
     let env = Env::default();
     env.mock_all_auths();
 
-    // 1. Deploy & init policy contract
-    let admin = Address::generate(&env);
-    let policy_id = env.register(wraith_asset_policy::WraithAssetPolicy, ());
-    let policy_client = wraith_asset_policy::WraithAssetPolicyClient::new(&env, &policy_id);
-    policy_client.init(&admin);
-
-    // 2. Deploy & init stealth-sender with policy
-    let announcer_id = env.register(Announcer, ());
-    let sender_id = env.register(stealth_sender::StealthSenderContract, ());
-    let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
-    sender_client.init(&announcer_id, &Some(policy_id.clone()));
-
-    // 3. Setup tokens
-    let standard_token_id = env.register(StandardToken, ());
+    // 1. Setup tokens
+    let standard_token_1_id = env.register(StandardToken, ());
+    let standard_token_2_id = env.register(StandardToken, ());
     let clawback_token_id = env.register(ClawbackToken, ());
 
     let sender = Address::generate(&env);
@@ -390,12 +379,27 @@ fn test_policy_allowlist_enforcement() {
     let meta = Bytes::from_slice(&env, &[0x01]);
 
     // Mint tokens to sender
-    env.as_contract(&standard_token_id, || {
+    env.as_contract(&standard_token_1_id, || {
+        StandardToken::mint(&env, &sender, 1_000);
+    });
+    env.as_contract(&standard_token_2_id, || {
         StandardToken::mint(&env, &sender, 1_000);
     });
     env.as_contract(&clawback_token_id, || {
         ClawbackToken::mint(&env, &sender, 1_000);
     });
+
+    // 2. Deploy & init policy contract with standard_token_1_id (simulating safe XLM/assets defaults)
+    let admin = Address::generate(&env);
+    let policy_id = env.register(wraith_asset_policy::WraithAssetPolicy, ());
+    let policy_client = wraith_asset_policy::WraithAssetPolicyClient::new(&env, &policy_id);
+    policy_client.init(&admin, &soroban_sdk::vec![&env, standard_token_1_id.clone()]);
+
+    // 3. Deploy & init stealth-sender with policy
+    let announcer_id = env.register(Announcer, ());
+    let sender_id = env.register(stealth_sender::StealthSenderContract, ());
+    let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
+    sender_client.init(&announcer_id, &Some(policy_id.clone()));
 
     // 4. Try to send ClawbackToken (not on allowlist) - should fail with TokenNotAllowed
     let result = sender_client.try_send(
@@ -409,25 +413,10 @@ fn test_policy_allowlist_enforcement() {
     );
     assert_eq!(result, Err(Ok(stealth_sender::SenderError::TokenNotAllowed)));
 
-    // 5. Try to send StandardToken (not on allowlist yet) - should fail with TokenNotAllowed
-    let result_std = sender_client.try_send(
-        &sender,
-        &standard_token_id,
-        &500,
-        &1,
-        &stealth,
-        &epk,
-        &meta,
-    );
-    assert_eq!(result_std, Err(Ok(stealth_sender::SenderError::TokenNotAllowed)));
-
-    // 6. Allow StandardToken in the policy contract
-    policy_client.add_asset(&standard_token_id);
-
-    // 7. Send StandardToken again - should succeed
+    // 5. Try to send StandardToken 1 (on default allowlist) - should succeed immediately
     sender_client.send(
         &sender,
-        &standard_token_id,
+        &standard_token_1_id,
         &500,
         &1,
         &stealth,
@@ -435,6 +424,35 @@ fn test_policy_allowlist_enforcement() {
         &meta,
     );
 
-    let token_client = mocks::token_standard::StandardTokenClient::new(&env, &standard_token_id);
-    assert_eq!(token_client.balance(&stealth), 500);
+    let token_1_client = mocks::token_standard::StandardTokenClient::new(&env, &standard_token_1_id);
+    assert_eq!(token_1_client.balance(&stealth), 500);
+
+    // 6. Try to send StandardToken 2 (not on default allowlist yet) - should fail with TokenNotAllowed
+    let result_std2 = sender_client.try_send(
+        &sender,
+        &standard_token_2_id,
+        &500,
+        &1,
+        &stealth,
+        &epk,
+        &meta,
+    );
+    assert_eq!(result_std2, Err(Ok(stealth_sender::SenderError::TokenNotAllowed)));
+
+    // 7. Allow StandardToken 2 in the policy contract
+    policy_client.add_asset(&standard_token_2_id);
+
+    // 8. Send StandardToken 2 again - should succeed
+    sender_client.send(
+        &sender,
+        &standard_token_2_id,
+        &500,
+        &1,
+        &stealth,
+        &epk,
+        &meta,
+    );
+
+    let token_2_client = mocks::token_standard::StandardTokenClient::new(&env, &standard_token_2_id);
+    assert_eq!(token_2_client.balance(&stealth), 500);
 }
