@@ -124,6 +124,17 @@ ckb/
 | stealth-sender | TBD |
 | wraith-names | TBD |
 
+## Pause / Circuit-Breaker
+
+| Contract           | Pausable | Admin         |
+|--------------------|----------|---------------|
+| stealth-announcer  | No       | N/A           |
+| stealth-registry   | Yes      | upgrade admin |
+| stealth-sender     | Yes      | upgrade admin |
+| wraith-names       | Yes      | upgrade admin |
+
+See `stellar/PAUSE.md` for full pattern docs.
+
 ### Solana Devnet
 
 | Program | Program ID |
