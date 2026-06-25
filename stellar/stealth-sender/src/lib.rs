@@ -3,6 +3,7 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env, Vec,
 };
+use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
 /// Storage keys.
 #[contracttype]
@@ -129,6 +130,30 @@ impl StealthSenderContract {
             &metadata,
         );
 
+        // Emit metric events.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::SEND_COUNT,
+            1,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::SCHEME_ID, scheme_id.into_val(&env)),
+                (dimension_names::TOKEN_ADDRESS, token.into_val(&env)),
+            ],
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::SEND_VOLUME,
+            amount,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::SCHEME_ID, scheme_id.into_val(&env)),
+                (dimension_names::TOKEN_ADDRESS, token.into_val(&env)),
+            ],
+        );
+
         Ok(())
     }
 
@@ -164,11 +189,15 @@ impl StealthSenderContract {
 
         let token_client = token::Client::new(&env, &token);
 
+        let mut total_amount: i128 = 0;
+
         for i in 0..len {
             let stealth_address = stealth_addresses.get(i).unwrap();
             let ephemeral_pub_key = ephemeral_pub_keys.get(i).unwrap();
             let metadata = metadatas.get(i).unwrap();
             let amount = amounts.get(i).unwrap();
+
+            total_amount += amount;
 
             token_client.transfer(&sender, &stealth_address, &amount);
 
@@ -181,6 +210,41 @@ impl StealthSenderContract {
                 &metadata,
             );
         }
+
+        // Emit metric events.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::BATCH_SEND_COUNT,
+            1,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::SCHEME_ID, scheme_id.into_val(&env)),
+                (dimension_names::TOKEN_ADDRESS, token.into_val(&env)),
+            ],
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::BATCH_SEND_VOLUME,
+            total_amount,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::SCHEME_ID, scheme_id.into_val(&env)),
+                (dimension_names::TOKEN_ADDRESS, token.into_val(&env)),
+            ],
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::BATCH_SIZE,
+            len as i128,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::SCHEME_ID, scheme_id.into_val(&env)),
+                (dimension_names::TOKEN_ADDRESS, token.into_val(&env)),
+            ],
+        );
 
         Ok(())
     }

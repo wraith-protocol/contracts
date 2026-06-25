@@ -5,6 +5,7 @@ use soroban_sdk::{
     token::Client as TokenClient,
     Address, Env, Vec,
 };
+use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
 /// Maximum transfers per batch — justified against Soroban's ~100M instruction
 /// budget. Each transfer costs ~500K instructions (token transfer + event emit).
@@ -62,6 +63,8 @@ impl StealthBatchSender {
 
         let token = TokenClient::new(&env, &asset);
 
+        let mut total_amount: i128 = 0;
+
         for transfer in transfers.iter() {
             // Validate individual transfer
             if transfer.amount <= 0 {
@@ -70,6 +73,8 @@ impl StealthBatchSender {
             if transfer.ephemeral_pub_key.is_empty() {
                 panic!("ephemeral_pub_key must not be empty");
             }
+
+            total_amount += transfer.amount;
 
             // Execute transfer — any failure here aborts the whole tx (atomicity)
             token.transfer(&from, &transfer.stealth_address, &transfer.amount);
@@ -90,6 +95,29 @@ impl StealthBatchSender {
         env.events().publish(
             (symbol_short!("BATCH"),),
             (from, count, asset),
+        );
+
+        // Emit metric events.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_BATCH_SENDER,
+            metric_names::BATCH_SEND_COUNT,
+            1,
+            soroban_sdk::vec![&env, (dimension_names::ASSET_ADDRESS, asset.into_val(&env))],
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_BATCH_SENDER,
+            metric_names::BATCH_SEND_VOLUME,
+            total_amount,
+            soroban_sdk::vec![&env, (dimension_names::ASSET_ADDRESS, asset.into_val(&env))],
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_BATCH_SENDER,
+            metric_names::BATCH_SIZE,
+            count as i128,
+            soroban_sdk::vec![&env, (dimension_names::ASSET_ADDRESS, asset.into_val(&env))],
         );
     }
 

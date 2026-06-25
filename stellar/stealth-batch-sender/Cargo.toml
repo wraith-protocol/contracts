@@ -8,7 +8,8 @@ description = "Atomic batch stealth sends for the Wraith Protocol on Stellar"
 crate-type = ["cdylib"]
 
 [dependencies]
-soroban-sdk = { version = "21.0.0", features = ["alloc"] }
+soroban-sdk = { workspace = true, features = ["alloc"] }
+wraith-metrics = { path = "../wraith-metrics" }
 
 [dev-dependencies]
 soroban-sdk = { version = "21.0.0", features = ["testutils", "alloc"] }

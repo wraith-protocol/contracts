@@ -1,8 +1,9 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, Env,
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, Env, Vec,
 };
+use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
 /// Storage keys.
 #[contracttype]
@@ -65,6 +66,15 @@ impl StealthRegistryContract {
             stealth_meta_address,
         );
 
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_REGISTRY,
+            metric_names::REGISTER_COUNT,
+            1,
+            soroban_sdk::vec![&env, (dimension_names::SCHEME_ID, scheme_id.into_val(&env))],
+        );
+
         Ok(())
     }
 
@@ -92,6 +102,15 @@ impl StealthRegistryContract {
         env.events().publish(
             (symbol_short!("remove"), registrant, scheme_id),
             (),
+        );
+
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_REGISTRY,
+            metric_names::REMOVE_COUNT,
+            1,
+            soroban_sdk::vec![&env, (dimension_names::SCHEME_ID, scheme_id.into_val(&env))],
         );
 
         Ok(())
