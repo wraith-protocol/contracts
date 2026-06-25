@@ -1,0 +1,36 @@
+name: Stellar Futurenet Integration Tests
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"   # Weekly, Sunday 3am UTC
+  workflow_dispatch:       # Manual trigger
+
+jobs:
+  integration:
+    name: Futurenet smoke tests
+    runs-on: ubuntu-latest
+    continue-on-error: true   # allow-flaky
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install Stellar CLI
+        run: cargo install stellar-cli --locked
+
+      - name: Run integration tests
+        working-directory: stellar/integration-tests
+        env:
+          FUTURENET_SECRET: ${{ secrets.FUTURENET_TEST_SECRET }}
+        run: cargo test -- --nocapture 2>&1 | tee test-results.txt
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: futurenet-test-results
+          path: stellar/integration-tests/test-results.txt
