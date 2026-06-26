@@ -1,0 +1,47 @@
+name: Soroban Coverage Gate
+
+on:
+  push:
+    branches: [main, dev, my-feature]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Coverage — stealth-announcer (≥90%)
+        working-directory: stellar
+        run: cargo tarpaulin -p stealth-announcer --out Html --output-dir coverage/stealth-announcer --fail-under 90
+
+      - name: Coverage — stealth-registry (≥90%)
+        working-directory: stellar
+        run: cargo tarpaulin -p stealth-registry --out Html --output-dir coverage/stealth-registry --fail-under 90
+
+      - name: Coverage — stealth-sender (≥90%)
+        working-directory: stellar
+        run: cargo tarpaulin -p stealth-sender --out Html --output-dir coverage/stealth-sender --fail-under 90
+
+      - name: Coverage — wraith-names (≥80%)
+        working-directory: stellar
+        run: cargo tarpaulin -p wraith-names --out Html --output-dir coverage/wraith-names --fail-under 80
+
+      - name: Coverage — stealth-splitter (≥80%)
+        working-directory: stellar
+        run: cargo tarpaulin -p stealth-splitter --out Html --output-dir coverage/stealth-splitter --fail-under 80
+
+      - name: Upload HTML coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: stellar/coverage/

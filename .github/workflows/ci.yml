@@ -4,6 +4,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    - cron: '23 4 * * *'
 
 jobs:
   changes:
@@ -56,11 +58,30 @@ jobs:
         working-directory: stellar
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install Node dependencies
+        run: pnpm install
+        working-directory: .
+
+      - name: Setup Stellar CLI
+        uses: stellar/setup-soroban@v1
+        with:
+          version: "22.0.1"
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
           components: rustfmt
-      - uses: stellar/setup-soroban@v1
+          targets: wasm32-unknown-unknown
+
       - run: cargo fmt --all --check
       - run: cargo test --workspace
       - run: cargo build --target wasm32-unknown-unknown --release
@@ -76,6 +97,28 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Generate Stellar TypeScript bindings
+        run: pnpm bindings:stellar
+        working-directory: .
+
+      - name: Check for bindings drift (diff detection)
+        run: git diff --exit-code
+        working-directory: .
+
+  stellar-nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+      - run: WRAITH_PROPTEST_CASES=16384 cargo test --workspace --test properties
 
   solana:
     needs: changes
