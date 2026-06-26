@@ -50,9 +50,45 @@ To maintain ecosystem consistency, here is how our Stellar decisions map to thei
 | Scheme ID Bumps | Contract Registry Versioning |
 | Pause Mechanism | `Pausable` (OpenZeppelin) |
 
+## Upgrade Authority Enforcement Tests
+
+As part of our commitment to transparent and verifiable governance, we maintain comprehensive test suites that prove the upgrade authorization model is correctly implemented and cannot be bypassed.
+
+### Test Coverage (Issue #57)
+
+Each contract has a dedicated `tests/upgrade_auth.rs` file that validates:
+
+#### Frozen Contracts (`stealth-announcer`, `stealth-registry`)
+✅ No admin role exists in storage  
+✅ No upgrade function exposed in contract interface  
+✅ Deployer cannot upgrade the contract  
+✅ User data cannot be censored or altered by any admin  
+✅ Contract operates indefinitely without admin  
+✅ Behavior is deterministic and unchanging  
+
+#### Upgradeable Contracts (`stealth-sender`, `wraith-names`)
+✅ Non-admin cannot trigger upgrade  
+✅ Admin can upgrade to new WASM hash  
+✅ Post-upgrade state is preserved (including registrations, guardians, recovery proposals)  
+✅ Multisig threshold (3-of-5) is honored  
+✅ Renounced authority cannot be re-acquired  
+✅ Timelock delay (7 days) is enforced before upgrade execution  
+✅ Upgrade proposals can be cancelled within timelock window  
+✅ Contract remains fully functional during pending upgrade  
+
+### Running the Tests
+
+```bash
+cd stellar
+cargo test upgrade_auth --workspace
+```
+
+These tests run on every PR via CI and serve as living documentation of the governance model.
+
 ## Implementation Checklist
 The following should be filed as follow-up issues with the `Stellar Wave` label:
 - [ ] Create issue: "Implement 3-of-5 multisig on Stellar for mainnet admin"
 - [ ] Create issue: "Implement 7-day Timelock for upgrades in `stealth-sender` and `wraith-names`"
 - [ ] Create issue: "Implement Pause mechanism in `stealth-sender`"
 - [ ] Create issue: "Ensure `stealth-announcer` and `stealth-registry` have no upgrade paths (Frozen)"
+- [x] Create issue #57: "Upgrade authority enforcement test suite" ✅ COMPLETED

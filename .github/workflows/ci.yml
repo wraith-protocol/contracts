@@ -84,6 +84,9 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo test --workspace
 
+      - name: Run Upgrade Authority Enforcement Tests
+        run: cargo test upgrade_auth --workspace
+
       - name: Generate Stellar TypeScript bindings
         run: pnpm bindings:stellar
         working-directory: .
