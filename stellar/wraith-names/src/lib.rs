@@ -78,6 +78,15 @@ pub enum NamesError {
     ThresholdNotMet = 16,
     TooManyGuardians = 17,
     InvalidThreshold = 18,
+    NotGuardian = 8,
+    NoProposal = 9,
+    ProposalAlreadyExists = 10,
+    AlreadyApproved = 11,
+    DelayNotElapsed = 12,
+    ThresholdNotMet = 13,
+    TooManyGuardians = 14,
+    InvalidThreshold = 15,
+    InvalidExtendLedger = 16,
 }
 
 const TTL_THRESHOLD: u32 = 17280;    // ~1 day
@@ -403,6 +412,50 @@ impl WraithNamesContract {
     }
 
     /// Extend TTL for persistent storage entries only.
+    /// Extend the TTL of a registered name to a future ledger.
+    /// This is a permissionless function that anyone can call.
+    /// Idempotent: calling twice in the same ledger has no additional effect.
+    pub fn extend_name_ttl(
+        env: Env,
+        name: String,
+        extend_to_ledger: u32,
+    ) -> Result<(), NamesError> {
+        // Validate that extend_to_ledger is in the future
+        let current_ledger = env.ledger().sequence();
+        if extend_to_ledger <= current_ledger {
+            return Err(NamesError::InvalidExtendLedger);
+        }
+
+        let name_hash = Self::hash_name(&env, &name);
+        let name_key = DataKey::Name(name_hash.clone());
+
+        // Check if name exists
+        let entry: NameEntry = env
+            .storage()
+            .persistent()
+            .get(&name_key)
+            .ok_or(NamesError::NameNotFound)?;
+
+        // Get the meta-address hash for reverse key
+        let meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
+        let reverse_key = DataKey::Reverse(meta_hash);
+
+        // Extend TTLs to the specified ledger
+        env.storage().persistent().extend_ttl(&name_key, current_ledger, extend_to_ledger);
+        env.storage().persistent().extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+        env.storage().instance().extend_ttl(current_ledger, extend_to_ledger);
+
+        // Emit extend event for observability
+        env.events().publish(
+            (symbol_short!("extend"), name_hash),
+            extend_to_ledger,
+        );
+
+        Ok(())
+    }
+
+
+    /// Private helper to extend TTLs for both the persistent entry and the contract instance.
     fn extend_ttls(env: &Env, name_key: &DataKey, reverse_key: Option<&DataKey>) {
         env.storage().persistent().extend_ttl(name_key, TTL_THRESHOLD, TTL_EXTEND_TO);
         if let Some(r_key) = reverse_key {
