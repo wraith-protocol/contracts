@@ -1,0 +1,65 @@
+name: Reproducible Stellar Build Attestation
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags
+
+permissions:
+  contents: write
+  id-token: write # Required for keyless signing with cosign
+
+jobs:
+  build-and-attest:
+    name: Build, Attest, and Publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get Commit Hash
+        id: vars
+        run: echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            --build-arg COMMIT_HASH=${{ steps.vars.outputs.commit }} \
+            -t stellar-attestation-builder \
+            -f contracts/stellar/build/Dockerfile .
+
+      - name: Run Build and Generate Attestation
+        run: |
+          # Run the container to build and output the attestation.json
+          # We mount a local directory to capture the output file.
+          mkdir -p output
+          docker run --rm -v $(pwd)/output:/workspace/contracts/stellar/build/output stellar-attestation-builder > output/attestation.json
+          # The script echo's the attestation.json to stdout at the end, so we can capture it,
+          # or we can modify the run command to copy it out. Wait, the build.sh currently
+          # outputs to contracts/stellar/build/attestation.json inside the container.
+          # Let's extract it using a docker cp.
+          docker create --name builder stellar-attestation-builder
+          docker start -a builder
+          docker cp builder:/workspace/contracts/stellar/build/attestation.json ./attestation.json
+          docker rm builder
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.5.0
+
+      - name: Sign Attestation
+        run: |
+          # Using keyless signing (OIDC) which requires id-token permission
+          cosign sign-blob --yes --output-signature attestation.json.sig --output-certificate attestation.json.crt attestation.json
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            attestation.json
+            attestation.json.sig
+            attestation.json.crt

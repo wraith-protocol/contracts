@@ -44,6 +44,10 @@ alphanumeric); at most one level of nesting is allowed (`a.b.c` is rejected with
 > SDK follow-up: the off-chain resolver needs to split `sub.parent.wraith` into
 > labels and call `resolve` with `sub.parent`. Tracked as a separate SDK issue.
 
+Stellar design notes:
+
+- `stellar/EVENT_TOPIC_DESIGN.md` documents the proposed indexed-topic strategy for `stealth-announcer`.
+
 ## Solana Programs (Anchor/Rust)
 
 | Program | Description |
@@ -60,6 +64,17 @@ alphanumeric); at most one level of nesting is allowed (`a.b.c` is rejected with
 | **wraith-names-type** | Type script for `.wraith` name registration cells. Validates 66-byte cell data (spending + viewing public keys). Ownership proven by the cell's lock script. Supports create, update, and release (destroy). |
 
 ## Getting Started
+
+## Network preflight checks
+
+Before deploying, validate the target network is reachable and configured correctly:
+
+\`\`\`
+./scripts/check-network.sh testnet
+\`\`\`
+
+Checks passphrase config, RPC reachability, friendbot (testnet/futurenet), and that
+the deploying identity exists. `deploy.sh` runs this automatically as its first step.
 
 ### Prerequisites
 
@@ -83,6 +98,48 @@ npx hardhat test
 cd stellar
 cargo test --workspace
 ```
+
+#### Property Tests
+
+The Stellar Soroban crates include `proptest` integration tests in each crate's `tests/properties.rs`. They cover event emission, register/lookup round-trips, invalid input rejection, batch-send invariants, and name lifecycle behavior.
+
+```bash
+cd stellar
+cargo test --workspace --test properties
+WRAITH_PROPTEST_CASES=16384 cargo test --workspace --test properties
+```
+
+By default each property runs at least 1,024 generated cases. The scheduled `stellar-nightly` CI job raises that to 16,384 cases through `WRAITH_PROPTEST_CASES`. Add new properties beside the contract they cover so failures point directly at the affected crate.
+
+#### Generated Bindings
+
+TypeScript bindings for the Stellar/Soroban contracts are automatically generated under `stellar/bindings/typescript/` and checked into the repository. These provide type-safe, compiled TS clients that the SDK can import directly.
+
+To regenerate the bindings locally (offline using compiled `.wasm` files):
+1. Install Node.js dependencies at the repository root:
+   ```bash
+   pnpm install
+   ```
+2. Compile the contracts to WASM (this is also done automatically by the script if WASM files are missing):
+   ```bash
+   cd stellar && cargo build --target wasm32-unknown-unknown --release && cd ..
+   ```
+3. Run the bindings generator script from the root:
+   ```bash
+   pnpm bindings:stellar
+   ```
+
+To generate the bindings against live deployed contract IDs on testnet:
+1. Specify the contract IDs in `stellar/contract-ids.json` or as environment variables (e.g., `STEALTH_REGISTRY_CONTRACT_ID=...`).
+2. Run the generation script from the root:
+   ```bash
+   pnpm bindings:stellar
+   ```
+
+**When to Regenerate:**
+You must regenerate and commit the updated bindings whenever:
+1. You modify any Soroban contract function signatures, events, or custom types in Rust.
+2. A new contract deployment is made on testnet and you want to update the bindings' target client references.
 
 ### Solana
 
@@ -144,6 +201,17 @@ ckb/
 | stealth-registry | TBD |
 | stealth-sender | TBD |
 | wraith-names | TBD |
+
+## Pause / Circuit-Breaker
+
+| Contract           | Pausable | Admin         |
+|--------------------|----------|---------------|
+| stealth-announcer  | No       | N/A           |
+| stealth-registry   | Yes      | upgrade admin |
+| stealth-sender     | Yes      | upgrade admin |
+| wraith-names       | Yes      | upgrade admin |
+
+See `stellar/PAUSE.md` for full pattern docs.
 
 ### Solana Devnet
 

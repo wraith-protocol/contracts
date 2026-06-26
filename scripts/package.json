@@ -1,0 +1,23 @@
+{
+  "name": "wraith-rescue-tool",
+  "version": "1.0.0",
+  "description": "Wraith Protocol - Rescue mechanism for stealth funds without on-chain announcements",
+  "type": "module",
+  "main": "rescue-stealth-funds.ts",
+  "scripts": {
+    "rescue": "npx tsx rescue-stealth-funds.ts",
+    "test": "npx vitest run",
+    "test:watch": "npx vitest"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^12.1.0",
+    "commander": "^12.0.0",
+    "ethers": "^6.13.0",
+    "tsx": "^4.16.0",
+    "typescript": "^5.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.41",
+    "vitest": "^2.1.9"
+  }
+}
