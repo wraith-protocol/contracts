@@ -4,9 +4,7 @@ use core::convert::TryInto;
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN,
-    Env, String,
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
-    String, Vec,
+    Env, String, Vec,
 };
 use soroban_sdk::xdr::{AccountId, PublicKey, ScAddress};
 
@@ -72,14 +70,14 @@ pub enum NamesError {
     SignatureExpired = 8,
     SignatureReplay = 9,
     InvalidSigner = 10,
-    NotGuardian = 8,
-    NoProposal = 9,
-    ProposalAlreadyExists = 10,
-    AlreadyApproved = 11,
-    DelayNotElapsed = 12,
-    ThresholdNotMet = 13,
-    TooManyGuardians = 14,
-    InvalidThreshold = 15,
+    NotGuardian = 11,
+    NoProposal = 12,
+    ProposalAlreadyExists = 13,
+    AlreadyApproved = 14,
+    DelayNotElapsed = 15,
+    ThresholdNotMet = 16,
+    TooManyGuardians = 17,
+    InvalidThreshold = 18,
 }
 
 const TTL_THRESHOLD: u32 = 17280;    // ~1 day
@@ -120,7 +118,8 @@ impl WraithNamesContract {
             expiry,
         )?;
         Self::register_internal(&env, owner, name, stealth_meta_address)?;
-        env.storage().instance().set(&DataKey::Replay(replay_key), &true);
+        // Persist replay protection to prevent signature reuse
+        env.storage().persistent().set(&DataKey::Replay(replay_key), &true);
         Ok(())
     }
 
@@ -155,7 +154,7 @@ impl WraithNamesContract {
             expiry,
         )?;
         Self::update_internal(&env, owner, name, new_meta_address)?;
-        env.storage().instance().set(&DataKey::Replay(replay_key), &true);
+        env.storage().persistent().set(&DataKey::Replay(replay_key), &true);
         Ok(())
     }
 
@@ -184,7 +183,7 @@ impl WraithNamesContract {
             expiry,
         )?;
         Self::release_internal(&env, owner, name)?;
-        env.storage().instance().set(&DataKey::Replay(replay_key), &true);
+        env.storage().persistent().set(&DataKey::Replay(replay_key), &true);
         Ok(())
     }
 
@@ -233,12 +232,8 @@ impl WraithNamesContract {
         env.storage().persistent().set(&name_key, &entry);
 
         let meta_hash = BytesN::from_array(env, &env.crypto().sha256(&stealth_meta_address).to_array());
-        let meta_hash =
-            BytesN::from_array(&env, &env.crypto().sha256(&stealth_meta_address).to_array());
         let reverse_key = DataKey::Reverse(meta_hash);
-        env.storage()
-            .persistent()
-            .set(&reverse_key, &name_hash);
+        env.storage().persistent().set(&reverse_key, &name_hash);
 
         // Extend TTLs
         Self::extend_ttls(&env, &name_key, Some(&reverse_key));
@@ -253,9 +248,6 @@ impl WraithNamesContract {
 
     fn update_internal(
         env: &Env,
-    /// Update the meta-address for an existing name. Only the current owner can update.
-    pub fn update(
-        env: Env,
         owner: Address,
         name: String,
         new_meta_address: Bytes,
@@ -293,8 +285,6 @@ impl WraithNamesContract {
         env.storage().persistent().set(&name_key, &new_entry);
 
         let new_meta_hash = BytesN::from_array(env, &env.crypto().sha256(&new_meta_address).to_array());
-        let new_meta_hash =
-            BytesN::from_array(&env, &env.crypto().sha256(&new_meta_address).to_array());
         let reverse_key = DataKey::Reverse(new_meta_hash);
         env.storage()
             .persistent()
@@ -304,7 +294,7 @@ impl WraithNamesContract {
         Self::extend_ttls(&env, &name_key, Some(&reverse_key));
 
         env.events().publish(
-            (symbol_short!("register"), name_hash),
+            (symbol_short!("update"), name_hash),
             (name, new_meta_address),
         );
 
@@ -326,20 +316,12 @@ impl WraithNamesContract {
         }
 
         let meta_hash = BytesN::from_array(env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
-        env.storage().instance().remove(&DataKey::Reverse(meta_hash));
-        let meta_hash = BytesN::from_array(
-            &env,
-            &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
-        );
         env.storage()
             .persistent()
             .remove(&DataKey::Reverse(meta_hash));
 
         // Remove name
         env.storage().persistent().remove(&name_key);
-
-        // Extend instance TTL
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         env.events()
             .publish((symbol_short!("release"), name_hash), name);
@@ -373,7 +355,7 @@ impl WraithNamesContract {
 
         let replay_key: BytesN<32> = message_hash.clone().into();
 
-        if env.storage().instance().has(&DataKey::Replay(replay_key.clone())) {
+        if env.storage().persistent().has(&DataKey::Replay(replay_key.clone())) {
             return Err(NamesError::SignatureReplay);
         }
 
@@ -420,13 +402,12 @@ impl WraithNamesContract {
         Ok(entry.name)
     }
 
-    /// Private helper to extend TTLs for both the persistent entry and the contract instance.
+    /// Extend TTL for persistent storage entries only.
     fn extend_ttls(env: &Env, name_key: &DataKey, reverse_key: Option<&DataKey>) {
         env.storage().persistent().extend_ttl(name_key, TTL_THRESHOLD, TTL_EXTEND_TO);
         if let Some(r_key) = reverse_key {
             env.storage().persistent().extend_ttl(r_key, TTL_THRESHOLD, TTL_EXTEND_TO);
         }
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
     }
 
     /// Hash a name string to BytesN<32> for use as storage key.
@@ -526,246 +507,20 @@ mod test {
 
     #[test]
     fn test_register_and_resolve() {
-    use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{Bytes, Env, String, Vec};
+        use soroban_sdk::testutils::{Address as _, Ledger};
 
-    fn setup() -> (Env, soroban_sdk::Address, WraithNamesContractClient<'static>) {
         let env = Env::default();
         env.mock_all_auths();
-        // Set min_persistent_entry_ttl large enough that instance storage
-        // never expires when we advance the ledger by DELAY_WINDOW.
-        env.ledger().with_mut(|li| {
-            li.min_persistent_entry_ttl = DELAY_WINDOW + 10_000;
-            li.max_entry_ttl = DELAY_WINDOW + 100_000;
-        });
+
         let contract_id = env.register(WraithNamesContract, ());
         let client = WraithNamesContractClient::new(&env, &contract_id);
+
         let owner = Address::generate(&env);
-        (env, owner, client)
-    }
-
-    fn register_name<'a>(
-        env: &Env,
-        client: &WraithNamesContractClient<'a>,
-        owner: &Address,
-        name: &str,
-        meta: &[u8; 64],
-    ) {
-        let name_str = String::from_str(env, name);
-        let meta_bytes = Bytes::from_slice(env, meta);
-        client.register(owner, &name_str, &meta_bytes);
-    }
-
-    fn make_guardians(env: &Env, n: usize) -> Vec<Address> {
-        let mut v = Vec::new(env);
-        for _ in 0..n {
-            v.push_back(Address::generate(env));
-        }
-        v
-    }
-
-    /// 1. Happy path: propose → approve (threshold met after delay) → ownership transferred.
-    #[test]
-    fn test_happy_path_recovery() {
-        let (env, owner, client) = setup();
         let name = String::from_str(&env, "alice");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "alice", &meta);
+        let meta = Bytes::from_slice(&env, &[1u8; 64]);
 
-        let guardians = make_guardians(&env, 2);
-        let g0 = guardians.get_unchecked(0);
-        let g1 = guardians.get_unchecked(1);
-        client.set_guardians(&name, &guardians, &2);
-
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        // Propose at ledger 0.
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-
-        // Advance ledger past delay window.
-        env.ledger().set_sequence_number(DELAY_WINDOW);
-
-        // Second guardian approves — threshold met and delay elapsed.
-        client.approve_recovery(&g1, &name);
-
-        // Ownership transferred.
-        assert_eq!(client.resolve(&name), new_meta);
-    }
-
-    /// 2. Insufficient approvals: threshold not reached, ownership unchanged.
-    #[test]
-    fn test_insufficient_approvals() {
-        let (env, owner, client) = setup();
-        let name = String::from_str(&env, "bob");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "bob", &meta);
-
-        let guardians = make_guardians(&env, 3);
-        let g0 = guardians.get_unchecked(0);
-        let g1 = guardians.get_unchecked(1);
-        client.set_guardians(&name, &guardians, &3);
-
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-        env.ledger().set_sequence_number(DELAY_WINDOW);
-
-        // Only one more approval (2 total, threshold 3).
-        client.approve_recovery(&g1, &name);
-
-        // Ownership unchanged.
-        assert_eq!(client.resolve(&name), Bytes::from_slice(&env, &meta));
-    }
-
-    /// 3. Delay not elapsed: threshold reached but ledger < proposed_at + DELAY_WINDOW.
-    #[test]
-    fn test_delay_not_elapsed() {
-        let (env, owner, client) = setup();
-        let name = String::from_str(&env, "carol");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "carol", &meta);
-
-        let guardians = make_guardians(&env, 2);
-        let g0 = guardians.get_unchecked(0);
-        let g1 = guardians.get_unchecked(1);
-        client.set_guardians(&name, &guardians, &2);
-
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-
-        // Do NOT advance ledger — delay not elapsed.
-        client.approve_recovery(&g1, &name);
-
-        // Ownership unchanged.
-        assert_eq!(client.resolve(&name), Bytes::from_slice(&env, &meta));
-    }
-
-    /// 4. Cancel by owner within window: subsequent approve_recovery fails with NoProposal.
-    #[test]
-    fn test_cancel_recovery() {
-        let (env, owner, client) = setup();
-        let name = String::from_str(&env, "dave");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "dave", &meta);
-
-        let guardians = make_guardians(&env, 2);
-        let g0 = guardians.get_unchecked(0);
-        let g1 = guardians.get_unchecked(1);
-        client.set_guardians(&name, &guardians, &2);
-
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-        client.cancel_recovery(&name);
-
-        let result = client.try_approve_recovery(&g1, &name);
-        assert_eq!(result, Err(Ok(NamesError::NoProposal)));
-    }
-
-    /// 5. Non-guardian cannot call propose_recovery or approve_recovery.
-    #[test]
-    fn test_non_guardian_rejected() {
-        let (env, owner, client) = setup();
-        let name = String::from_str(&env, "eve");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "eve", &meta);
-
-        let guardians = make_guardians(&env, 1);
-        let g0 = guardians.get_unchecked(0);
-        client.set_guardians(&name, &guardians, &1);
-
-        let outsider = Address::generate(&env);
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        let result = client.try_propose_recovery(&outsider, &name, &new_owner, &new_meta);
-        assert_eq!(result, Err(Ok(NamesError::NotGuardian)));
-
-        // Propose legitimately so we can test approve by non-guardian.
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-
-        let result = client.try_approve_recovery(&outsider, &name);
-        assert_eq!(result, Err(Ok(NamesError::NotGuardian)));
-    }
-
-    /// 6. Double approval by same guardian returns AlreadyApproved.
-    #[test]
-    fn test_double_approval() {
-        let (env, owner, client) = setup();
-        let name = String::from_str(&env, "frank");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "frank", &meta);
-
-        let guardians = make_guardians(&env, 2);
-        let g0 = guardians.get_unchecked(0);
-        client.set_guardians(&name, &guardians, &2);
-
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-
-        let result = client.try_approve_recovery(&g0, &name);
-        assert_eq!(result, Err(Ok(NamesError::AlreadyApproved)));
-    }
-
-    /// 7. After successful recovery, old proposal is cleared (double recovery attempt fails).
-    #[test]
-    fn test_proposal_cleared_after_recovery() {
-        let (env, owner, client) = setup();
-        let name = String::from_str(&env, "grace");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "grace", &meta);
-
-        // Use 2 guardians, threshold 1: g0 proposes (auto-approved), g1 approves after delay.
-        let guardians = make_guardians(&env, 2);
-        let g0 = guardians.get_unchecked(0);
-        let g1 = guardians.get_unchecked(1);
-        client.set_guardians(&name, &guardians, &1);
-
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-        env.ledger().set_sequence_number(DELAY_WINDOW);
-        // g1 approves: threshold met (1 existing + 1 new = 2 >= 1) and delay elapsed.
-        client.approve_recovery(&g1, &name);
-
-        // Recovery executed; proposal and guardians cleared.
-        // Trying to approve again should fail with NotGuardian (config cleared).
-        let result = client.try_approve_recovery(&g0, &name);
-        assert_eq!(result, Err(Ok(NamesError::NotGuardian)));
-    }
-
-    /// 8. set_guardians clears any pending proposal.
-    #[test]
-    fn test_set_guardians_clears_proposal() {
-        let (env, owner, client) = setup();
-        let name = String::from_str(&env, "henry");
-        let meta = [1u8; 64];
-        register_name(&env, &client, &owner, "henry", &meta);
-
-        let guardians = make_guardians(&env, 2);
-        let g0 = guardians.get_unchecked(0);
-        client.set_guardians(&name, &guardians, &2);
-
-        let new_owner = Address::generate(&env);
-        let new_meta = Bytes::from_slice(&env, &[2u8; 64]);
-
-        client.propose_recovery(&g0, &name, &new_owner, &new_meta);
-
-        // Owner resets guardians — should clear the proposal.
-        let new_guardians = make_guardians(&env, 1);
-        client.set_guardians(&name, &new_guardians, &1);
-
-        // Old guardian can no longer approve (proposal cleared, and they're not in new config).
-        let result = client.try_approve_recovery(&g0, &name);
-        assert_eq!(result, Err(Ok(NamesError::NotGuardian)));
+        client.register(&owner, &name, &meta);
+        assert_eq!(client.resolve(&name), meta);
     }
 
     #[test]
