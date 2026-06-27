@@ -44,25 +44,25 @@ pub fn emit_metric(
 pub mod metric_names {
     use soroban_sdk::symbol_short;
 
-    pub const REGISTER_COUNT: soroban_sdk::Symbol = symbol_short!("register_count");
-    pub const REMOVE_COUNT: soroban_sdk::Symbol = symbol_short!("remove_count");
-    pub const LOOKUP_COUNT: soroban_sdk::Symbol = symbol_short!("lookup_count");
-    pub const SEND_COUNT: soroban_sdk::Symbol = symbol_short!("send_count");
-    pub const SEND_VOLUME: soroban_sdk::Symbol = symbol_short!("send_volume");
-    pub const BATCH_SEND_COUNT: soroban_sdk::Symbol = symbol_short!("batch_send_count");
-    pub const BATCH_SEND_VOLUME: soroban_sdk::Symbol = symbol_short!("batch_send_volume");
-    pub const BATCH_SIZE: soroban_sdk::Symbol = symbol_short!("batch_size");
-    pub const ERROR_COUNT: soroban_sdk::Symbol = symbol_short!("error_count");
+    pub const REGISTER_COUNT: soroban_sdk::Symbol = symbol_short!("reg_cnt");
+    pub const REMOVE_COUNT: soroban_sdk::Symbol = symbol_short!("rem_cnt");
+    pub const LOOKUP_COUNT: soroban_sdk::Symbol = symbol_short!("lkp_cnt");
+    pub const SEND_COUNT: soroban_sdk::Symbol = symbol_short!("send_cnt");
+    pub const SEND_VOLUME: soroban_sdk::Symbol = symbol_short!("send_vol");
+    pub const BATCH_SEND_COUNT: soroban_sdk::Symbol = symbol_short!("bat_send");
+    pub const BATCH_SEND_VOLUME: soroban_sdk::Symbol = symbol_short!("bat_vol");
+    pub const BATCH_SIZE: soroban_sdk::Symbol = symbol_short!("bat_size");
+    pub const ERROR_COUNT: soroban_sdk::Symbol = symbol_short!("err_cnt");
 }
 
 /// Standard contract identifiers
 pub mod contract_ids {
     use soroban_sdk::symbol_short;
 
-    pub const STEALTH_REGISTRY: soroban_sdk::Symbol = symbol_short!("stealth-registry");
-    pub const STEALTH_SENDER: soroban_sdk::Symbol = symbol_short!("stealth-sender");
-    pub const STEALTH_BATCH_SENDER: soroban_sdk::Symbol = symbol_short!("stealth-batch-sender");
-    pub const STEALTH_ANNOUNCER: soroban_sdk::Symbol = symbol_short!("stealth-announcer");
+    pub const STEALTH_REGISTRY: soroban_sdk::Symbol = symbol_short!("st_reg");
+    pub const STEALTH_SENDER: soroban_sdk::Symbol = symbol_short!("st_send");
+    pub const STEALTH_BATCH_SENDER: soroban_sdk::Symbol = symbol_short!("st_bat_sd");
+    pub const STEALTH_ANNOUNCER: soroban_sdk::Symbol = symbol_short!("st_ann");
 }
 
 /// Standard dimension names
@@ -70,7 +70,7 @@ pub mod dimension_names {
     use soroban_sdk::symbol_short;
 
     pub const SCHEME_ID: soroban_sdk::Symbol = symbol_short!("scheme_id");
-    pub const TOKEN_ADDRESS: soroban_sdk::Symbol = symbol_short!("token_address");
-    pub const ASSET_ADDRESS: soroban_sdk::Symbol = symbol_short!("asset_address");
-    pub const ERROR_CODE: soroban_sdk::Symbol = symbol_short!("error_code");
+    pub const TOKEN_ADDRESS: soroban_sdk::Symbol = symbol_short!("tok_addr");
+    pub const ASSET_ADDRESS: soroban_sdk::Symbol = symbol_short!("ast_addr");
+    pub const ERROR_CODE: soroban_sdk::Symbol = symbol_short!("err_code");
 }
