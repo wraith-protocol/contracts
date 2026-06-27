@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contracttype, symbol_short, Symbol, Vec};
+use soroban_sdk::{contracttype, symbol_short, Symbol, Vec, Val};
 
 /// Wraith Protocol standard metric event schema.
 ///
@@ -16,7 +16,7 @@ pub struct WraithMetricEvent {
     /// Numeric value of the metric
     pub value: i128,
     /// Optional dimensions for filtering/grouping (e.g., token_address, scheme_id)
-    pub dimensions: Vec<(Symbol, Symbol)>,
+    pub dimensions: Vec<(Symbol, Val)>,
 }
 
 /// Helper function to emit a metric event.
@@ -32,7 +32,7 @@ pub fn emit_metric(
     contract: Symbol,
     metric_name: Symbol,
     value: i128,
-    dimensions: Vec<(Symbol, Symbol)>,
+    dimensions: Vec<(Symbol, Val)>,
 ) {
     env.events().publish(
         (symbol_short!("metric"), contract, metric_name),

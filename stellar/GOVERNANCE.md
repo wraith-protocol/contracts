@@ -21,6 +21,7 @@ If we have to ship mainnet next week, the governance configuration will be:
 ### 3. `stealth-sender`
 - **Decision**: Timelock + Multisig Upgradable.
 - **Reasoning**: This contract holds complex logic to process stealth payments. If a critical bug is found, the admin needs a path to upgrade the logic to prevent loss of funds, but with a 7-day timelock so users have a chance to review the upgrade.
+- **Protocol Fee Governance**: The optional protocol fee (`fee_recipient` and `fee_basis_points`) is set at initialization. The fee is capped at 50 bps (0.5%) by contract invariant to prevent exorbitant charges. Deploying fee configuration changes requires contract upgrades controlled by the multisig governance.
 
 ### 4. `wraith-names`
 - **Decision**: Timelock + Multisig Upgradable (eventually renounceable).

@@ -184,6 +184,22 @@ announcement. The risk is low but worth documenting.
 **Recommendation:** No code change required. Document the dependency on the
 announcer contract's liveness.
 
+### Finding 7 — Protocol Fee transfer requires fee recipient authorization (Medium)
+
+**Severity:** Medium  
+**Asset flags:** `AUTH_REQUIRED`
+
+When the configurable protocol fee is enabled, `stealth-sender` performs an additional transfer to a configured `fee_recipient` address. If the token issuer requires authorization (`AUTH_REQUIRED`) and the `fee_recipient` is not pre-authorized, the fee transfer will fail, reverting the entire transaction.
+
+**Attack/Failure scenario:**
+1. Protocol fee is enabled (basis points > 0).
+2. Sender calls `stealth-sender.send()` with an `AUTH_REQUIRED` token.
+3. The stealth address is pre-authorized, but the `fee_recipient` is not.
+4. The token contract's transfer to `fee_recipient` fails.
+5. The transaction reverts atomically.
+
+**Recommendation:** Ensure the configured `fee_recipient` is pre-authorized for all supported `AUTH_REQUIRED` tokens. Document this requirement for hosted providers.
+
 ---
 
 ## Supported Asset Configurations
@@ -253,8 +269,7 @@ the severity of Finding 1 (clawback breaks unlinkability), this is insufficient.
 
 ## Test Coverage
 
-Adversarial tests are in `stealth-sender/tests/sac_compat.rs`. Mock contracts
-are in `stealth-sender/tests/mocks/`.
+Adversarial tests are in `stealth-sender/tests/sac_compat.rs` and `stealth-sender/tests/fee_tests.rs`. Mock contracts are in `stealth-sender/tests/mocks/`.
 
 | Test | Asset Variant | Expected Outcome |
 |---|---|---|
@@ -267,6 +282,7 @@ are in `stealth-sender/tests/mocks/`.
 | `immutable_safe_send_succeeds` | AUTH_IMMUTABLE (safe) | Transfer + announcement succeed |
 | `immutable_auth_required_send_fails_permanently` | AUTH_IMMUTABLE + AUTH_REQUIRED | Transfer fails permanently; no announcement |
 | `fee_token_send_succeeds_but_amount_mismatch` | Custom token with fee | Transfer succeeds; received < announced |
+| `test_fee_recipient_unauthorized_token_fails` | AUTH_REQUIRED | Transfer to fee recipient fails; transaction reverts atomically; no announcement |
 
 ---
 

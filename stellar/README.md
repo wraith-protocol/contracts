@@ -73,6 +73,26 @@ pub fn check_asset(env: Env, asset: Address) -> bool;
 
 The `wraith-asset-policy` contract provides a default implementation that is controlled by an admin. The admin can add or remove assets from a persistent allowlist. If a caller wants custom rules (such as check-free transfers, or automated query-based enforcement), they can deploy their own contract matching the interface above.
 
+## Protocol Fee Mechanism
+
+To sustain hosted infrastructure costs, `stealth-sender` includes an optional protocol fee mechanism.
+
+### Configuration
+
+During contract initialization (`init`), the deployer can configure:
+- `fee_recipient`: `Option<Address>` (The designated address that receives the protocol fee).
+- `fee_basis_points`: `u32` (Fee percentage in basis points. Capped at a maximum of `50` basis points (0.5%) by contract invariant).
+
+If both fields are zero (`None` and `0`), the fee mechanism is disabled (default permissionless behavior).
+
+### Behavior
+
+When active, for each `send` or `batch_send`:
+1. `fee = amount * fee_basis_points / 10000` is computed.
+2. `fee` is transferred atomically to the `fee_recipient` (if `fee > 0`).
+3. `amount - fee` is transferred to the recipient's `stealth_address`.
+4. In `batch_send`, the individual fees are calculated per recipient, and a single aggregated fee transfer is executed to the `fee_recipient` at the end to minimize gas costs.
+
 ## Storage Entry Recovery Tooling
 
 In the Stellar Soroban smart contract network, ledger entries (including contract instances, WASM bytecode, and contract data storage) have a Time-To-Live (TTL). When an entry's TTL expires, it is evicted from the active ledger state and moved into the **Archived State Tree**. 

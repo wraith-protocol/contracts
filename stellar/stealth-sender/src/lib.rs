@@ -2,6 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env, Vec,
+    IntoVal,
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
@@ -13,6 +14,10 @@ pub enum DataKey {
     Announcer,
     /// Optional address of the asset policy contract.
     AssetPolicy,
+    /// Optional address of the protocol fee recipient.
+    FeeRecipient,
+    /// Protocol fee in basis points (max 50 bps, 0 = disabled).
+    FeeBasisPoints,
 }
 
 /// Errors that the sender contract can produce.
@@ -28,6 +33,8 @@ pub enum SenderError {
     LengthMismatch = 3,
     /// The token is not allowed by the asset policy.
     TokenNotAllowed = 4,
+    /// The fee configuration is invalid (e.g. fee > 50 bps, or fee > 0 with no recipient).
+    InvalidFeeConfig = 5,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -60,6 +67,19 @@ mod announcer_client {
     use soroban_sdk::IntoVal;
 }
 
+/// Wrapper for calling check_asset on the optional asset policy contract.
+mod asset_policy_client {
+    use soroban_sdk::{Address, Env, IntoVal, Symbol};
+
+    pub fn check_asset(env: &Env, policy: &Address, token: &Address) -> bool {
+        env.invoke_contract(
+            policy,
+            &Symbol::new(env, "check_asset"),
+            soroban_sdk::vec![env, token.clone().into_val(env)],
+        )
+    }
+}
+
 const TTL_THRESHOLD: u32 = 17280;    // ~1 day
 const TTL_EXTEND_TO: u32 = 518400;   // ~30 days
 
@@ -68,16 +88,45 @@ pub struct StealthSenderContract;
 
 #[contractimpl]
 impl StealthSenderContract {
-    /// Initialise the contract by storing the announcer address and optional asset policy.
+    /// Initialise the contract by storing the announcer address, optional asset policy,
+    /// and optional protocol fee configuration.
     ///
     /// Must be called exactly once before any `send` or `batch_send`.
-    pub fn init(env: Env, announcer: Address, asset_policy: Option<Address>) -> Result<(), SenderError> {
+    pub fn init(
+        env: Env,
+        announcer: Address,
+        asset_policy: Option<Address>,
+        fee_recipient: Option<Address>,
+        fee_basis_points: u32,
+    ) -> Result<(), SenderError> {
         if env.storage().instance().has(&DataKey::Announcer) {
             return Err(SenderError::AlreadyInitialized);
         }
+        if fee_basis_points > 50 {
+            return Err(SenderError::InvalidFeeConfig);
+        }
+        if fee_basis_points > 0 && fee_recipient.is_none() {
+            return Err(SenderError::InvalidFeeConfig);
+        }
+
         env.storage()
             .instance()
             .set(&DataKey::Announcer, &announcer);
+
+        if let Some(ref policy) = asset_policy {
+            env.storage()
+                .instance()
+                .set(&DataKey::AssetPolicy, policy);
+        }
+
+        if let Some(ref recipient) = fee_recipient {
+            env.storage()
+                .instance()
+                .set(&DataKey::FeeRecipient, recipient);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::FeeBasisPoints, &fee_basis_points);
 
         // Extend instance TTL
         env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
@@ -116,9 +165,48 @@ impl StealthSenderContract {
         // Extend instance TTL
         env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
-        // Transfer tokens from sender to the stealth address.
+        // Check asset policy if configured
+        if let Some(policy_address) = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&DataKey::AssetPolicy)
+        {
+            if !asset_policy_client::check_asset(&env, &policy_address, &token) {
+                return Err(SenderError::TokenNotAllowed);
+            }
+        }
+
+        // Retrieve fee config
+        let fee_basis_points: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeBasisPoints)
+            .unwrap_or(0);
+
+        let fee_recipient: Option<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient);
+
+        let fee = if fee_basis_points > 0 && fee_recipient.is_some() {
+            (amount * (fee_basis_points as i128)) / 10000
+        } else {
+            0
+        };
+
+        let transfer_amount = amount - fee;
+
         let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&sender, &stealth_address, &amount);
+
+        // Divert fee to recipient if set
+        if fee > 0 {
+            if let Some(ref recipient) = fee_recipient {
+                token_client.transfer(&sender, recipient, &fee);
+            }
+        }
+
+        // Transfer tokens from sender to the stealth address.
+        token_client.transfer(&sender, &stealth_address, &transfer_amount);
 
         // Emit the announcement via the announcer contract.
         announcer_client::announce(
@@ -187,9 +275,33 @@ impl StealthSenderContract {
         // Extend instance TTL
         env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
+        // Check asset policy if configured
+        if let Some(policy_address) = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&DataKey::AssetPolicy)
+        {
+            if !asset_policy_client::check_asset(&env, &policy_address, &token) {
+                return Err(SenderError::TokenNotAllowed);
+            }
+        }
+
+        // Retrieve fee config
+        let fee_basis_points: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeBasisPoints)
+            .unwrap_or(0);
+
+        let fee_recipient: Option<Address> = env
+            .storage()
+            .instance()
+            .get(&DataKey::FeeRecipient);
+
         let token_client = token::Client::new(&env, &token);
 
         let mut total_amount: i128 = 0;
+        let mut total_fee: i128 = 0;
 
         for i in 0..len {
             let stealth_address = stealth_addresses.get(i).unwrap();
@@ -197,9 +309,17 @@ impl StealthSenderContract {
             let metadata = metadatas.get(i).unwrap();
             let amount = amounts.get(i).unwrap();
 
+            let fee = if fee_basis_points > 0 && fee_recipient.is_some() {
+                (amount * (fee_basis_points as i128)) / 10000
+            } else {
+                0
+            };
+
+            total_fee += fee;
+            let transfer_amount = amount - fee;
             total_amount += amount;
 
-            token_client.transfer(&sender, &stealth_address, &amount);
+            token_client.transfer(&sender, &stealth_address, &transfer_amount);
 
             announcer_client::announce(
                 &env,
@@ -209,6 +329,13 @@ impl StealthSenderContract {
                 &ephemeral_pub_key,
                 &metadata,
             );
+        }
+
+        // Divert total accumulated fee atomically to recipient
+        if total_fee > 0 {
+            if let Some(ref recipient) = fee_recipient {
+                token_client.transfer(&sender, recipient, &total_fee);
+            }
         }
 
         // Emit metric events.
@@ -299,10 +426,10 @@ mod test {
         let token_client = token::Client::new(&env, &token_id);
 
         // 4. Initialize StealthSender
-        client.init(&announcer_id);
+        client.init(&announcer_id, &None, &None, &0);
 
         // Verify AlreadyInitialized error
-        let init_res = client.try_init(&announcer_id);
+        let init_res = client.try_init(&announcer_id, &None, &None, &0);
         assert_eq!(init_res, Err(Ok(SenderError::AlreadyInitialized)));
 
         // Setup transfer accounts and mint tokens
@@ -366,7 +493,7 @@ mod test {
         let token_id = env.register_stellar_asset_contract_v2(token_admin).address();
         let token_client = token::Client::new(&env, &token_id);
         
-        client.init(&announcer_id);
+        client.init(&announcer_id, &None, &None, &0);
 
         let sender = Address::generate(&env);
         let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
