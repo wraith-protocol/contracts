@@ -1,0 +1,41 @@
+name: SAC Integration Smoke Tests
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"   # Weekly, Monday 4am UTC
+  workflow_dispatch:       # Manual trigger
+
+jobs:
+  sac-smoke:
+    name: SAC compat smoke (allow-flaky)
+    runs-on: ubuntu-latest
+    continue-on-error: true   # allow-flaky: network tests are best-effort
+
+    defaults:
+      run:
+        working-directory: stellar
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            stellar/target
+          key: ${{ runner.os }}-cargo-sac-${{ hashFiles('stellar/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-sac-
+
+      - name: Run SAC compat tests
+        run: cargo test --package stealth-sender --test sac_compat -- --nocapture 2>&1 | tee sac-test-results.txt
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sac-compat-test-results
+          path: stellar/sac-test-results.txt

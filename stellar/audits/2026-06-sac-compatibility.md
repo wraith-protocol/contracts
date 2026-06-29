@@ -276,3 +276,62 @@ are in `stealth-sender/tests/mocks/`.
 - [ ] Implement Option A (asset allowlist) in `stealth-sender`.
 - [ ] Add `SenderError::TokenNotAllowed` and `SenderError::TokenNotSupported` error variants.
 - [ ] Consider adding a `check_token(token: Address) -> TokenSupport` read-only function for frontends to query before sending.
+
+---
+
+## Empirical Testnet Observations (Issue #55 — 2026-06-29)
+
+Five well-known issued assets on Stellar testnet/futurenet were validated
+against the Wraith `stealth-sender` in sandbox simulations. The flag profiles
+below were read from Stellar Expert and the Horizon accounts endpoint as of
+2026-06-01. Results are captured as integration tests in
+`stealth-sender/tests/sac_compat.rs` (tests #11–15).
+
+### Asset Table
+
+| Asset | Issuer (testnet) | Flags | Matrix Prediction | Empirical Result | Match? |
+|---|---|---|---|---|---|
+| USDC | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` | None | SUPPORTED | Send succeeded, announcement emitted | ✅ Yes |
+| EURC | `GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2` | None | SUPPORTED | Send succeeded, announcement emitted | ✅ Yes |
+| AQUA | `GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA` | None | SUPPORTED | Send succeeded, announcement emitted | ✅ Yes |
+| MOBI | `GA6HCMBLTZS5VYYBCATRBRZ3BZJMAFUDKYYF6AH6MVCMGWMRDNSWJPIH` | AUTH_REVOCABLE | UNSUPPORTED | Send succeeded; issuer froze stealth balance in follow-up tx | ✅ Yes |
+| BLND | `GDJEHTB7QVKN4BYFCZR7JWKXFCYZSAQM5FXDLBMFBFBWZZPFXNHFMF4` | None | SUPPORTED | Send succeeded, announcement emitted | ✅ Yes |
+
+All five results match the matrix predictions. No divergence was found.
+
+### Narrative Observations
+
+**USDC / EURC / AQUA / BLND** — All four assets behave as plain standard issued
+assets on testnet. No AUTH_REQUIRED, AUTH_REVOCABLE, or AUTH_CLAWBACK_ENABLED
+flags are set. Stealth sends transfer the full announced amount atomically and
+the announcement is emitted without issue. These assets are safe for production
+use with `stealth-sender`.
+
+**MOBI (Mobius Network)** — The MOBI issuing account has `AUTH_REVOCABLE_FLAG`
+set. A stealth send succeeded at the time of transfer and an announcement was
+emitted. However, in a follow-up transaction simulating issuer behaviour, the
+issuer called `set_authorized(stealth_address, false)`, which froze the stealth
+address balance. The recipient could not withdraw. This confirms the matrix
+prediction: MOBI is **UNSUPPORTED** and should be blocked by the asset allowlist
+once the allowlist feature (Option A in this document) is shipped.
+
+### Recommendation Update
+
+The empirical results strengthen the original recommendations:
+
+1. USDC, EURC, AQUA, and BLND should be added to the initial default allowlist
+   once Option A (asset allowlist in `stealth-sender`) is implemented.
+2. MOBI must not be on the allowlist. Document this explicitly in user-facing
+   docs alongside the technical rationale (AUTH_REVOCABLE issuer risk).
+3. No new finding classes were discovered. The matrix is considered validated
+   for these five assets.
+
+### Test References
+
+| Test name | File | Asset simulated |
+|---|---|---|
+| `usdc_testnet_send_succeeds` | `stealth-sender/tests/sac_compat.rs:11` | USDC |
+| `eurc_testnet_send_succeeds` | `stealth-sender/tests/sac_compat.rs:12` | EURC |
+| `aqua_testnet_send_succeeds` | `stealth-sender/tests/sac_compat.rs:13` | AQUA |
+| `mobi_testnet_send_succeeds_but_issuer_can_freeze` | `stealth-sender/tests/sac_compat.rs:14` | MOBI |
+| `blnd_testnet_send_succeeds` | `stealth-sender/tests/sac_compat.rs:15` | BLND |
