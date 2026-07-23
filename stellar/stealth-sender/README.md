@@ -74,3 +74,12 @@ permanent regression seed:
 ```bash
 cp fuzz/artifacts/<target>/crash-<hash> fuzz/corpus/<target>/
 ```
+
+## Security
+
+Security assumptions, STRIDE coverage for `init`, `send`, and `batch_send`,
+audit references, and open risks are documented in the unified
+[Stellar threat model](../THREAT_MODEL.md).
+
+See the [security audit](./audits/2026-05-security-audit.md) and
+[audit summary](./AUDIT_SUMMARY.md).

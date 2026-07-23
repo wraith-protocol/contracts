@@ -27,3 +27,12 @@ cargo kani --package stealth-registry
 ### 3. Expiry Monotonicity (`proof_expiry_monotonicity`)
 * **Claim**: Any state-mutating operation (`register_keys`) or read operation (`stealth_meta_address_of`) that extends entry Time-To-Live (TTL) results in an expiry ledger number that is monotonically non-decreasing (`new_expiry >= old_expiry`).
 * **Non-Goals**: Does not prevent entry expiration if an entry is left unaccessed past its TTL threshold, nor does it model host ledger clock skew bugs.
+
+## Security
+
+Security assumptions, STRIDE coverage for every registry entry point, audit
+references, and open risks are documented in the unified
+[Stellar threat model](../THREAT_MODEL.md).
+
+The contract-specific audit is
+[`audits/2026-06-thebabalola.md`](./audits/2026-06-thebabalola.md).

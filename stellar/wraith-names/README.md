@@ -114,3 +114,12 @@ See `STORAGE.md` for the persistent-storage layout and rent strategy.
 Auction entries (`AuctionKey::Auction`, `AuctionKey::Bid`) live in
 persistent storage with a ~30-day TTL extension on every write, which
 comfortably covers the configured phase durations.
+
+## Security
+
+Security assumptions, STRIDE coverage for every name-registry entry point,
+audit references, and open risks are documented in the unified
+[Stellar threat model](../THREAT_MODEL.md).
+
+The contract-specific audit is
+[`audits/2026-05-author.md`](./audits/2026-05-author.md).
