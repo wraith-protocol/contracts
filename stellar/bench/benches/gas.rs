@@ -1,3 +1,13 @@
+//! Gas / resource budget bench harness.
+//!
+//! Run with:
+//! ```sh
+//! cargo bench -p wraith-stellar-bench --bench gas -- --format json --out results.json
+//! ```
+//!
+//! Relative `--out` paths resolve against the package directory (`stellar/bench/`),
+//! so `--out results.json` always writes `stellar/bench/results.json`.
+
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,8 +36,11 @@ fn main() {
                     usage_exit("--out requires a path");
                 })));
             }
+            // `cargo bench` appends `--bench` for harness=false targets.
+            "--bench" => {}
             "-h" | "--help" => usage_exit(""),
-            other => usage_exit(&format!("unknown argument: {other}")),
+            other if other.starts_with('-') => usage_exit(&format!("unknown argument: {other}")),
+            _ => {}
         }
         i += 1;
     }
@@ -57,7 +70,6 @@ fn main() {
         eprintln!("wrote {}", path.display());
     }
 
-    // Always print to stdout for CI logs / PERF.md piping.
     if format == "markdown" || format == "md" {
         print_markdown(&rows);
     } else {
@@ -65,8 +77,6 @@ fn main() {
     }
 }
 
-/// Resolve `--out` against the package directory so CI always writes
-/// `stellar/bench/results.json` regardless of the process CWD.
 fn resolve_out_path(raw: String) -> PathBuf {
     let path = PathBuf::from(&raw);
     if path.is_absolute() {
@@ -80,10 +90,7 @@ fn usage_exit(msg: &str) -> ! {
         eprintln!("error: {msg}");
     }
     eprintln!(
-        "usage: wraith-stellar-bench [--format markdown|json] [--out path]\n\
-         \n\
-         Measures per-op Soroban resources. JSON output is used for CI baselines.\n\
-         Relative --out paths are resolved against the bench package directory."
+        "usage: cargo bench -p wraith-stellar-bench --bench gas -- [--format markdown|json] [--out path]"
     );
     process::exit(if msg.is_empty() { 0 } else { 2 });
 }

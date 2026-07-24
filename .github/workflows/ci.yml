@@ -5,7 +5,10 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
+    # Nightly property tests
     - cron: '23 4 * * *'
+    # Weekly gas baseline rotation (Mondays 05:17 UTC)
+    - cron: '17 5 * * 1'
 
 jobs:
   changes:
@@ -177,7 +180,7 @@ jobs:
           working-directory: stellar/stealth-registry
 
   stellar-nightly:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -192,7 +195,7 @@ jobs:
       - run: WRAITH_PROPTEST_CASES=16384 cargo test --workspace --test properties
 
   stellar-deploy-dryrun:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -249,7 +252,7 @@ jobs:
             stellar/contract-ids.txt
 
   stellar-chaos-nightly:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -263,6 +266,151 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Run chaos integration tests
         run: cargo test --package integration-tests -- --nocapture
+
+  # Run benches on develop, upload results artifact, auto-update PERF.md.
+  # Note: cargo bench runs with CWD = package dir (stellar/bench/), so --out
+  # paths are relative to stellar/bench/ (e.g. results.json -> stellar/bench/results.json).
+  stellar-bench-develop:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run gas bench
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cargo bench -p wraith-stellar-bench --bench gas -- \
+            --format json --out results.json
+          test -f bench/results.json
+
+      - name: Upload bench results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-bench-results
+          path: stellar/bench/results.json
+          retention-days: 90
+
+      - name: Update PERF.md current numbers
+        run: python3 bench/update_perf_md.py PERF.md bench/results.json
+
+      - name: Commit PERF.md if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore(perf): auto-update Stellar PERF.md bench table'
+          file_pattern: stellar/PERF.md
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
+
+  # PR gate: fail when any per-op instructions exceed baseline + 5%.
+  stellar-bench-pr:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.stellar == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download weekly baseline artifact
+        id: download-baseline
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: ci.yml
+          branch: develop
+          name: stellar-bench-baseline
+          path: stellar/bench/artifact-baseline
+          search_artifacts: true
+          if_no_artifact_found: warn
+
+      - name: Resolve baseline path
+        id: baseline
+        run: |
+          if [ -f bench/artifact-baseline/baseline.json ]; then
+            echo "path=bench/artifact-baseline/baseline.json" >> "$GITHUB_OUTPUT"
+            echo "Using weekly-rotated artifact baseline"
+          else
+            echo "path=bench/baseline.json" >> "$GITHUB_OUTPUT"
+            echo "Using committed bench/baseline.json fallback"
+          fi
+
+      - name: Run gas bench
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cargo bench -p wraith-stellar-bench --bench gas -- \
+            --format json --out results.json
+          test -f bench/results.json
+
+      - name: Compare vs baseline (+5% instructions gate)
+        run: |
+          python3 bench/compare.py \
+            "${{ steps.baseline.outputs.path }}" \
+            bench/results.json \
+            --threshold-pct 5
+
+      - name: Upload PR bench results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-bench-pr-${{ github.event.pull_request.number }}
+          path: stellar/bench/results.json
+          retention-days: 30
+
+  # Weekly baseline rotation to catch slow drift under the 5% PR gate.
+  stellar-bench-baseline-rotate:
+    if: github.event_name == 'schedule' && github.event.schedule == '17 5 * * 1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run gas bench (rotate baseline)
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cargo bench -p wraith-stellar-bench --bench gas -- \
+            --format json --out baseline.json
+          test -f bench/baseline.json
+
+      - name: Upload rotated baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-bench-baseline
+          path: stellar/bench/baseline.json
+          retention-days: 90
+
+      - name: Commit rotated baseline.json
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore(perf): rotate Stellar gas bench baseline'
+          file_pattern: stellar/bench/baseline.json
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
+
   solana:
     needs: changes
     if: needs.changes.outputs.solana == 'true'

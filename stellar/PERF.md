@@ -4,7 +4,8 @@ Measured on 2026-06-01 with `soroban-sdk = 22.0.0` resolved to `22.0.11`.
 The reusable harness is in `stellar/bench/` and can be re-run with:
 
 ```sh
-cargo run -p wraith-stellar-bench
+cargo bench -p wraith-stellar-bench --bench gas
+# or: cargo run -p wraith-stellar-bench
 ```
 
 ## How to Read the Units
@@ -66,7 +67,8 @@ ownership checks.
 
 ## Current Numbers
 
-These are the post-optimization harness results.
+<!-- BENCH:CURRENT:START -->
+These are the harness results auto-updated from `develop` (measured 2025-06-15, commit `seeded-from-`).
 
 | Contract | Function | Parameters | Instructions | Mem bytes | Read entries | Write entries | Read bytes | Write bytes | Event bytes |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -92,6 +94,19 @@ These are the post-optimization harness results.
 | wraith-names | resolve | miss | 19766 | 1600 | 1 | 0 | 104 | 0 | 0 |
 | wraith-names | name_of | hit | 47042 | 5383 | 1 | 0 | 452 | 0 | 0 |
 | wraith-names | name_of | miss | 21581 | 1513 | 1 | 0 | 104 | 0 | 0 |
+<!-- BENCH:CURRENT:END -->
+
+## Gas Regression Gate
+
+CI compares PR bench results against the weekly-rotated baseline in
+`stellar/bench/baseline.json` (also published as the `stellar-bench-baseline`
+workflow artifact). A PR fails when any per-op `instructions` exceeds
+baseline + 5%. Re-run locally:
+
+```sh
+cargo bench -p wraith-stellar-bench --bench gas -- --format json --out /tmp/bench.json
+python3 bench/compare.py bench/baseline.json /tmp/bench.json
+```
 
 ## Batch vs Individual Crossover
 
