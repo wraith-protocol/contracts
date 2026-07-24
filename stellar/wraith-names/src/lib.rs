@@ -1,5 +1,7 @@
 #![no_std]
 
+extern crate alloc;
+
 use core::convert::TryInto;
 
 use soroban_sdk::{
@@ -9,8 +11,10 @@ use soroban_sdk::{
 use soroban_sdk::xdr::{AccountId, PublicKey, ScAddress};
 
 pub const WRAITH_NAMES_DOMAIN: &[u8] = b"wraith-names:v1";
-
-const DELAY_WINDOW: u32 = 100_000;
+const MIN_LABEL_LEN: usize = 3;
+const MAX_NAME_LEN: usize = 32;
+const MAX_SUBDOMAIN_DEPTH: usize = 1;
+const BULK_LIMIT: u32 = 20;
 
 /// Storage keys.
 #[contracttype]
@@ -74,23 +78,10 @@ pub enum NamesError {
     SignatureExpired = 8,
     SignatureReplay = 9,
     InvalidSigner = 10,
-    NotGuardian = 11,
-    NoProposal = 12,
-    ProposalAlreadyExists = 13,
-    AlreadyApproved = 14,
-    DelayNotElapsed = 15,
-    ThresholdNotMet = 16,
-    TooManyGuardians = 17,
-    InvalidThreshold = 18,
-    NotGuardian = 8,
-    NoProposal = 9,
-    ProposalAlreadyExists = 10,
-    AlreadyApproved = 11,
-    DelayNotElapsed = 12,
-    ThresholdNotMet = 13,
-    TooManyGuardians = 14,
-    InvalidThreshold = 15,
-    InvalidExtendLedger = 16,
+    ParentNotFound = 11,
+    NameTooDeep = 12,
+    BulkLimitExceeded = 13,
+    InvalidExtendLedger = 14,
 }
 
 const TTL_THRESHOLD: u32 = 17280;    // ~1 day
@@ -200,6 +191,116 @@ impl WraithNamesContract {
         Ok(())
     }
 
+    /// Register multiple names in a single atomic transaction.
+    ///
+    /// All names must be valid and not already taken. If any name fails,
+    /// the entire operation reverts.
+    pub fn bulk_register(
+        env: Env,
+        owner: Address,
+        names: Vec<String>,
+        meta_addresses: Vec<Bytes>,
+    ) -> Result<(), NamesError> {
+        owner.require_auth();
+
+        let count = names.len();
+        if count > BULK_LIMIT {
+            return Err(NamesError::BulkLimitExceeded);
+        }
+        if meta_addresses.len() != count {
+            return Err(NamesError::InvalidMetaAddress);
+        }
+
+        for i in 0..count {
+            let name = names.get(i).unwrap();
+            let meta = meta_addresses.get(i).unwrap();
+            // Validate upfront so we fail early
+            Self::validate_name(&env, &name)?;
+            if meta.len() != 64 {
+                return Err(NamesError::InvalidMetaAddress);
+            }
+            let name_hash = Self::hash_name(&env, &name);
+            if env.storage().persistent().has(&DataKey::Name(name_hash)) {
+                return Err(NamesError::NameTaken);
+            }
+        }
+
+        let mut registered: Vec<BytesN<32>> = Vec::new(&env);
+        for i in 0..count {
+            let name = names.get(i).unwrap();
+            let meta = meta_addresses.get(i).unwrap();
+            Self::register_internal(&env, owner.clone(), name.clone(), meta)?;
+            let name_hash = Self::hash_name(&env, &name);
+            registered.push_back(name_hash);
+        }
+
+        env.events().publish(
+            (symbol_short!("bulk_reg"), owner.clone()),
+            registered,
+        );
+
+        Ok(())
+    }
+
+    /// Renew (extend TTL for) multiple names in a single atomic transaction.
+    ///
+    /// All names must exist. If any name is not found, the entire operation
+    /// reverts.
+    pub fn bulk_renew(
+        env: Env,
+        names: Vec<String>,
+        extend_to_ledger: u32,
+    ) -> Result<(), NamesError> {
+        let count = names.len();
+        if count > BULK_LIMIT {
+            return Err(NamesError::BulkLimitExceeded);
+        }
+
+        let current_ledger = env.ledger().sequence();
+        if extend_to_ledger <= current_ledger {
+            return Err(NamesError::InvalidExtendLedger);
+        }
+
+        for i in 0..count {
+            let name = names.get(i).unwrap();
+            let name_hash = Self::hash_name(&env, &name);
+            let name_key = DataKey::Name(name_hash.clone());
+            if !env.storage().persistent().has(&name_key) {
+                return Err(NamesError::NameNotFound);
+            }
+        }
+
+        for i in 0..count {
+            let name = names.get(i).unwrap();
+            let name_hash = Self::hash_name(&env, &name);
+            let name_key = DataKey::Name(name_hash.clone());
+
+            let entry: NameEntry = env.storage().persistent().get(&name_key).unwrap();
+            let meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
+            let reverse_key = DataKey::Reverse(meta_hash);
+
+            env.storage().persistent().extend_ttl(&name_key, current_ledger, extend_to_ledger);
+            env.storage().persistent().extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+
+            env.events().publish(
+                (symbol_short!("extend"), name_hash),
+                extend_to_ledger,
+            );
+        }
+
+        let mut name_hashes: Vec<BytesN<32>> = Vec::new(&env);
+        for ni in 0..count {
+            let n = names.get(ni).unwrap();
+            name_hashes.push_back(Self::hash_name(&env, &n));
+        }
+        env.events().publish(
+            (symbol_short!("blk_renew"),),
+            (name_hashes, extend_to_ledger),
+        );
+
+        Ok(())
+    }
+
     fn owner_public_key(env: &Env, owner: &Address) -> Result<BytesN<32>, NamesError> {
         let sc_address: ScAddress = owner
             .try_into()
@@ -228,6 +329,37 @@ impl WraithNamesContract {
             return Err(NamesError::InvalidMetaAddress);
         }
 
+        // Parse subdomain
+        let len = name.len() as usize;
+        let mut name_buf = [0u8; MAX_NAME_LEN];
+        name.copy_into_slice(&mut name_buf[..len]);
+
+        let mut dot_count: u32 = 0;
+        let mut last_dot: usize = 0;
+        for i in 0..len {
+            if name_buf[i] == b'.' {
+                dot_count += 1;
+                last_dot = i;
+            }
+        }
+
+        if dot_count > MAX_SUBDOMAIN_DEPTH as u32 {
+            return Err(NamesError::NameTooDeep);
+        }
+
+        let parent_hash = if dot_count > 0 {
+            let mut parent_buf = [0u8; MAX_NAME_LEN];
+            let parent_len = len - last_dot - 1;
+            for i in 0..parent_len {
+                parent_buf[i] = name_buf[last_dot + 1 + i];
+            }
+            let parent_str = String::from_str(env, core::str::from_utf8(&parent_buf[..parent_len]).unwrap());
+            let ph = Self::hash_name(env, &parent_str);
+            Some(ph)
+        } else {
+            None
+        };
+
         let name_hash = Self::hash_name(env, &name);
         let name_key = DataKey::Name(name_hash.clone());
 
@@ -236,12 +368,11 @@ impl WraithNamesContract {
             return Err(NamesError::NameTaken);
         }
 
-        // Subdomains require an existing parent and that `owner` is the parent
-        // owner.
+        // Subdomains require an existing parent and that `owner` is the parent owner.
         if let Some(ref ph) = parent_hash {
             let parent: NameEntry = env
                 .storage()
-                .instance()
+                .persistent()
                 .get(&DataKey::Name(ph.clone()))
                 .ok_or(NamesError::ParentNotFound)?;
             if parent.owner != owner {
@@ -249,10 +380,25 @@ impl WraithNamesContract {
             }
         }
 
+        // Validate label part for subdomains
+        if dot_count > 0 {
+            let label_len = last_dot;
+            if label_len < MIN_LABEL_LEN {
+                return Err(NamesError::NameTooShort);
+            }
+            for i in 0..label_len {
+                let c = name_buf[i];
+                if !(c >= b'a' && c <= b'z') && !(c >= b'0' && c <= b'9') {
+                    return Err(NamesError::InvalidNameCharacter);
+                }
+            }
+        }
+
         let entry = NameEntry {
             name: name.clone(),
             stealth_meta_address: stealth_meta_address.clone(),
             owner,
+            parent: parent_hash,
         };
 
         env.storage().persistent().set(&name_key, &entry);
@@ -352,6 +498,21 @@ impl WraithNamesContract {
         Ok(())
     }
 
+    fn require_manager(env: &Env, caller: &Address, entry: &NameEntry) -> Result<(), NamesError> {
+        if entry.owner == *caller {
+            return Ok(());
+        }
+        // Check if caller is the parent owner
+        if let Some(ref ph) = entry.parent {
+            if let Some(parent_entry) = env.storage().persistent().get::<_, NameEntry>(&DataKey::Name(ph.clone())) {
+                if parent_entry.owner == *caller {
+                    return Ok(());
+                }
+            }
+        }
+        Err(NamesError::NotOwner)
+    }
+
     fn verify_on_behalf_authorization(
         env: &Env,
         owner: &Address,
@@ -401,6 +562,13 @@ impl WraithNamesContract {
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
         
+        // For subdomains, verify the parent still exists
+        if let Some(ref ph) = entry.parent {
+            if !env.storage().persistent().has(&DataKey::Name(ph.clone())) {
+                return Err(NamesError::NameNotFound);
+            }
+        }
+        
         Self::extend_ttls(&env, &name_key, None);
         
         Ok(entry.stealth_meta_address)
@@ -422,6 +590,13 @@ impl WraithNamesContract {
             .persistent()
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
+        
+        // For subdomains, verify the parent still exists
+        if let Some(ref ph) = entry.parent {
+            if !env.storage().persistent().has(&DataKey::Name(ph.clone())) {
+                return Err(NamesError::NameNotFound);
+            }
+        }
         
         Self::extend_ttls(&env, &name_key, Some(&reverse_key));
 
@@ -460,7 +635,6 @@ impl WraithNamesContract {
         // Extend TTLs to the specified ledger
         env.storage().persistent().extend_ttl(&name_key, current_ledger, extend_to_ledger);
         env.storage().persistent().extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
-        env.storage().instance().extend_ttl(current_ledger, extend_to_ledger);
 
         // Emit extend event for observability
         env.events().publish(
@@ -483,11 +657,17 @@ impl WraithNamesContract {
     /// Hash a name string to BytesN<32> for use as storage key.
     fn hash_name(env: &Env, name: &String) -> BytesN<32> {
         let len = name.len() as usize;
-        let mut buf = [0u8; 32];
-        if len > 0 {
+        let mut buf = [0u8; 64];
+        if len > 64 {
+            // Extremely long name — truncate rather than panic
+            name.copy_into_slice(&mut buf);
+        } else {
             name.copy_into_slice(&mut buf[..len]);
         }
-        Ok(())
+        let actual_len = core::cmp::min(len, 64);
+        let name_bytes = Bytes::from_slice(env, &buf[..actual_len]);
+        let hash = env.crypto().sha256(&name_bytes);
+        BytesN::from_array(env, &hash.to_array())
     }
 
     fn authorization_message(
@@ -499,10 +679,15 @@ impl WraithNamesContract {
     ) -> Bytes {
         let mut message = Bytes::from_slice(env, WRAITH_NAMES_DOMAIN);
         message.extend_from_slice(operation);
-        let name_len = name.len() as usize;
-        let mut name_buf = [0u8; 32];
-        name.copy_into_slice(&mut name_buf[..name_len]);
-        let name_bytes = Bytes::from_slice(env, &name_buf[..name_len]);
+        let len = name.len() as usize;
+        let mut name_buf = [0u8; 64];
+        if len > 64 {
+            name.copy_into_slice(&mut name_buf);
+        } else {
+            name.copy_into_slice(&mut name_buf[..len]);
+        }
+        let actual_len = core::cmp::min(len, 64);
+        let name_bytes = Bytes::from_slice(env, &name_buf[..actual_len]);
         message.append(&name_bytes);
         message.append(stealth_meta_address);
         message.extend_from_slice(&expiry.to_be_bytes());
@@ -512,6 +697,8 @@ impl WraithNamesContract {
     /// Validate name: 3-32 chars, lowercase alphanumeric only.
     fn validate_name(_env: &Env, name: &String) -> Result<(), NamesError> {
         let len = name.len() as usize;
+
+        // The full name (including possible subdomain prefix) must be within limits
         if len < MIN_LABEL_LEN {
             return Err(NamesError::NameTooShort);
         }
@@ -519,17 +706,19 @@ impl WraithNamesContract {
             return Err(NamesError::NameTooLong);
         }
 
-        let mut buf = [0u8; MAX_NAME_LEN];
-        name.copy_into_slice(&mut buf[..len]);
+        let mut name_buf = [0u8; MAX_NAME_LEN];
+        name.copy_into_slice(&mut name_buf[..len]);
 
-        let mut dot_pos: Option<usize> = None;
-        let mut dot_count: u32 = 0;
         for i in 0..len {
-            let c = buf[i];
+            let c = name_buf[i];
+            if c == b'.' {
+                continue;
+            }
             if !(c >= b'a' && c <= b'z') && !(c >= b'0' && c <= b'9') {
                 return Err(NamesError::InvalidNameCharacter);
             }
         }
+
         Ok(())
     }
 }
@@ -537,6 +726,7 @@ impl WraithNamesContract {
 #[cfg(test)]
 mod test {
     use super::*;
+    use alloc::format;
     use ed25519_dalek::SigningKey;
     use proptest::prelude::*;
     use soroban_sdk::TryFromVal;
@@ -578,8 +768,6 @@ mod test {
 
     #[test]
     fn test_register_and_resolve() {
-        use soroban_sdk::testutils::{Address as _, Ledger};
-
         let env = Env::default();
         env.mock_all_auths();
 
@@ -928,5 +1116,184 @@ mod test {
         // Two levels of nesting are rejected.
         let result = client.try_register(&owner, &String::from_str(&env, "a.b.alice"), &meta);
         assert_eq!(result, Err(Ok(NamesError::NameTooDeep)));
+    }
+
+    #[test]
+    fn test_bulk_register_happy_path() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let names = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "app"),
+            String::from_str(&env, "docs"),
+            String::from_str(&env, "pay"),
+        ];
+        let metas = soroban_sdk::vec![
+            &env,
+            Bytes::from_slice(&env, &[1u8; 64]),
+            Bytes::from_slice(&env, &[2u8; 64]),
+            Bytes::from_slice(&env, &[3u8; 64]),
+        ];
+
+        client.bulk_register(&owner, &names, &metas);
+
+        assert_eq!(client.resolve(&String::from_str(&env, "app")), Bytes::from_slice(&env, &[1u8; 64]));
+        assert_eq!(client.resolve(&String::from_str(&env, "docs")), Bytes::from_slice(&env, &[2u8; 64]));
+        assert_eq!(client.resolve(&String::from_str(&env, "pay")), Bytes::from_slice(&env, &[3u8; 64]));
+    }
+
+    #[test]
+    fn test_bulk_register_atomic_revert_on_taken() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        // Pre-register "taken"
+        client.register(&owner, &String::from_str(&env, "taken"), &Bytes::from_slice(&env, &[1u8; 64]));
+
+        let names = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "free1"),
+            String::from_str(&env, "taken"),
+            String::from_str(&env, "free2"),
+        ];
+        let metas = soroban_sdk::vec![
+            &env,
+            Bytes::from_slice(&env, &[1u8; 64]),
+            Bytes::from_slice(&env, &[2u8; 64]),
+            Bytes::from_slice(&env, &[3u8; 64]),
+        ];
+
+        let result = client.try_bulk_register(&owner, &names, &metas);
+        assert_eq!(result, Err(Ok(NamesError::NameTaken)));
+
+        // Verify none of the names were registered
+        assert_eq!(
+            client.try_resolve(&String::from_str(&env, "free1")),
+            Err(Ok(NamesError::NameNotFound))
+        );
+        assert_eq!(
+            client.try_resolve(&String::from_str(&env, "free2")),
+            Err(Ok(NamesError::NameNotFound))
+        );
+    }
+
+    #[test]
+    fn test_bulk_register_exceeds_limit() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let mut names_vec = soroban_sdk::Vec::new(&env);
+        let mut metas_vec = soroban_sdk::Vec::new(&env);
+        for i in 0..21 {
+            let name_str = format!("name{}", i);
+            names_vec.push_back(String::from_str(&env, &name_str));
+            metas_vec.push_back(Bytes::from_slice(&env, &[i as u8; 64]));
+        }
+
+        let result = client.try_bulk_register(&owner, &names_vec, &metas_vec);
+        assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
+    }
+
+    #[test]
+    fn test_bulk_renew_happy_path() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name1 = String::from_str(&env, "alpha");
+        let name2 = String::from_str(&env, "beta");
+        client.register(&owner, &name1, &Bytes::from_slice(&env, &[1u8; 64]));
+        client.register(&owner, &name2, &Bytes::from_slice(&env, &[2u8; 64]));
+
+        let names = soroban_sdk::vec![&env, name1.clone(), name2.clone()];
+        let extend_to = env.ledger().sequence() + 10000;
+        let result = client.try_bulk_renew(&names, &extend_to);
+        assert_eq!(result, Ok(Ok(())));
+    }
+
+    #[test]
+    fn test_bulk_renew_atomic_revert_on_missing() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        client.register(&owner, &String::from_str(&env, "exists"), &Bytes::from_slice(&env, &[1u8; 64]));
+
+        let names = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "exists"),
+            String::from_str(&env, "ghost"),
+        ];
+        let extend_to = env.ledger().sequence() + 10000;
+        let result = client.try_bulk_renew(&names, &extend_to);
+        assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
+    }
+
+    #[test]
+    fn test_bulk_renew_exceeds_limit() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let mut names_vec = soroban_sdk::Vec::new(&env);
+        for i in 0..21 {
+            names_vec.push_back(String::from_str(&env, &format!("name{}", i)));
+        }
+        let extend_to = env.ledger().sequence() + 10000;
+        let result = client.try_bulk_renew(&names_vec, &extend_to);
+        assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
+    }
+
+    #[test]
+    fn test_bulk_register_invalid_meta_length() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let names = soroban_sdk::vec![&env, String::from_str(&env, "test")];
+        let metas = soroban_sdk::vec![&env, Bytes::from_slice(&env, &[1u8; 63])];
+
+        let result = client.try_bulk_register(&owner, &names, &metas);
+        assert_eq!(result, Err(Ok(NamesError::InvalidMetaAddress)));
+    }
+
+    #[test]
+    fn test_bulk_register_mismatched_lengths() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let names = soroban_sdk::vec![&env, String::from_str(&env, "a"), String::from_str(&env, "b")];
+        let metas = soroban_sdk::vec![&env, Bytes::from_slice(&env, &[1u8; 64])];
+
+        let result = client.try_bulk_register(&owner, &names, &metas);
+        assert_eq!(result, Err(Ok(NamesError::InvalidMetaAddress)));
     }
 }
