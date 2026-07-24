@@ -52,7 +52,12 @@ impl AuthRevocableToken {
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
         // Sender must be authorized to spend.
-        if !env.storage().temporary().get(&DataKey::Authorized(from.clone())).unwrap_or(true) {
+        if !env
+            .storage()
+            .temporary()
+            .get(&DataKey::Authorized(from.clone()))
+            .unwrap_or(true)
+        {
             panic!("BalanceDeauthorizedError");
         }
         let from_bal: i128 = env
@@ -72,13 +77,7 @@ impl AuthRevocableToken {
             .temporary()
             .set(&DataKey::Balance(to), &(to_bal + amount));
     }
-    pub fn transfer_from(
-        env: Env,
-        _spender: Address,
-        from: Address,
-        to: Address,
-        amount: i128,
-    ) {
+    pub fn transfer_from(env: Env, _spender: Address, from: Address, to: Address, amount: i128) {
         Self::transfer(env, from, to, amount);
     }
     pub fn burn(env: Env, from: Address, amount: i128) {

@@ -1,7 +1,10 @@
 #![cfg(test)]
 
-use stealth_registry::{StealthRegistryContract, StealthRegistryContractClient, RegistryError};
-use soroban_sdk::{testutils::{Address as _, MockAuth, MockAuthInvoke}, vec, Address, Bytes, Env, IntoVal};
+use soroban_sdk::{
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    vec, Address, Bytes, Env, IntoVal,
+};
+use stealth_registry::{RegistryError, StealthRegistryContract, StealthRegistryContractClient};
 
 fn setup() -> (Env, StealthRegistryContractClient<'static>) {
     let env = Env::default();
@@ -18,9 +21,9 @@ fn test_finding_storage_key_collision_risk() {
 
     let registrant1 = Address::generate(&env);
     let registrant2 = Address::generate(&env);
-    
+
     let scheme_id = 1u32;
-    
+
     let meta1 = Bytes::from_slice(&env, &[1u8; 64]);
     let meta2 = Bytes::from_slice(&env, &[2u8; 64]);
 
@@ -28,8 +31,14 @@ fn test_finding_storage_key_collision_risk() {
     client.register_keys(&registrant2, &scheme_id, &meta2);
 
     // Verify they are separate
-    assert_eq!(client.stealth_meta_address_of(&registrant1, &scheme_id), meta1);
-    assert_eq!(client.stealth_meta_address_of(&registrant2, &scheme_id), meta2);
+    assert_eq!(
+        client.stealth_meta_address_of(&registrant1, &scheme_id),
+        meta1
+    );
+    assert_eq!(
+        client.stealth_meta_address_of(&registrant2, &scheme_id),
+        meta2
+    );
 }
 
 #[test]
@@ -60,7 +69,10 @@ fn test_finding_replacement_squatting() {
     // but we only provided auth for `attacker`.
     // In soroban tests, a missing auth will panic or return an auth error.
     let result = client.try_register_keys(&victim, &scheme_id, &meta);
-    assert!(result.is_err(), "Registration should fail if victim's auth is missing");
+    assert!(
+        result.is_err(),
+        "Registration should fail if victim's auth is missing"
+    );
 }
 
 #[test]
@@ -77,12 +89,15 @@ fn test_finding_scheme_id_forward_compatibility() {
     // Registration should succeed without knowing what scheme 9999 is
     client.register_keys(&registrant, &future_scheme_id, &meta);
 
-    assert_eq!(client.stealth_meta_address_of(&registrant, &future_scheme_id), meta);
+    assert_eq!(
+        client.stealth_meta_address_of(&registrant, &future_scheme_id),
+        meta
+    );
 }
 
 #[test]
 fn test_finding_replay_protection_across_write_boundary() {
-    // Finding: Overwriting is currently allowed (intentional behavior). 
+    // Finding: Overwriting is currently allowed (intentional behavior).
     // Ensure updates to the same slot succeed and overwrite previous data.
     let (env, client) = setup();
     env.mock_all_auths();
@@ -92,14 +107,20 @@ fn test_finding_replay_protection_across_write_boundary() {
 
     let meta_v1 = Bytes::from_slice(&env, &[1u8; 64]);
     client.register_keys(&registrant, &scheme_id, &meta_v1);
-    
+
     // Validate first write
-    assert_eq!(client.stealth_meta_address_of(&registrant, &scheme_id), meta_v1);
+    assert_eq!(
+        client.stealth_meta_address_of(&registrant, &scheme_id),
+        meta_v1
+    );
 
     // Write boundary crossed: overwrite with v2
     let meta_v2 = Bytes::from_slice(&env, &[2u8; 64]);
     client.register_keys(&registrant, &scheme_id, &meta_v2);
 
     // Validate overwrite
-    assert_eq!(client.stealth_meta_address_of(&registrant, &scheme_id), meta_v2);
+    assert_eq!(
+        client.stealth_meta_address_of(&registrant, &scheme_id),
+        meta_v2
+    );
 }
