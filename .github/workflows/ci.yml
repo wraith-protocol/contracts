@@ -150,6 +150,10 @@ jobs:
         if: steps.bindings.outcome == 'success'
         run: git diff --exit-code
         working-directory: .
+      - uses: stellar/actions/setup-cli@main
+      - run: ./abi/update.sh
+      - name: Check ABI snapshots
+        run: git diff --exit-code abi/
 
   stellar-nightly:
     if: github.event_name == 'schedule'
@@ -222,7 +226,6 @@ jobs:
           path: |
             stellar/deploy-dryrun-output.txt
             stellar/contract-ids.txt
-
   solana:
     needs: changes
     if: needs.changes.outputs.solana == 'true'
