@@ -1,0 +1,38 @@
+version: '3.8'
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: wraith
+      POSTGRES_PASSWORD: wraith
+      POSTGRES_DB: wraith_indexer
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wraith -d wraith_indexer"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  indexer:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://wraith:wraith@postgres:5432/wraith_indexer
+      RPC_URL: https://futurenet.sorobanrpc.com
+      NETWORK_PASSPHRASE: Test SDF Future Network ; October 2022
+      STEALTH_ANNOUNCER_ADDRESS: CBXYZANN0UNCERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0001
+      STEALTH_REGISTRY_ADDRESS: CBREG1STRYXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0002
+      STEALTH_SENDER_ADDRESS: CBSEND3RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0003
+      WRAITH_NAMES_ADDRESS: CBNAM3SWRA1THXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX004
+      POLL_INTERVAL_MS: 5000
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:
