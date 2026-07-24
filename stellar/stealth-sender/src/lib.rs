@@ -1,8 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env, Vec,
-    IntoVal,
+    contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
+    IntoVal, Vec,
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
@@ -95,9 +95,8 @@ mod asset_policy_client {
     }
 }
 
-const TTL_THRESHOLD: u32 = 17280;    // ~1 day
-const TTL_EXTEND_TO: u32 = 518400;   // ~30 days
-const MAX_SPONSORED_ENTRIES: u32 = 20;
+const TTL_THRESHOLD: u32 = 17280; // ~1 day
+const TTL_EXTEND_TO: u32 = 518400; // ~30 days
 
 #[contract]
 pub struct StealthSenderContract;
@@ -130,9 +129,7 @@ impl StealthSenderContract {
             .set(&DataKey::Announcer, &announcer);
 
         if let Some(ref policy) = asset_policy {
-            env.storage()
-                .instance()
-                .set(&DataKey::AssetPolicy, policy);
+            env.storage().instance().set(&DataKey::AssetPolicy, policy);
         }
 
         if let Some(ref recipient) = fee_recipient {
@@ -145,7 +142,9 @@ impl StealthSenderContract {
             .set(&DataKey::FeeBasisPoints, &fee_basis_points);
 
         // Extend instance TTL
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         Ok(())
     }
@@ -179,7 +178,9 @@ impl StealthSenderContract {
             .ok_or(SenderError::NotInitialized)?;
 
         // Extend instance TTL
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         // Check asset policy if configured
         if let Some(policy_address) = env
@@ -199,10 +200,7 @@ impl StealthSenderContract {
             .get(&DataKey::FeeBasisPoints)
             .unwrap_or(0);
 
-            let fee_recipient: Option<Address> = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeRecipient);
+        let fee_recipient: Option<Address> = env.storage().instance().get(&DataKey::FeeRecipient);
 
         let fee = if fee_basis_points > 0 && fee_recipient.is_some() {
             (amount * (fee_basis_points as i128)) / 10000
@@ -289,7 +287,9 @@ impl StealthSenderContract {
             .ok_or(SenderError::NotInitialized)?;
 
         // Extend instance TTL
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         // Check asset policy if configured
         if let Some(policy_address) = env
@@ -309,10 +309,7 @@ impl StealthSenderContract {
             .get(&DataKey::FeeBasisPoints)
             .unwrap_or(0);
 
-        let fee_recipient: Option<Address> = env
-            .storage()
-            .instance()
-            .get(&DataKey::FeeRecipient);
+        let fee_recipient: Option<Address> = env.storage().instance().get(&DataKey::FeeRecipient);
 
         let token_client = token::Client::new(&env, &token);
 

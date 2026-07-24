@@ -2,6 +2,7 @@
   "name": "wraith-contracts-root",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.28.2",
   "scripts": {
     "bindings:stellar": "tsx stellar/scripts/generate-bindings.ts",
     "build:stellar": "pnpm bindings:stellar && cd stellar && cargo build --target wasm32-unknown-unknown --release"
@@ -11,5 +12,8 @@
     "@types/node": "^22.0.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   }
 }

@@ -1,8 +1,10 @@
 import { execSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { fileURLToPath } from 'url';
 
 // Define paths
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STELLAR_DIR = path.resolve(__dirname, '..');
 const BINDINGS_DIR = path.join(STELLAR_DIR, 'bindings', 'typescript');
 const CONFIG_FILE = path.join(STELLAR_DIR, 'contract-ids.json');
@@ -166,19 +168,30 @@ async function main() {
     }
   }
 
-  // Local compilation if in WASM mode
+  // Local compilation if in WASM mode. Reuse existing WASM artifacts when
+  // present so this step is idempotent alongside a preceding
+  // `cargo build --target wasm32-unknown-unknown --release` in CI.
   if (needsLocalCompilation) {
     console.log('⚙️ No contract IDs detected for some or all contracts. Using local WASM mode.');
-    console.log('🔨 Compiling Soroban contracts to WASM locally (cargo build)...');
-    try {
-      execSync('cargo build --target wasm32-unknown-unknown --release', {
-        cwd: STELLAR_DIR,
-        stdio: 'inherit',
-      });
-      console.log('✅ Local compilation succeeded!\n');
-    } catch (err) {
-      console.error('❌ Local cargo build failed. Make sure you have the rust/wasm32 toolchain installed.');
-      process.exit(1);
+    const releaseDir = path.join(STELLAR_DIR, 'target', 'wasm32-unknown-unknown', 'release');
+    const artifactsPresent =
+      fs.existsSync(releaseDir) &&
+      CONTRACTS.every((c) => fs.existsSync(path.join(releaseDir, c.wasmName)));
+
+    if (artifactsPresent) {
+      console.log('♻️  Reusing existing WASM artifacts in target/wasm32-unknown-unknown/release/');
+    } else {
+      console.log('🔨 Compiling Soroban contracts to WASM locally (cargo build)...');
+      try {
+        execSync('cargo build --target wasm32-unknown-unknown --release', {
+          cwd: STELLAR_DIR,
+          stdio: 'inherit',
+        });
+        console.log('✅ Local compilation succeeded!\n');
+      } catch (err) {
+        console.error('❌ Local cargo build failed. Make sure you have the rust/wasm32 toolchain installed.');
+        process.exit(1);
+      }
     }
   }
 

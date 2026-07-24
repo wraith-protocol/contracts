@@ -46,7 +46,12 @@ impl ImmutableAuthRequiredToken {
     }
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
-        if !env.storage().temporary().get(&DataKey::Authorized(to.clone())).unwrap_or(false) {
+        if !env
+            .storage()
+            .temporary()
+            .get(&DataKey::Authorized(to.clone()))
+            .unwrap_or(false)
+        {
             panic!("BalanceDeauthorizedError");
         }
         let from_bal: i128 = env
@@ -66,13 +71,7 @@ impl ImmutableAuthRequiredToken {
             .temporary()
             .set(&DataKey::Balance(to), &(to_bal + amount));
     }
-    pub fn transfer_from(
-        env: Env,
-        _spender: Address,
-        from: Address,
-        to: Address,
-        amount: i128,
-    ) {
+    pub fn transfer_from(env: Env, _spender: Address, from: Address, to: Address, amount: i128) {
         Self::transfer(env, from, to, amount);
     }
     pub fn burn(env: Env, from: Address, amount: i128) {
