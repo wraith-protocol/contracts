@@ -26,8 +26,8 @@ pub enum RegistryError {
     NotRegistered = 2,
 }
 
-const TTL_THRESHOLD: u32 = 17280;    // ~1 day
-const TTL_EXTEND_TO: u32 = 518400;   // ~30 days
+const TTL_THRESHOLD: u32 = 17280; // ~1 day
+const TTL_EXTEND_TO: u32 = 518400; // ~30 days
 
 #[contract]
 pub struct StealthRegistryContract;
@@ -84,11 +84,7 @@ impl StealthRegistryContract {
     /// # Arguments
     /// * `registrant` - The address whose meta-address is being removed (must authorise).
     /// * `scheme_id`  - The stealth address scheme identifier.
-    pub fn remove_keys(
-        env: Env,
-        registrant: Address,
-        scheme_id: u32,
-    ) -> Result<(), RegistryError> {
+    pub fn remove_keys(env: Env, registrant: Address, scheme_id: u32) -> Result<(), RegistryError> {
         // Require authorisation from the registrant.
         registrant.require_auth();
 
@@ -100,10 +96,8 @@ impl StealthRegistryContract {
         env.storage().persistent().remove(&key);
 
         // Emit event.
-        env.events().publish(
-            (symbol_short!("remove"), registrant, scheme_id),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("remove"), registrant, scheme_id), ());
 
         // Emit metric event.
         emit_metric(
@@ -128,8 +122,9 @@ impl StealthRegistryContract {
         scheme_id: u32,
     ) -> Result<Bytes, RegistryError> {
         let key = DataKey::MetaAddress(registrant, scheme_id);
-        
-        let val = env.storage()
+
+        let val = env
+            .storage()
             .persistent()
             .get(&key)
             .ok_or(RegistryError::NotRegistered);
@@ -143,9 +138,11 @@ impl StealthRegistryContract {
 
     /// Private helper to extend TTLs for both the persistent entry and the contract instance.
     fn extend_ttls(env: &Env, key: &DataKey) {
-        env.storage().persistent().extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .persistent()
+            .extend_ttl(key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
     }
 }
-
-

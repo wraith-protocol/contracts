@@ -2,11 +2,11 @@
 
 use core::convert::TryInto;
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN,
-    Env, String, Vec,
-};
 use soroban_sdk::xdr::{AccountId, PublicKey, ScAddress};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
+    String, Vec,
+};
 
 pub const WRAITH_NAMES_DOMAIN: &[u8] = b"wraith-names:v1";
 
@@ -128,7 +128,9 @@ impl WraithNamesContract {
         )?;
         Self::register_internal(&env, owner, name, stealth_meta_address)?;
         // Persist replay protection to prevent signature reuse
-        env.storage().persistent().set(&DataKey::Replay(replay_key), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Replay(replay_key), &true);
         Ok(())
     }
 
@@ -163,7 +165,9 @@ impl WraithNamesContract {
             expiry,
         )?;
         Self::update_internal(&env, owner, name, new_meta_address)?;
-        env.storage().persistent().set(&DataKey::Replay(replay_key), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Replay(replay_key), &true);
         Ok(())
     }
 
@@ -192,14 +196,14 @@ impl WraithNamesContract {
             expiry,
         )?;
         Self::release_internal(&env, owner, name)?;
-        env.storage().persistent().set(&DataKey::Replay(replay_key), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Replay(replay_key), &true);
         Ok(())
     }
 
     fn owner_public_key(env: &Env, owner: &Address) -> Result<BytesN<32>, NamesError> {
-        let sc_address: ScAddress = owner
-            .try_into()
-            .map_err(|_| NamesError::InvalidSigner)?;
+        let sc_address: ScAddress = owner.try_into().map_err(|_| NamesError::InvalidSigner)?;
 
         match sc_address {
             ScAddress::Account(AccountId(PublicKey::PublicKeyTypeEd25519(public_key))) => {
@@ -245,7 +249,8 @@ impl WraithNamesContract {
 
         env.storage().persistent().set(&name_key, &entry);
 
-        let meta_hash = BytesN::from_array(env, &env.crypto().sha256(&stealth_meta_address).to_array());
+        let meta_hash =
+            BytesN::from_array(env, &env.crypto().sha256(&stealth_meta_address).to_array());
         let reverse_key = DataKey::Reverse(meta_hash);
         env.storage().persistent().set(&reverse_key, &name_hash);
 
@@ -297,11 +302,10 @@ impl WraithNamesContract {
         };
         env.storage().persistent().set(&name_key, &new_entry);
 
-        let new_meta_hash = BytesN::from_array(env, &env.crypto().sha256(&new_meta_address).to_array());
+        let new_meta_hash =
+            BytesN::from_array(env, &env.crypto().sha256(&new_meta_address).to_array());
         let reverse_key = DataKey::Reverse(new_meta_hash);
-        env.storage()
-            .persistent()
-            .set(&reverse_key, &name_hash);
+        env.storage().persistent().set(&reverse_key, &name_hash);
 
         // Extend TTLs
         Self::extend_ttls(&env, &name_key, Some(&reverse_key));
@@ -326,7 +330,10 @@ impl WraithNamesContract {
 
         Self::require_manager(&env, &owner, &entry)?;
 
-        let meta_hash = BytesN::from_array(env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
+        let meta_hash = BytesN::from_array(
+            env,
+            &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
+        );
         env.storage()
             .persistent()
             .remove(&DataKey::Reverse(meta_hash));
@@ -355,18 +362,17 @@ impl WraithNamesContract {
         }
 
         let public_key = Self::owner_public_key(env, owner)?;
-        let message = Self::authorization_message(
-            env,
-            operation,
-            name,
-            stealth_meta_address,
-            expiry,
-        );
+        let message =
+            Self::authorization_message(env, operation, name, stealth_meta_address, expiry);
         let message_hash = env.crypto().sha256(&message);
 
         let replay_key: BytesN<32> = message_hash.clone().into();
 
-        if env.storage().persistent().has(&DataKey::Replay(replay_key.clone())) {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Replay(replay_key.clone()))
+        {
             return Err(NamesError::SignatureReplay);
         }
 
@@ -388,9 +394,9 @@ impl WraithNamesContract {
             .persistent()
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
-        
+
         Self::extend_ttls(&env, &name_key, None);
-        
+
         Ok(entry.stealth_meta_address)
     }
 
@@ -410,7 +416,7 @@ impl WraithNamesContract {
             .persistent()
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
-        
+
         Self::extend_ttls(&env, &name_key, Some(&reverse_key));
 
         Ok(entry.name)
@@ -442,29 +448,39 @@ impl WraithNamesContract {
             .ok_or(NamesError::NameNotFound)?;
 
         // Get the meta-address hash for reverse key
-        let meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
+        let meta_hash = BytesN::from_array(
+            &env,
+            &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
+        );
         let reverse_key = DataKey::Reverse(meta_hash);
 
         // Extend TTLs to the specified ledger
-        env.storage().persistent().extend_ttl(&name_key, current_ledger, extend_to_ledger);
-        env.storage().persistent().extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
-        env.storage().instance().extend_ttl(current_ledger, extend_to_ledger);
+        env.storage()
+            .persistent()
+            .extend_ttl(&name_key, current_ledger, extend_to_ledger);
+        env.storage()
+            .persistent()
+            .extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+        env.storage()
+            .instance()
+            .extend_ttl(current_ledger, extend_to_ledger);
 
         // Emit extend event for observability
-        env.events().publish(
-            (symbol_short!("extend"), name_hash),
-            extend_to_ledger,
-        );
+        env.events()
+            .publish((symbol_short!("extend"), name_hash), extend_to_ledger);
 
         Ok(())
     }
 
-
     /// Private helper to extend TTLs for both the persistent entry and the contract instance.
     fn extend_ttls(env: &Env, name_key: &DataKey, reverse_key: Option<&DataKey>) {
-        env.storage().persistent().extend_ttl(name_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .persistent()
+            .extend_ttl(name_key, TTL_THRESHOLD, TTL_EXTEND_TO);
         if let Some(r_key) = reverse_key {
-            env.storage().persistent().extend_ttl(r_key, TTL_THRESHOLD, TTL_EXTEND_TO);
+            env.storage()
+                .persistent()
+                .extend_ttl(r_key, TTL_THRESHOLD, TTL_EXTEND_TO);
         }
     }
 
@@ -482,11 +498,7 @@ impl WraithNamesContract {
     /// Authorisation check for management operations (update / release / etc).
     /// Currently owner-only; guardian-recovery flow is defined in NamesError
     /// (`NotGuardian`, `NoProposal`, ...) but not yet wired in.
-    fn require_manager(
-        _env: &Env,
-        caller: &Address,
-        entry: &NameEntry,
-    ) -> Result<(), NamesError> {
+    fn require_manager(_env: &Env, caller: &Address, entry: &NameEntry) -> Result<(), NamesError> {
         if caller == &entry.owner {
             Ok(())
         } else {
@@ -543,9 +555,9 @@ mod test {
     use super::*;
     use ed25519_dalek::SigningKey;
     use proptest::prelude::*;
-    use soroban_sdk::TryFromVal;
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::xdr::{AccountId, PublicKey, ScAddress, Uint256};
+    use soroban_sdk::TryFromVal;
     use soroban_sdk::{Bytes, Env, String};
 
     fn signing_account(env: &Env, seed: [u8; 32]) -> (Address, SigningKey) {
@@ -730,7 +742,13 @@ mod test {
             &updated_meta,
             update_expiry,
         );
-        client.update_on_behalf(&owner, &name, &updated_meta, &update_signature, &update_expiry);
+        client.update_on_behalf(
+            &owner,
+            &name,
+            &updated_meta,
+            &update_signature,
+            &update_expiry,
+        );
         assert_eq!(client.resolve(&name), updated_meta);
 
         let release_expiry = u64::from(env.ledger().sequence()) + 10;
@@ -768,7 +786,8 @@ mod test {
             expiry,
         );
 
-        let result = client.try_register_on_behalf(&owner, &name, &invalid_meta, &signature, &expiry);
+        let result =
+            client.try_register_on_behalf(&owner, &name, &invalid_meta, &signature, &expiry);
         assert_eq!(result, Err(Ok(NamesError::InvalidMetaAddress)));
     }
 
@@ -866,8 +885,14 @@ mod test {
         // Parent owner registers it, attacker cannot update or release it.
         client.register(&owner, &sub, &sub_meta);
         let other_meta = Bytes::from_slice(&env, &[8u8; 64]);
-        assert_eq!(client.try_update(&attacker, &sub, &other_meta), Err(Ok(NamesError::NotOwner)));
-        assert_eq!(client.try_release(&attacker, &sub), Err(Ok(NamesError::NotOwner)));
+        assert_eq!(
+            client.try_update(&attacker, &sub, &other_meta),
+            Err(Ok(NamesError::NotOwner))
+        );
+        assert_eq!(
+            client.try_release(&attacker, &sub),
+            Err(Ok(NamesError::NotOwner))
+        );
     }
 
     #[test]

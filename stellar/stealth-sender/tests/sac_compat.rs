@@ -9,19 +9,14 @@
 mod mocks;
 
 use mocks::{
-    token_auth_required::AuthRequiredToken,
-    token_auth_revocable::AuthRevocableToken,
-    token_clawback::ClawbackToken,
-    token_fee::FeeToken,
+    token_auth_required::AuthRequiredToken, token_auth_revocable::AuthRevocableToken,
+    token_clawback::ClawbackToken, token_fee::FeeToken,
     token_immutable_auth_required::ImmutableAuthRequiredToken,
-    token_immutable_safe::ImmutableSafeToken,
-    token_standard::StandardToken,
+    token_immutable_safe::ImmutableSafeToken, token_standard::StandardToken,
 };
 use soroban_sdk::{
-    testutils::Address as _,
-    testutils::Events as _,
-    token::TokenInterface as _,
-    Address, Bytes, BytesN, Env,
+    testutils::Address as _, testutils::Events as _, token::TokenInterface as _, Address, Bytes,
+    BytesN, Env,
 };
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -42,16 +37,19 @@ mod announcer {
             _ephemeral_pub_key: BytesN<32>,
             _metadata: Bytes,
         ) {
-            env.storage().instance().set(&symbol_short!("called"), &true);
+            env.storage()
+                .instance()
+                .set(&symbol_short!("called"), &true);
             std::println!("ANNOUNCER CALLED for address: {:?}", stealth_address);
-            env.events().publish(
-                (symbol_short!("announce"), stealth_address),
-                (),
-            );
+            env.events()
+                .publish((symbol_short!("announce"), stealth_address), ());
         }
 
         pub fn is_called(env: Env) -> bool {
-            env.storage().instance().get(&symbol_short!("called")).unwrap_or(false)
+            env.storage()
+                .instance()
+                .get(&symbol_short!("called"))
+                .unwrap_or(false)
         }
     }
 }
@@ -75,8 +73,7 @@ impl Harness {
 
         let announcer_id = env.register(Announcer, ());
         let sender_id = env.register(stealth_sender::StealthSenderContract, ());
-        let sender_client =
-            stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
+        let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
         sender_client.init(&announcer_id, &None, &None, &0);
 
         let sender = Address::generate(&env);
@@ -126,10 +123,7 @@ fn native_xlm_send_succeeds() {
     h.sender_client()
         .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
-    assert_eq!(
-        token_client.balance(&h.stealth),
-        500
-    );
+    assert_eq!(token_client.balance(&h.stealth), 500);
     h.assert_announced();
 }
 
@@ -147,10 +141,7 @@ fn standard_issued_send_succeeds() {
     h.sender_client()
         .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
-    assert_eq!(
-        token_client.balance(&h.stealth),
-        500
-    );
+    assert_eq!(token_client.balance(&h.stealth), 500);
     h.assert_announced();
 }
 
@@ -161,18 +152,20 @@ fn auth_required_send_fails_without_authorization() {
     let h = Harness::new();
     let admin = Address::generate(&h.env);
     let token_id = h.env.register(AuthRequiredToken, ());
-    let token_client =
-        mocks::token_auth_required::AuthRequiredTokenClient::new(&h.env, &token_id);
+    let token_client = mocks::token_auth_required::AuthRequiredTokenClient::new(&h.env, &token_id);
     token_client.init(&admin);
     h.env.as_contract(&token_id, || {
         AuthRequiredToken::mint(&h.env, &h.sender, 1_000);
     });
 
     // Stealth address is NOT authorized — transfer must fail.
-    let result = h.sender_client().try_send(
-        &h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta,
+    let result = h
+        .sender_client()
+        .try_send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
+    assert!(
+        result.is_err(),
+        "expected transfer to fail for unauthorized stealth address"
     );
-    assert!(result.is_err(), "expected transfer to fail for unauthorized stealth address");
     h.assert_not_announced();
 }
 
@@ -183,8 +176,7 @@ fn auth_required_send_succeeds_when_pre_authorized() {
     let h = Harness::new();
     let admin = Address::generate(&h.env);
     let token_id = h.env.register(AuthRequiredToken, ());
-    let token_client =
-        mocks::token_auth_required::AuthRequiredTokenClient::new(&h.env, &token_id);
+    let token_client = mocks::token_auth_required::AuthRequiredTokenClient::new(&h.env, &token_id);
     token_client.init(&admin);
     h.env.as_contract(&token_id, || {
         AuthRequiredToken::mint(&h.env, &h.sender, 1_000);
@@ -196,10 +188,7 @@ fn auth_required_send_succeeds_when_pre_authorized() {
     h.sender_client()
         .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
-    assert_eq!(
-        token_client.balance(&h.stealth),
-        500
-    );
+    assert_eq!(token_client.balance(&h.stealth), 500);
     h.assert_announced();
 }
 
@@ -221,10 +210,7 @@ fn auth_revocable_send_succeeds_then_issuer_freezes() {
     h.sender_client()
         .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
-    assert_eq!(
-        token_client.balance(&h.stealth),
-        500
-    );
+    assert_eq!(token_client.balance(&h.stealth), 500);
     h.assert_announced();
 
     // Issuer revokes authorization from the stealth address post-receipt.
@@ -245,8 +231,7 @@ fn clawback_send_succeeds_then_issuer_claws_back() {
     let h = Harness::new();
     let admin = Address::generate(&h.env);
     let token_id = h.env.register(ClawbackToken, ());
-    let token_client =
-        mocks::token_clawback::ClawbackTokenClient::new(&h.env, &token_id);
+    let token_client = mocks::token_clawback::ClawbackTokenClient::new(&h.env, &token_id);
     token_client.init(&admin);
     h.env.as_contract(&token_id, || {
         ClawbackToken::mint(&h.env, &h.sender, 1_000);
@@ -256,10 +241,7 @@ fn clawback_send_succeeds_then_issuer_claws_back() {
     h.sender_client()
         .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
-    assert_eq!(
-        token_client.balance(&h.stealth),
-        500
-    );
+    assert_eq!(token_client.balance(&h.stealth), 500);
     h.assert_announced();
 
     // Issuer claws back the full amount from the stealth address.
@@ -281,7 +263,8 @@ fn clawback_send_succeeds_then_issuer_claws_back() {
 fn immutable_safe_send_succeeds() {
     let h = Harness::new();
     let token_id = h.env.register(ImmutableSafeToken, ());
-    let token_client = mocks::token_immutable_safe::ImmutableSafeTokenClient::new(&h.env, &token_id);
+    let token_client =
+        mocks::token_immutable_safe::ImmutableSafeTokenClient::new(&h.env, &token_id);
     h.env.as_contract(&token_id, || {
         ImmutableSafeToken::mint(&h.env, &h.sender, 1_000);
     });
@@ -289,10 +272,7 @@ fn immutable_safe_send_succeeds() {
     h.sender_client()
         .send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
 
-    assert_eq!(
-        token_client.balance(&h.stealth),
-        500
-    );
+    assert_eq!(token_client.balance(&h.stealth), 500);
     h.assert_announced();
 }
 
@@ -303,20 +283,22 @@ fn immutable_auth_required_send_fails_permanently() {
     let h = Harness::new();
     let admin = Address::generate(&h.env);
     let token_id = h.env.register(ImmutableAuthRequiredToken, ());
-    let token_client =
-        mocks::token_immutable_auth_required::ImmutableAuthRequiredTokenClient::new(
-            &h.env, &token_id,
-        );
+    let token_client = mocks::token_immutable_auth_required::ImmutableAuthRequiredTokenClient::new(
+        &h.env, &token_id,
+    );
     token_client.init(&admin);
     h.env.as_contract(&token_id, || {
         ImmutableAuthRequiredToken::mint(&h.env, &h.sender, 1_000);
     });
 
     // No pre-authorization — transfer must fail.
-    let result = h.sender_client().try_send(
-        &h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta,
+    let result = h
+        .sender_client()
+        .try_send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
+    assert!(
+        result.is_err(),
+        "immutable+auth-required must always fail for unknown stealth addresses"
     );
-    assert!(result.is_err(), "immutable+auth-required must always fail for unknown stealth addresses");
     h.assert_not_announced();
     // AUDIT NOTE: because AUTH_IMMUTABLE prevents flag removal, this asset
     // can never be used with stealth flows without per-address issuer approval.
@@ -336,16 +318,15 @@ fn fee_token_send_succeeds_but_amount_mismatch() {
     });
 
     let send_amount: i128 = 500;
-    h.sender_client()
-        .send(
-            &h.sender,
-            &token_id,
-            &send_amount,
-            &1,
-            &h.stealth,
-            &h.epk,
-            &h.meta,
-        );
+    h.sender_client().send(
+        &h.sender,
+        &token_id,
+        &send_amount,
+        &1,
+        &h.stealth,
+        &h.epk,
+        &h.meta,
+    );
 
     let received = token_client.balance(&h.stealth);
     let fee = send_amount * 100 / 10_000; // 1%
@@ -393,7 +374,10 @@ fn test_policy_allowlist_enforcement() {
     let admin = Address::generate(&env);
     let policy_id = env.register(wraith_asset_policy::WraithAssetPolicy, ());
     let policy_client = wraith_asset_policy::WraithAssetPolicyClient::new(&env, &policy_id);
-    policy_client.init(&admin, &soroban_sdk::vec![&env, standard_token_1_id.clone()]);
+    policy_client.init(
+        &admin,
+        &soroban_sdk::vec![&env, standard_token_1_id.clone()],
+    );
 
     // 3. Deploy & init stealth-sender with policy
     let announcer_id = env.register(Announcer, ());
@@ -402,16 +386,12 @@ fn test_policy_allowlist_enforcement() {
     sender_client.init(&announcer_id, &Some(policy_id.clone()), &None, &0);
 
     // 4. Try to send ClawbackToken (not on allowlist) - should fail with TokenNotAllowed
-    let result = sender_client.try_send(
-        &sender,
-        &clawback_token_id,
-        &500,
-        &1,
-        &stealth,
-        &epk,
-        &meta,
+    let result =
+        sender_client.try_send(&sender, &clawback_token_id, &500, &1, &stealth, &epk, &meta);
+    assert_eq!(
+        result,
+        Err(Ok(stealth_sender::SenderError::TokenNotAllowed))
     );
-    assert_eq!(result, Err(Ok(stealth_sender::SenderError::TokenNotAllowed)));
 
     // 5. Try to send StandardToken 1 (on default allowlist) - should succeed immediately
     sender_client.send(
@@ -424,7 +404,8 @@ fn test_policy_allowlist_enforcement() {
         &meta,
     );
 
-    let token_1_client = mocks::token_standard::StandardTokenClient::new(&env, &standard_token_1_id);
+    let token_1_client =
+        mocks::token_standard::StandardTokenClient::new(&env, &standard_token_1_id);
     assert_eq!(token_1_client.balance(&stealth), 500);
 
     // 6. Try to send StandardToken 2 (not on default allowlist yet) - should fail with TokenNotAllowed
@@ -437,7 +418,10 @@ fn test_policy_allowlist_enforcement() {
         &epk,
         &meta,
     );
-    assert_eq!(result_std2, Err(Ok(stealth_sender::SenderError::TokenNotAllowed)));
+    assert_eq!(
+        result_std2,
+        Err(Ok(stealth_sender::SenderError::TokenNotAllowed))
+    );
 
     // 7. Allow StandardToken 2 in the policy contract
     policy_client.add_asset(&standard_token_2_id);
@@ -453,7 +437,8 @@ fn test_policy_allowlist_enforcement() {
         &meta,
     );
 
-    let token_2_client = mocks::token_standard::StandardTokenClient::new(&env, &standard_token_2_id);
+    let token_2_client =
+        mocks::token_standard::StandardTokenClient::new(&env, &standard_token_2_id);
     assert_eq!(token_2_client.balance(&stealth), 500);
 }
 

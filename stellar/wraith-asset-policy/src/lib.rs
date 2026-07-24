@@ -19,18 +19,30 @@ impl WraithAssetPolicy {
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
         for asset in default_assets.iter() {
-            env.storage().persistent().set(&DataKey::Asset(asset), &true);
+            env.storage()
+                .persistent()
+                .set(&DataKey::Asset(asset), &true);
         }
     }
 
     pub fn add_asset(env: Env, asset: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
         admin.require_auth();
-        env.storage().persistent().set(&DataKey::Asset(asset), &true);
+        env.storage()
+            .persistent()
+            .set(&DataKey::Asset(asset), &true);
     }
 
     pub fn remove_asset(env: Env, asset: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("not initialized");
         admin.require_auth();
         env.storage().persistent().remove(&DataKey::Asset(asset));
     }

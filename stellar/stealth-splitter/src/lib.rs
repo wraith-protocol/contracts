@@ -301,20 +301,14 @@ impl StealthSplitterContract {
 
         // Update total funded amount.
         let funded_key = DataKey::SplitFunded(split_id.clone());
-        let current_funded: i128 = env
-            .storage()
-            .instance()
-            .get(&funded_key)
-            .unwrap_or(0);
+        let current_funded: i128 = env.storage().instance().get(&funded_key).unwrap_or(0);
         env.storage()
             .instance()
             .set(&funded_key, &(current_funded + amount));
 
         // Emit event.
-        env.events().publish(
-            (Symbol::short("fund"), split_id),
-            amount,
-        );
+        env.events()
+            .publish((Symbol::short("fund"), split_id), amount);
 
         Ok(())
     }
@@ -335,11 +329,7 @@ impl StealthSplitterContract {
             .ok_or(SplitterError::SplitNotFound)?;
 
         let funded_key = DataKey::SplitFunded(split_id);
-        let total_funded: i128 = env
-            .storage()
-            .instance()
-            .get(&funded_key)
-            .unwrap_or(0);
+        let total_funded: i128 = env.storage().instance().get(&funded_key).unwrap_or(0);
 
         Ok(SplitDetails {
             beneficiaries: definition.beneficiaries,
@@ -399,7 +389,10 @@ mod test {
 
         client.init(&announcer);
         let result = client.try_init(&announcer);
-        assert!(result.is_err(), "expected SplitterError::AlreadyInitialized");
+        assert!(
+            result.is_err(),
+            "expected SplitterError::AlreadyInitialized"
+        );
     }
 
     // ============ UNIT TESTS: CREATE_SPLIT ============
@@ -417,9 +410,7 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Verify split ID is 32 bytes.
         assert_eq!(split_id.len(), 32);
@@ -437,9 +428,7 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         assert_eq!(split_id.len(), 32);
     }
@@ -458,9 +447,7 @@ mod test {
             beneficiaries.push_back(create_test_beneficiary(&env, i as u8));
         }
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         assert_eq!(split_id.len(), 32);
     }
@@ -476,7 +463,10 @@ mod test {
         let beneficiaries = vec![&env];
 
         let result = client.try_create_split(&creator, &beneficiaries, &asset, &salt);
-        assert!(result.is_err(), "expected SplitterError::EmptyBeneficiaries");
+        assert!(
+            result.is_err(),
+            "expected SplitterError::EmptyBeneficiaries"
+        );
     }
 
     #[test]
@@ -494,7 +484,10 @@ mod test {
         }
 
         let result = client.try_create_split(&creator, &beneficiaries, &asset, &salt);
-        assert!(result.is_err(), "expected SplitterError::TooManyBeneficiaries");
+        assert!(
+            result.is_err(),
+            "expected SplitterError::TooManyBeneficiaries"
+        );
     }
 
     #[test]
@@ -514,7 +507,10 @@ mod test {
         beneficiaries.push_back(invalid_beneficiary);
 
         let result = client.try_create_split(&creator, &beneficiaries, &asset, &salt);
-        assert!(result.is_err(), "expected SplitterError::InvalidMetaAddressLength");
+        assert!(
+            result.is_err(),
+            "expected SplitterError::InvalidMetaAddressLength"
+        );
     }
 
     #[test]
@@ -530,14 +526,10 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id_1 = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id_1 = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Same inputs should produce same split_id
-        let split_id_2 = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id_2 = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         assert_eq!(split_id_1, split_id_2, "Split IDs should be deterministic");
     }
@@ -553,15 +545,24 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id_1 = client
-            .create_split(&creator, &beneficiaries, &asset, &Bytes::from_slice(&env, b"salt-1"))
-            ;
+        let split_id_1 = client.create_split(
+            &creator,
+            &beneficiaries,
+            &asset,
+            &Bytes::from_slice(&env, b"salt-1"),
+        );
 
-        let split_id_2 = client
-            .create_split(&creator, &beneficiaries, &asset, &Bytes::from_slice(&env, b"salt-2"))
-            ;
+        let split_id_2 = client.create_split(
+            &creator,
+            &beneficiaries,
+            &asset,
+            &Bytes::from_slice(&env, b"salt-2"),
+        );
 
-        assert_ne!(split_id_1, split_id_2, "Different salts should produce different split IDs");
+        assert_ne!(
+            split_id_1, split_id_2,
+            "Different salts should produce different split IDs"
+        );
     }
 
     // ============ UNIT TESTS: GET_SPLIT ============
@@ -589,13 +590,9 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
-        let split_details = client
-            .get_split(&split_id)
-            ;
+        let split_details = client.get_split(&split_id);
 
         // Verify beneficiaries are returned
         assert_eq!(split_details.beneficiaries.len(), 2);
@@ -609,7 +606,7 @@ mod test {
     fn test_property_dust_to_first_beneficiary() {
         // Property: When amounts don't divide evenly by weights,
         // the first beneficiary receives the dust.
-        
+
         let (env, _contract_id, _announcer) = setup_env();
         let client = StealthSplitterContractClient::new(&env, &_contract_id);
 
@@ -629,15 +626,11 @@ mod test {
         beneficiaries.push_back(b1);
         beneficiaries.push_back(b2);
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Verify weights are stored correctly
-        let split_details = client
-            .get_split(&split_id)
-            ;
-        
+        let split_details = client.get_split(&split_id);
+
         assert_eq!(split_details.beneficiaries.len(), 2);
         assert_eq!(split_details.beneficiaries.get(0).unwrap().weight, 3);
         assert_eq!(split_details.beneficiaries.get(1).unwrap().weight, 7);
@@ -647,7 +640,7 @@ mod test {
     fn test_property_immutable_split_definition() {
         // Property: Split definition cannot be modified after creation.
         // (Verified by contract not exposing update functions)
-        
+
         let (env, _contract_id, _announcer) = setup_env();
         let client = StealthSplitterContractClient::new(&env, &_contract_id);
 
@@ -658,17 +651,11 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
-        let details_1 = client
-            .get_split(&split_id)
-            ;
+        let details_1 = client.get_split(&split_id);
 
-        let details_2 = client
-            .get_split(&split_id)
-            ;
+        let details_2 = client.get_split(&split_id);
 
         // Should return identical beneficiary data
         assert_eq!(details_1.beneficiaries.len(), details_2.beneficiaries.len());
@@ -690,9 +677,7 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         let stealth_addrs = vec![&env, Address::generate(&env)];
         let ephemeral_keys = vec![&env, BytesN::from_array(&env, &[1u8; 32])];
@@ -723,9 +708,7 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         let stealth_addrs = vec![&env, Address::generate(&env)];
         let ephemeral_keys = vec![&env, BytesN::from_array(&env, &[1u8; 32])];
@@ -758,7 +741,8 @@ mod test {
         let result = client.try_fund_split(
             &funder,
             &split_id,
-            &1000i128, &1u32,
+            &1000i128,
+            &1u32,
             &stealth_addrs,
             &ephemeral_keys,
             &metadatas,
@@ -780,9 +764,7 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Wrong number of stealth addresses
         let stealth_addrs = vec![&env, Address::generate(&env)]; // Only 1, need 2
@@ -800,7 +782,8 @@ mod test {
         let result = client.try_fund_split(
             &funder,
             &split_id,
-            &1000i128, &1u32,
+            &1000i128,
+            &1u32,
             &stealth_addrs,
             &ephemeral_keys,
             &metadatas,
@@ -825,7 +808,7 @@ mod test {
         //
         // This test passes as-is because the contract maintains
         // atomicity through Soroban's transaction semantics.
-        
+
         let (env, _contract_id, _announcer) = setup_env();
         let client = StealthSplitterContractClient::new(&env, &_contract_id);
 
@@ -838,14 +821,10 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
         beneficiaries.push_back(create_test_beneficiary(&env, 3));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            ;
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Before funding
-        let details_before = client
-            .get_split(&split_id)
-            ;
+        let details_before = client.get_split(&split_id);
         assert_eq!(details_before.total_funded, 0);
         assert_eq!(details_before.beneficiaries.len(), 3);
 
@@ -855,9 +834,9 @@ mod test {
     }
 
     // ============ RESOURCE BUDGET DOCUMENTATION ============
-    
+
     // NOTE: This is a documentation comment for resource budget analysis.
-    // 
+    //
     // stealth-splitter contract:
     // - create_split: Stores one split definition (varies by beneficiary count)
     //   - Max 25 beneficiaries × 64 bytes meta-address = 1600 bytes

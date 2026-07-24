@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contracttype, symbol_short, Symbol, Vec, Val};
+use soroban_sdk::{contracttype, symbol_short, Symbol, Val, Vec};
 
 /// Wraith Protocol standard metric event schema.
 ///
