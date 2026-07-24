@@ -93,7 +93,13 @@ When active, for each `send` or `batch_send`:
 3. `amount - fee` is transferred to the recipient's `stealth_address`.
 4. In `batch_send`, the individual fees are calculated per recipient, and a single aggregated fee transfer is executed to the `fee_recipient` at the end to minimize gas costs.
 
-## Storage Entry Recovery Tooling
+## Operations
+
+All operational procedures, incident reports, and postmortems for the Stellar contracts are documented here. 
+
+For past incident reports (such as PM-001 for Sender Atomicity and PM-002 for Reproducible Build Workflow Rot), please see [POSTMORTEMS.md](./POSTMORTEMS.md).
+
+### Storage Entry Recovery Tooling
 
 In the Stellar Soroban smart contract network, ledger entries (including contract instances, WASM bytecode, and contract data storage) have a Time-To-Live (TTL). When an entry's TTL expires, it is evicted from the active ledger state and moved into the **Archived State Tree**. 
 

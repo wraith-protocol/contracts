@@ -81,5 +81,35 @@ The rescue tool (`scripts/rescue-stealth-funds.ts`) addresses these scenarios.
 It does **not** modify any contract or require a contract upgrade.
 
 **Trust model:** The sender must still possess the ephemeral private key used
-to derive the stealth address. The tool never requests the sender's long-term
 spending key — only the ephemeral key material.
+
+---
+
+## PM-002: Reproducible Build Workflow Rot
+
+**Date:** 2026-07-24  
+**Auditor:** Wraith Protocol Team  
+**Related Commits:** `35bf3fc`, `a319969`, `9abf33a`, `b621b46`
+
+### Summary
+The reproducible-build verification CI pipeline failed due to bit-rot in our Dockerfile and toolchain pins. Specifically, a base image digest rotation for `bookworm-slim`, coupled with Rust MSRV (Minimum Supported Rust Version) creep for Edition 2024 dependencies in the `soroban-sdk`, broke the reproducible environment.
+
+### Timeline & Root Cause
+1. **Rust MSRV Creep:** Dependencies in the Soroban SDK ecosystem bumped their MSRV to 1.86.0 to support Rust 2024 edition features, breaking our pinned older Rust version in the reproducible build container.
+2. **Base Image Digest Rotation:** The `debian:bookworm-slim` base image digest was hard-pinned. Upstream registries rotated/pruned the old digest, preventing the Docker build from pulling the base layer.
+3. **CI Breakage:** The combination of these issues caused the reproducible-build verification step to fail on all new PRs.
+
+### Contributing Factors
+- **Strict Pinning:** Pinning by digest instead of tag for the OS base image provided security but introduced fragility when upstream registries pruned old digests.
+- **Uncoupled Toolchains:** The reproducible build Dockerfile used a hardcoded Rust version instead of reading from a centralized source of truth, meaning it drifted out of sync.
+
+### Fix
+- Unpinned the `bookworm-slim` digest and switched to a stable tag (`35bf3fc`).
+- Bumped the pinned Rust toolchain to `1.86.0` to support the updated dependencies (`a319969`).
+- Corrected volume mount and output paths in the Dockerfile (`b621b46`).
+- Made the reproducible-build verification non-blocking temporarily while resolving the issue to unblock developers (`9abf33a`).
+
+### Prevention (Next-Time)
+- **Centralized Toolchain Config:** The reproducible build container should read the Rust version directly from the project's `rust-toolchain.toml` rather than hardcoding it in the Dockerfile.
+- **Automated Base Image Updates:** Use Dependabot or Renovate to automatically open PRs when base image digests are rotated, ensuring we test and bump them before they disappear.
+- **Scheduled CI Runs:** Run the reproducible-build pipeline on a nightly cron schedule. This would have caught the base image digest rot immediately, rather than surprising a developer on an unrelated feature PR.
