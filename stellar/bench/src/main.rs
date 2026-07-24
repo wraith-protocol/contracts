@@ -120,6 +120,36 @@ fn main() {
         ));
     }
 
+    for batch_size in [1u32, 5, 10, 20] {
+        rows.push(measure(
+            "stealth-sender",
+            "sponsored_announce",
+            format!("batch_size={batch_size}"),
+            |env| {
+                env.mock_all_auths();
+                let sender_contract_id = env.register(StealthSenderContract, ());
+                let announcer_id = env.register(StealthAnnouncerContract, ());
+                let client = StealthSenderContractClient::new(env, &sender_contract_id);
+                client.init(&announcer_id, &None, &None, &0);
+                let (token, sender) = funded_token(env, true);
+                let sponsor = Address::generate(env);
+                let mut entries: SorobanVec<stealth_sender::SponsoredEntry> = vec![env];
+                for i in 0..batch_size {
+                    entries.push_back(stealth_sender::SponsoredEntry {
+                        sender: sender.clone(),
+                        token: token.clone(),
+                        amount: 100,
+                        scheme_id: 1,
+                        stealth_address: Address::generate(env),
+                        ephemeral_pub_key: BytesN::from_array(env, &[i as u8; 32]),
+                        metadata: bytes(env, 32, i as u8),
+                    });
+                }
+                client.sponsored_announce(&sponsor, &entries);
+            },
+        ));
+    }
+
     for name_len in [3u32, 32] {
         rows.push(measure(
             "wraith-names",

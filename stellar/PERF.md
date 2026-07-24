@@ -42,6 +42,10 @@ These baseline numbers were captured before the optimization below.
 | stealth-sender | batch_send | batch_size=5 | 807519 | 120229 | 5 | 7 | 1068 | 1416 | 2420 |
 | stealth-sender | batch_send | batch_size=10 | 1633634 | 245649 | 5 | 12 | 1068 | 2536 | 4840 |
 | stealth-sender | batch_send | batch_size=25 | 4322337 | 690609 | 5 | 27 | 1068 | 5896 | 12100 |
+| stealth-sender | sponsored_announce | batch_size=1 | 233608 | 36052 | 7 | 4 | 1164 | 592 | 916 |
+| stealth-sender | sponsored_announce | batch_size=5 | 1098506 | 193054 | 11 | 16 | 2060 | 2672 | 2852 |
+| stealth-sender | sponsored_announce | batch_size=10 | 2445729 | 491659 | 16 | 31 | 3180 | 5272 | 5272 |
+| stealth-sender | sponsored_announce | batch_size=20 | 6018914 | 1430044 | 26 | 61 | 5420 | 10472 | 10112 |
 | wraith-names | register | name_len=3 | 59800 | 6269 | 1 | 2 | 104 | 544 | 204 |
 | wraith-names | register | name_len=32 | 61413 | 6327 | 1 | 2 | 104 | 572 | 232 |
 | wraith-names | resolve | hit | 46120 | 5537 | 1 | 0 | 476 | 0 | 0 |
@@ -108,6 +112,18 @@ These are the post-optimization harness results.
    validates lengths once and then does four indexed reads per recipient.
    Expected savings: low to medium; correctness and readability should be
    preserved.
+
+## Sponsored Announcement Cost
+
+The sponsored rows were measured with distinct authenticated senders per
+entry. Average resources per entry are calculated from each row:
+
+| Batch size | Instructions/entry | Mem bytes/entry | Event bytes/entry |
+|---:|---:|---:|---:|
+| 1 | 233608 | 36052 | 916 |
+| 5 | 219701 | 38611 | 570 |
+| 10 | 244573 | 49166 | 527 |
+| 20 | 300946 | 71502 | 506 |
 
 ## Concrete Diff Suggestions
 
