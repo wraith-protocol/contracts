@@ -6,7 +6,8 @@
   "scripts": {
     "verify:stellar-deployment": "node build/verify.js",
     "recover": "tsx scripts/recover-storage.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "abi:snapshot": "bash scripts/generate-abis.sh"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^13.0.0",

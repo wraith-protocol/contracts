@@ -100,6 +100,11 @@ jobs:
       - name: Run Upgrade Authority Enforcement Tests
         run: cargo test upgrade_auth --workspace
 
+      - name: Check ABI snapshot compatibility
+        run: |
+          pnpm abi:snapshot
+          git diff --exit-code abi/
+
       - name: Generate Stellar TypeScript bindings
         run: pnpm bindings:stellar
         working-directory: .
