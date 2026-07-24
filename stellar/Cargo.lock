@@ -2124,6 +2124,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wraith-stellar-bench-crossover"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stealth-announcer",
+ "stealth-batch-sender",
+ "stealth-sender",
+]
+
+[[package]]
 name = "zerocopy"
 version = "0.8.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
