@@ -1,0 +1,326 @@
+name: Stellar Reproducible Build Verification
+
+on:
+  schedule:
+    # Weekly: Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+    inputs:
+      network:
+        description: 'Stellar network to verify against'
+        required: true
+        default: 'testnet'
+        type: choice
+        options:
+          - testnet
+          - futurenet
+          - mainnet
+      skip_build:
+        description: 'Skip Docker build (use existing artifacts)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-and-verify:
+    name: Build & Verify
+    runs-on: ubuntu-latest
+    # The reproducible-build verification pins the Debian base + rust
+    # toolchain + stellar-cli + soroban-sdk to specific versions. As
+    # transitive Cargo deps drift (edition 2024, MSRV bumps, etc.) the
+    # pinned combination stops compiling until someone bumps and re-audits.
+    # Keep this workflow non-blocking so a bit-rotted pin never blocks
+    # main-line contract merges — the real gates (SAC Integration Smoke
+    # Tests, Stellar Futurenet Integration Tests) run separately and stay
+    # authoritative.
+    continue-on-error: true
+
+    outputs:
+      status: ${{ steps.verify.outputs.status }}
+      summary: ${{ steps.verify.outputs.summary }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Get Commit Hash
+        id: vars
+        run: echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build Docker Image
+        if: ${{ !inputs.skip_build }}
+        run: |
+          docker build \
+            --build-arg COMMIT_HASH=${{ steps.vars.outputs.commit }} \
+            -t stellar-attestation-builder \
+            -f stellar/build/Dockerfile .
+
+      - name: Generate Attestation
+        id: attest
+        run: |
+          docker create --name builder stellar-attestation-builder
+          docker start -a builder
+          docker cp builder:/workspace/stellar/build/attestation.json ./attestation.json
+          docker rm builder
+          echo "Attestation generated."
+
+      - name: Display Attestation
+        run: |
+          echo "## Attestation Contents" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat attestation.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        working-directory: stellar
+        run: npm ci
+
+      - name: Verify Contracts Against Testnet
+        id: verify
+        working-directory: stellar
+        env:
+          CONTRACT_IDS: ${{ secrets.STELLAR_TESTNET_CONTRACT_IDS || '' }}
+        run: |
+          set -euo pipefail
+          NETWORK="${{ github.event.inputs.network || 'testnet' }}"
+          RESULTS_DIR="verification/results"
+          mkdir -p "../${RESULTS_DIR}"
+
+          CONTRACT_IDS_JSON="${CONTRACT_IDS:-{}}"
+          COMMIT_HASH="${{ steps.vars.outputs.commit }}"
+
+          # Track counters in a temp file to avoid subshell scoping issues
+          COUNTERS=$(mktemp)
+          echo 'failures=0' > "$COUNTERS"
+          echo 'passes=0' >> "$COUNTERS"
+          echo 'errors=0' >> "$COUNTERS"
+
+          # Initialize checks array as JSON
+          echo '[]' > "../${RESULTS_DIR}/checks.json"
+
+          for contract in "stealth-announcer" "stealth-registry" "stealth-sender" "wraith-names"; do
+            CONTRACT_NAME="$contract"
+            CONTRACT_ID=$(echo "$CONTRACT_IDS_JSON" | jq -r ".[\"${CONTRACT_NAME}\"] // empty" 2>/dev/null || echo "")
+
+            STATUS_FILE="../verification/results/${CONTRACT_NAME}.json"
+
+            if [ -z "$CONTRACT_ID" ]; then
+              echo "⚠️  No contract ID for ${CONTRACT_NAME}. Recording attestation-only check."
+              node build/verify.js \
+                --contract "${CONTRACT_NAME}" \
+                --network "${NETWORK}" \
+                --commit "${COMMIT_HASH}" \
+                --attestation "../attestation.json" \
+                --output "${STATUS_FILE}" \
+                || true
+              source "$COUNTERS"
+              echo "errors=$((errors + 1))" > "$COUNTERS"
+            else
+              echo "🔍 Verifying ${CONTRACT_NAME} (${CONTRACT_ID})..."
+              if node build/verify.js \
+                --contract "${CONTRACT_NAME}" \
+                --id "${CONTRACT_ID}" \
+                --network "${NETWORK}" \
+                --commit "${COMMIT_HASH}" \
+                --attestation "../attestation.json" \
+                --output "${STATUS_FILE}"; then
+                source "$COUNTERS"
+                echo "passes=$((passes + 1))" > "$COUNTERS"
+              else
+                source "$COUNTERS"
+                echo "failures=$((failures + 1))" > "$COUNTERS"
+              fi
+            fi
+
+            # Append check result to checks array using jq
+            CHECK_CONTENT=$(cat "${STATUS_FILE}")
+            TMP_CHECK=$(mktemp)
+            jq --argjson check "$CHECK_CONTENT" '. += [$check]' "../${RESULTS_DIR}/checks.json" > "$TMP_CHECK"
+            mv "$TMP_CHECK" "../${RESULTS_DIR}/checks.json"
+          done
+
+          # Read counters
+          source "$COUNTERS"
+          rm -f "$COUNTERS"
+
+          # Determine overall status
+          if [ "$failures" -gt 0 ]; then
+            echo "status=fail" >> $GITHUB_OUTPUT
+            echo "summary=❌ ${failures} failure(s), ${passes} passed, ${errors} skipped" >> $GITHUB_OUTPUT
+          elif [ "$errors" -eq 4 ]; then
+            echo "status=pending" >> $GITHUB_OUTPUT
+            echo "summary=⚠️  Attestation generated but no contract IDs configured for verification" >> $GITHUB_OUTPUT
+          else
+            echo "status=pass" >> $GITHUB_OUTPUT
+            echo "summary=✅ All ${passes} contracts verified successfully" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish Verification Status
+        run: |
+          set -euo pipefail
+          NETWORK="${{ github.event.inputs.network || 'testnet' }}"
+          STATUS="${{ steps.verify.outputs.status }}"
+          SUMMARY="${{ steps.verify.outputs.summary }}"
+
+          tmpfile=$(mktemp)
+          jq -n \
+            --arg status "$STATUS" \
+            --arg summary "$SUMMARY" \
+            --arg network "$NETWORK" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg commit "${{ steps.vars.outputs.commit }}" \
+            --arg run_id "${{ github.run_id }}" \
+            --arg run_url "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            '{
+              status: $status,
+              summary: $summary,
+              network: $network,
+              last_run_timestamp: $timestamp,
+              commit: $commit,
+              run_id: $run_id,
+              run_url: $run_url,
+              checks: []
+            }' > "$tmpfile"
+
+          # Merge check results if they exist
+          if [ -f "stellar/verification/results/checks.json" ]; then
+            CHECKS=$(cat "stellar/verification/results/checks.json")
+            jq --argjson checks "$CHECKS" '.checks = $checks' "$tmpfile" > stellar/verification/status.json
+          else
+            cp "$tmpfile" stellar/verification/status.json
+          fi
+
+          rm -f "$tmpfile"
+          echo "Status written to stellar/verification/status.json"
+          cat stellar/verification/status.json | jq .
+
+      - name: Commit and Push status.json
+        run: |
+          set -euo pipefail
+          git config user.name "wraith-bot"
+          git config user.email "bot@wraith-protocol.xyz"
+
+          git add stellar/verification/status.json
+          if git diff --cached --quiet; then
+            echo "No changes to status.json"
+          else
+            git commit -m "chore(verification): update verification status [skip ci]"
+            git push
+            echo "✅ status.json committed and pushed"
+          fi
+
+      - name: Send Webhook Notification (on failure)
+        if: steps.verify.outputs.status == 'fail'
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          NETWORK="${{ github.event.inputs.network || 'testnet' }}"
+          STATUS="${{ steps.verify.outputs.status }}"
+          SUMMARY="${{ steps.verify.outputs.summary }}"
+          COMMIT="${{ steps.vars.outputs.commit }}"
+          RUN_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          # Slack notification
+          if [ -n "${SLACK_WEBHOOK:-}" ]; then
+            echo "Sending Slack notification..."
+            PAYLOAD=$(jq -n \
+              --arg status "$STATUS" \
+              --arg summary "$SUMMARY" \
+              --arg network "$NETWORK" \
+              --arg commit "$COMMIT" \
+              --arg run_url "$RUN_URL" \
+              '{
+                text: ("🔴 *Wraith Contract Verification Failed*\nNetwork: " + $network + "\nStatus: " + $status + "\nSummary: " + $summary + "\nCommit: " + $commit + "\nRun: " + $run_url)
+              }')
+            curl -s -X POST -H 'Content-Type: application/json' -d "$PAYLOAD" "$SLACK_WEBHOOK" || echo "Slack notification failed"
+          fi
+
+          # Discord notification
+          if [ -n "${DISCORD_WEBHOOK:-}" ]; then
+            echo "Sending Discord notification..."
+            DISCORD_PAYLOAD=$(jq -n \
+              --arg summary "$SUMMARY" \
+              --arg network "$NETWORK" \
+              --arg commit "$COMMIT" \
+              --arg run_url "$RUN_URL" \
+              '{
+                embeds: [{
+                  title: "🔴 Contract Verification Failed",
+                  color: 15548997,
+                  fields: [
+                    { name: "Network", value: $network, inline: true },
+                    { name: "Status", value: "fail", inline: true },
+                    { name: "Summary", value: $summary, inline: false },
+                    { name: "Commit", value: $commit, inline: true },
+                    { name: "Run", value: $run_url, inline: false }
+                  ],
+                  timestamp: (now | todate)
+                }]
+              }')
+            curl -s -X POST -H 'Content-Type: application/json' -d "$DISCORD_PAYLOAD" "$DISCORD_WEBHOOK" || echo "Discord notification failed"
+          fi
+
+      - name: Upload Verification Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verification-results
+          path: |
+            attestation.json
+            stellar/verification/status.json
+            stellar/verification/results/*.json
+
+  github-pages-deploy:
+    name: Deploy Status Page
+    needs: build-and-verify
+    if: always()
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Prepare deployment directory
+        run: |
+          mkdir -p _site
+          cp stellar/verification/index.html _site/
+          cp stellar/verification/status.json _site/
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
