@@ -26,6 +26,10 @@ pub enum DataKey {
     Guardians(BytesN<32>),
     /// Pending recovery proposal for a name.
     Recovery(BytesN<32>),
+    /// Pause admin address.
+    Admin,
+    /// Whether the contract is paused.
+    Paused,
 }
 
 /// A registered name entry.
@@ -84,6 +88,8 @@ pub enum NamesError {
     InvalidThreshold = 18,
     InvalidExtendLedger = 19,
     ParentNotFound = 20,
+    /// The contract is paused.
+    Paused = 21,
 }
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
@@ -97,6 +103,86 @@ pub struct WraithNamesContract;
 
 #[contractimpl]
 impl WraithNamesContract {
+    /// Initialise the contract by storing the pause admin.
+    ///
+    /// Must be called before `pause` / `unpause`. Idempotent: calling
+    /// more than once is a no-op (the first admin sticks).
+    pub fn init(env: Env, admin: Address) -> Result<(), NamesError> {
+        if !env.storage().instance().has(&DataKey::Admin) {
+            env.storage().instance().set(&DataKey::Admin, &admin);
+            Self::extend_instance_ttl(&env);
+        }
+        Ok(())
+    }
+
+    /// Pause the contract — admin only.
+    /// Prevents all registrations, updates, releases and TTL extensions
+    /// while paused. Lookups (`resolve`, `name_of`) remain available.
+    pub fn pause(env: Env, caller: Address) -> Result<(), NamesError> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set — call init first");
+        if caller != admin {
+            panic!("unauthorized: only admin can pause");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Paused, &true);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("paused"),), (caller,));
+        Ok(())
+    }
+
+    /// Unpause the contract — admin only.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), NamesError> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set — call init first");
+        if caller != admin {
+            panic!("unauthorized: only admin can unpause");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Paused, &false);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("unpaused"),), (caller,));
+        Ok(())
+    }
+
+    /// Returns true if the contract is paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    /// Internal: require the contract is not paused.
+    fn require_not_paused(env: &Env) -> Result<(), NamesError> {
+        if env
+            .storage()
+            .instance()
+            .get::<_, bool>(&DataKey::Paused)
+            .unwrap_or(false)
+        {
+            return Err(NamesError::Paused);
+        }
+        Ok(())
+    }
+
+    /// Internal: extend instance TTL.
+    fn extend_instance_ttl(env: &Env) {
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+    }
+
     /// Register a name mapped to a stealth meta-address.
     pub fn register(
         env: Env,
@@ -104,6 +190,7 @@ impl WraithNamesContract {
         name: String,
         stealth_meta_address: Bytes,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         owner.require_auth();
         Self::register_internal(&env, owner, name, stealth_meta_address)
     }
@@ -117,6 +204,7 @@ impl WraithNamesContract {
         signature: BytesN<64>,
         expiry: u64,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         let replay_key = Self::verify_on_behalf_authorization(
             &env,
             &owner,
@@ -142,6 +230,7 @@ impl WraithNamesContract {
         name: String,
         new_meta_address: Bytes,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         owner.require_auth();
         Self::update_internal(&env, owner, name, new_meta_address)
     }
@@ -155,6 +244,7 @@ impl WraithNamesContract {
         signature: BytesN<64>,
         expiry: u64,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         let replay_key = Self::verify_on_behalf_authorization(
             &env,
             &owner,
@@ -173,6 +263,7 @@ impl WraithNamesContract {
 
     /// Release a name, making it available again.
     pub fn release(env: Env, owner: Address, name: String) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         owner.require_auth();
         Self::release_internal(&env, owner, name)
     }
@@ -185,6 +276,7 @@ impl WraithNamesContract {
         signature: BytesN<64>,
         expiry: u64,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         let empty_meta = Bytes::new(&env);
         let replay_key = Self::verify_on_behalf_authorization(
             &env,
@@ -431,6 +523,7 @@ impl WraithNamesContract {
         name: String,
         extend_to_ledger: u32,
     ) -> Result<(), NamesError> {
+        Self::require_not_paused(&env)?;
         // Validate that extend_to_ledger is in the future
         let current_ledger = env.ledger().sequence();
         if extend_to_ledger <= current_ledger {
@@ -962,5 +1055,270 @@ mod test {
         // Dotted names are rejected (subdomain nesting is not yet supported).
         let result = client.try_register(&owner, &String::from_str(&env, "a.b.alice"), &meta);
         assert_eq!(result, Err(Ok(NamesError::InvalidNameCharacter)));
+    }
+
+    // ── Pause / unpause tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_pause_by_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        // Initially not paused
+        assert!(!client.is_paused());
+
+        // Admin pauses
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Admin unpauses
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_register_rejected_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "alice");
+        let meta = Bytes::from_slice(&env, &[1u8; 64]);
+
+        // Pause
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Register should be rejected
+        let result = client.try_register(&owner, &name, &meta);
+        assert_eq!(result, Err(Ok(NamesError::Paused)));
+    }
+
+    #[test]
+    fn test_update_rejected_when_paused() {
+        use soroban_sdk::testutils::Ledger;
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // Configure ledger for TTL
+        {
+            let mut info = env.ledger().get();
+            info.min_persistent_entry_ttl = 200_000;
+            env.ledger().set(info);
+        }
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "bob");
+        let meta = Bytes::from_slice(&env, &[2u8; 64]);
+        // Register first
+        client.register(&owner, &name, &meta);
+
+        // Pause
+        client.pause(&admin);
+
+        // Update should be rejected
+        let new_meta = Bytes::from_slice(&env, &[3u8; 64]);
+        let result = client.try_update(&owner, &name, &new_meta);
+        assert_eq!(result, Err(Ok(NamesError::Paused)));
+    }
+
+    #[test]
+    fn test_release_rejected_when_paused() {
+        use soroban_sdk::testutils::Ledger;
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        {
+            let mut info = env.ledger().get();
+            info.min_persistent_entry_ttl = 200_000;
+            env.ledger().set(info);
+        }
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "carol");
+        let meta = Bytes::from_slice(&env, &[4u8; 64]);
+        // Register first
+        client.register(&owner, &name, &meta);
+
+        // Pause
+        client.pause(&admin);
+
+        // Release should be rejected
+        let result = client.try_release(&owner, &name);
+        assert_eq!(result, Err(Ok(NamesError::Paused)));
+    }
+
+    #[test]
+    fn test_resolve_works_when_paused() {
+        use soroban_sdk::testutils::Ledger;
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        {
+            let mut info = env.ledger().get();
+            info.min_persistent_entry_ttl = 200_000;
+            env.ledger().set(info);
+        }
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "dave");
+        let meta = Bytes::from_slice(&env, &[5u8; 64]);
+        client.register(&owner, &name, &meta);
+
+        // Pause
+        client.pause(&admin);
+
+        // Resolve still works while paused
+        let resolved = client.resolve(&name);
+        assert_eq!(resolved, meta);
+    }
+
+    #[test]
+    fn test_name_of_works_when_paused() {
+        use soroban_sdk::testutils::Ledger;
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        {
+            let mut info = env.ledger().get();
+            info.min_persistent_entry_ttl = 200_000;
+            env.ledger().set(info);
+        }
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "eve");
+        let meta = Bytes::from_slice(&env, &[6u8; 64]);
+        client.register(&owner, &name, &meta);
+
+        // Pause
+        client.pause(&admin);
+
+        // name_of (reverse lookup) still works while paused
+        let resolved_name = client.name_of(&meta);
+        assert_eq!(resolved_name, name);
+    }
+
+    #[test]
+    fn test_extend_name_ttl_rejected_when_paused() {
+        use soroban_sdk::testutils::Ledger;
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        {
+            let mut info = env.ledger().get();
+            info.min_persistent_entry_ttl = 200_000;
+            info.max_entry_ttl = 300_000;
+            env.ledger().set(info);
+        }
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "frank");
+        let meta = Bytes::from_slice(&env, &[7u8; 64]);
+        client.register(&owner, &name, &meta);
+
+        // Pause
+        client.pause(&admin);
+
+        // extend_name_ttl should be rejected
+        let extend_to = env.ledger().sequence() + 1000;
+        let result = client.try_extend_name_ttl(&name, &extend_to);
+        assert_eq!(result, Err(Ok(NamesError::Paused)));
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError")]
+    fn test_admin_only_can_pause_wraith_names() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let attacker = Address::generate(&env);
+        client.init(&admin);
+
+        // Non-admin cannot pause (panic expected)
+        client.pause(&attacker);
+    }
+
+    #[test]
+    fn test_register_allowed_after_unpause() {
+        use soroban_sdk::testutils::Ledger;
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        {
+            let mut info = env.ledger().get();
+            info.min_persistent_entry_ttl = 200_000;
+            env.ledger().set(info);
+        }
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        let owner = Address::generate(&env);
+        let name = String::from_str(&env, "grace");
+        let meta = Bytes::from_slice(&env, &[8u8; 64]);
+
+        // Pause then unpause
+        client.pause(&admin);
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+
+        // Register should succeed
+        client.register(&owner, &name, &meta);
+        assert_eq!(client.resolve(&name), meta);
     }
 }

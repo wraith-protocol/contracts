@@ -18,6 +18,10 @@ pub enum DataKey {
     FeeRecipient,
     /// Protocol fee in basis points (max 50 bps, 0 = disabled).
     FeeBasisPoints,
+    /// Pause admin address.
+    Admin,
+    /// Whether the contract is paused.
+    Paused,
 }
 
 /// Errors that the sender contract can produce.
@@ -35,6 +39,8 @@ pub enum SenderError {
     TokenNotAllowed = 4,
     /// The fee configuration is invalid (e.g. fee > 50 bps, or fee > 0 with no recipient).
     InvalidFeeConfig = 5,
+    /// The contract is paused.
+    Paused = 6,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -98,6 +104,7 @@ impl StealthSenderContract {
         asset_policy: Option<Address>,
         fee_recipient: Option<Address>,
         fee_basis_points: u32,
+        admin: Address,
     ) -> Result<(), SenderError> {
         if env.storage().instance().has(&DataKey::Announcer) {
             return Err(SenderError::AlreadyInitialized);
@@ -112,6 +119,7 @@ impl StealthSenderContract {
         env.storage()
             .instance()
             .set(&DataKey::Announcer, &announcer);
+        env.storage().instance().set(&DataKey::Admin, &admin);
 
         if let Some(ref policy) = asset_policy {
             env.storage().instance().set(&DataKey::AssetPolicy, policy);
@@ -131,6 +139,67 @@ impl StealthSenderContract {
             .instance()
             .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
+        Ok(())
+    }
+
+    /// Pause the contract — admin only.
+    /// Prevents all sends and batch_sends while paused.
+    pub fn pause(env: Env, caller: Address) -> Result<(), SenderError> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        if caller != admin {
+            panic!("unauthorized: only admin can pause");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Paused, &true);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("paused"),), (caller,));
+        Ok(())
+    }
+
+    /// Unpause the contract — admin only.
+    pub fn unpause(env: Env, caller: Address) -> Result<(), SenderError> {
+        caller.require_auth();
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .expect("admin not set");
+        if caller != admin {
+            panic!("unauthorized: only admin can unpause");
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Paused, &false);
+        env.events()
+            .publish((soroban_sdk::symbol_short!("unpaused"),), (caller,));
+        Ok(())
+    }
+
+    /// Returns true if the contract is paused.
+    pub fn is_paused(env: Env) -> bool {
+        env.storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false)
+    }
+
+    /// Require the contract is not paused. Call at the top of every
+    /// state-mutating entrypoint that should be disabled during an incident.
+    fn require_not_paused(env: &Env) -> Result<(), SenderError> {
+        if env
+            .storage()
+            .instance()
+            .get::<_, bool>(&DataKey::Paused)
+            .unwrap_or(false)
+        {
+            return Err(SenderError::Paused);
+        }
         Ok(())
     }
 
@@ -154,6 +223,7 @@ impl StealthSenderContract {
         ephemeral_pub_key: BytesN<32>,
         metadata: Bytes,
     ) -> Result<(), SenderError> {
+        Self::require_not_paused(&env)?;
         sender.require_auth();
 
         let announcer: Address = env
@@ -258,6 +328,7 @@ impl StealthSenderContract {
         metadatas: Vec<Bytes>,
         amounts: Vec<i128>,
     ) -> Result<(), SenderError> {
+        Self::require_not_paused(&env)?;
         sender.require_auth();
 
         let len = stealth_addresses.len();
@@ -429,11 +500,13 @@ mod test {
             .address();
         let token_client = token::Client::new(&env, &token_id);
 
+        let admin = Address::generate(&env);
+
         // 4. Initialize StealthSender
-        client.init(&announcer_id, &None, &None, &0);
+        client.init(&announcer_id, &None, &None, &0, &admin);
 
         // Verify AlreadyInitialized error
-        let init_res = client.try_init(&announcer_id, &None, &None, &0);
+        let init_res = client.try_init(&announcer_id, &None, &None, &0, &admin);
         assert_eq!(init_res, Err(Ok(SenderError::AlreadyInitialized)));
 
         // Setup transfer accounts and mint tokens
@@ -495,13 +568,15 @@ mod test {
         let sender_id = env.register(StealthSenderContract, ());
         let client = StealthSenderContractClient::new(&env, &sender_id);
 
+        let admin = Address::generate(&env);
+
         let token_admin = Address::generate(&env);
         let token_id = env
             .register_stellar_asset_contract_v2(token_admin)
             .address();
         let token_client = token::Client::new(&env, &token_id);
 
-        client.init(&announcer_id, &None, &None, &0);
+        client.init(&announcer_id, &None, &None, &0, &admin);
 
         let sender = Address::generate(&env);
         let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
@@ -528,5 +603,184 @@ mod test {
         assert_eq!(token_client.balance(&sender), 500);
         assert_eq!(token_client.balance(&stealth_addr_1), 700);
         assert_eq!(token_client.balance(&stealth_addr_2), 800);
+    }
+
+    // ── Pause / unpause tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_pause_by_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
+
+        // Initially not paused
+        assert!(!client.is_paused());
+
+        // Admin pauses
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Admin unpauses
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_send_rejected_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // Configure test ledger to have large min_persistent_entry_ttl
+        env.ledger().with_mut(|li| {
+            li.min_persistent_entry_ttl = 600000;
+        });
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+        let token_client = soroban_sdk::token::Client::new(&env, &token_id);
+
+        let sender = Address::generate(&env);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        token_admin_client.mint(&sender, &1000);
+
+        let stealth_address = Address::generate(&env);
+        let epk = BytesN::from_array(&env, &[1u8; 32]);
+        let meta = Bytes::from_slice(&env, &[0u8; 1]);
+
+        // Pause the contract
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Send should be rejected
+        let result = client.try_send(
+            &sender, &token_id, &500, &1, &stealth_address, &epk, &meta,
+        );
+        assert_eq!(result, Err(Ok(SenderError::Paused)));
+
+        // Balances unchanged
+        assert_eq!(token_client.balance(&sender), 1000);
+        assert_eq!(token_client.balance(&stealth_address), 0);
+    }
+
+    #[test]
+    fn test_batch_send_rejected_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+        let token_client = soroban_sdk::token::Client::new(&env, &token_id);
+
+        let sender = Address::generate(&env);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        token_admin_client.mint(&sender, &2000);
+
+        let stealth_addr_1 = Address::generate(&env);
+        let stealth_addr_2 = Address::generate(&env);
+        let epk_1 = BytesN::from_array(&env, &[1u8; 32]);
+        let epk_2 = BytesN::from_array(&env, &[2u8; 32]);
+        let meta_1 = Bytes::from_slice(&env, &[10u8; 1]);
+        let meta_2 = Bytes::from_slice(&env, &[20u8; 1]);
+        let addresses = soroban_sdk::vec![&env, stealth_addr_1.clone(), stealth_addr_2.clone()];
+        let epks = soroban_sdk::vec![&env, epk_1, epk_2];
+        let metadatas = soroban_sdk::vec![&env, meta_1, meta_2];
+        let amounts = soroban_sdk::vec![&env, 700, 800];
+
+        // Pause
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        let result = client.try_batch_send(
+            &sender, &token_id, &1, &addresses, &epks, &metadatas, &amounts,
+        );
+        assert_eq!(result, Err(Ok(SenderError::Paused)));
+
+        // Balances unchanged
+        assert_eq!(token_client.balance(&sender), 2000);
+        assert_eq!(token_client.balance(&stealth_addr_1), 0);
+        assert_eq!(token_client.balance(&stealth_addr_2), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError")]
+    fn test_admin_only_can_pause() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let admin = Address::generate(&env);
+        let attacker = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
+
+        // Non-admin cannot pause (panic expected)
+        client.pause(&attacker);
+    }
+
+    #[test]
+    fn test_send_allowed_after_unpause() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        env.ledger().with_mut(|li| {
+            li.min_persistent_entry_ttl = 600000;
+        });
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+        let token_client = soroban_sdk::token::Client::new(&env, &token_id);
+
+        let sender = Address::generate(&env);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        token_admin_client.mint(&sender, &1000);
+
+        let stealth_address = Address::generate(&env);
+        let epk = BytesN::from_array(&env, &[1u8; 32]);
+        let meta = Bytes::from_slice(&env, &[0u8; 1]);
+
+        // Pause then unpause
+        client.pause(&admin);
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+
+        // Send should succeed
+        client.send(&sender, &token_id, &500, &1, &stealth_address, &epk, &meta);
+        assert_eq!(token_client.balance(&sender), 500);
+        assert_eq!(token_client.balance(&stealth_address), 500);
     }
 }
