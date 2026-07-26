@@ -16,16 +16,16 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, symbol_short,
-    token, Address, Bytes, Env, IntoVal, String, Symbol, Val,
+    contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env,
+    IntoVal, String, Symbol, Val,
 };
 
 // ---------------------------------------------------------------------------
 // TTL constants (matching the Wraith convention)
 // ---------------------------------------------------------------------------
 
-const TTL_THRESHOLD: u32 = 17280;   // ~1 day
-const TTL_EXTEND_TO: u32 = 518400;  // ~30 days
+const TTL_THRESHOLD: u32 = 17280; // ~1 day
+const TTL_EXTEND_TO: u32 = 518400; // ~30 days
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -160,10 +160,16 @@ impl GovernanceContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
         env.storage().instance().set(&DataKey::Quorum, &quorum);
-        env.storage().instance().set(&DataKey::VotingPeriod, &voting_period);
+        env.storage()
+            .instance()
+            .set(&DataKey::VotingPeriod, &voting_period);
         env.storage().instance().set(&DataKey::Timelock, &timelock);
-        env.storage().instance().set(&DataKey::NextProposalId, &1u32);
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .set(&DataKey::NextProposalId, &1u32);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         Ok(())
     }
@@ -176,7 +182,11 @@ impl GovernanceContract {
         Ok(GovernanceConfig {
             token: env.storage().instance().get(&DataKey::Token).unwrap(),
             quorum: env.storage().instance().get(&DataKey::Quorum).unwrap(),
-            voting_period: env.storage().instance().get(&DataKey::VotingPeriod).unwrap(),
+            voting_period: env
+                .storage()
+                .instance()
+                .get(&DataKey::VotingPeriod)
+                .unwrap(),
             timelock: env.storage().instance().get(&DataKey::Timelock).unwrap(),
         })
     }
@@ -211,9 +221,16 @@ impl GovernanceContract {
         }
 
         let current_ledger = env.ledger().sequence();
-        let voting_period: u32 =
-            env.storage().instance().get(&DataKey::VotingPeriod).unwrap();
-        let id: u32 = env.storage().instance().get(&DataKey::NextProposalId).unwrap();
+        let voting_period: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::VotingPeriod)
+            .unwrap();
+        let id: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::NextProposalId)
+            .unwrap();
 
         let proposal = Proposal {
             id,
@@ -236,12 +253,12 @@ impl GovernanceContract {
         env.storage()
             .instance()
             .set(&DataKey::NextProposalId, &(id + 1));
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
-        env.events().publish(
-            (symbol_short!("propose"), id),
-            (proposer, description),
-        );
+        env.events()
+            .publish((symbol_short!("propose"), id), (proposer, description));
 
         Ok(id)
     }
@@ -311,12 +328,17 @@ impl GovernanceContract {
 
         env.storage().instance().set(&proposal_key, &proposal);
 
-        let vote = Vote { support, weight: balance };
+        let vote = Vote {
+            support,
+            weight: balance,
+        };
         env.storage().persistent().set(&vote_key, &vote);
         env.storage()
             .persistent()
             .extend_ttl(&vote_key, TTL_THRESHOLD, TTL_EXTEND_TO);
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         env.events().publish(
             (symbol_short!("vote"), proposal_id),
@@ -395,8 +417,12 @@ impl GovernanceContract {
         // Mark executed.
         let mut executed_proposal = proposal;
         executed_proposal.executed = true;
-        env.storage().instance().set(&proposal_key, &executed_proposal);
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .set(&proposal_key, &executed_proposal);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         env.events()
             .publish((symbol_short!("execute"), proposal_id), ());
@@ -447,7 +473,9 @@ impl GovernanceContract {
 
         proposal.cancelled = true;
         env.storage().instance().set(&proposal_key, &proposal);
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         env.events()
             .publish((symbol_short!("cancel"), proposal_id), ());
@@ -494,15 +522,13 @@ mod test {
 
     /// Deploy the governance contract, a mock token, and a mock target.
     /// Returns (env, governance_client, token_id, target_id, admin).
-    fn setup_env()
-        -> (
-            Env,
-            GovernanceContractClient<'static>,
-            Address,
-            Address,
-            Address,
-        )
-    {
+    fn setup_env() -> (
+        Env,
+        GovernanceContractClient<'static>,
+        Address,
+        Address,
+        Address,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -532,8 +558,7 @@ mod test {
     #[test]
     fn test_happy_path_propose_vote_execute() {
         let (env, gov, token_id, target_id, _admin) = setup_env();
-        let token_admin_client =
-            soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
         let voter = Address::generate(&env);
         token_admin_client.mint(&voter, &200);
@@ -598,8 +623,7 @@ mod test {
     #[test]
     fn test_proposal_defeated_cannot_execute() {
         let (env, gov, token_id, _target_id, _admin) = setup_env();
-        let token_admin_client =
-            soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
         let voter = Address::generate(&env);
         token_admin_client.mint(&voter, &200);
@@ -628,8 +652,7 @@ mod test {
     #[test]
     fn test_double_vote_rejected() {
         let (env, gov, token_id, _target_id, _admin) = setup_env();
-        let token_admin_client =
-            soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
         let voter = Address::generate(&env);
         token_admin_client.mint(&voter, &200);
@@ -699,8 +722,7 @@ mod test {
     #[test]
     fn test_get_vote_returns_record() {
         let (env, gov, token_id, _target_id, _admin) = setup_env();
-        let token_admin_client =
-            soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
         let voter = Address::generate(&env);
         token_admin_client.mint(&voter, &500);
@@ -745,8 +767,7 @@ mod test {
     #[test]
     fn test_execute_before_timelock_rejected() {
         let (env, gov, token_id, _target_id, _admin) = setup_env();
-        let token_admin_client =
-            soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
 
         let voter = Address::generate(&env);
         token_admin_client.mint(&voter, &200);
