@@ -1,10 +1,9 @@
 use soroban_sdk::{
-    contract, contractimpl, contracttype, testutils::{Address as _, Events as _}, Address, Env,
-    Vec,
+    contract, contractimpl, contracttype,
+    testutils::{Address as _, Events as _},
+    Address, Env, Vec,
 };
-use stealth_sender::{
-    StealthSenderContract, StealthSenderContractClient, WithdrawalEntry,
-};
+use stealth_sender::{StealthSenderContract, StealthSenderContractClient, WithdrawalEntry};
 
 #[contract]
 pub struct FailOnNthToken;
@@ -54,12 +53,14 @@ impl FailOnNthToken {
             .get(&MockTokenDataKey::Balance(to.clone()))
             .unwrap_or(0);
 
-        env.storage()
-            .instance()
-            .set(&MockTokenDataKey::Balance(from.clone()), &(from_balance - amount));
-        env.storage()
-            .instance()
-            .set(&MockTokenDataKey::Balance(to.clone()), &(to_balance + amount));
+        env.storage().instance().set(
+            &MockTokenDataKey::Balance(from.clone()),
+            &(from_balance - amount),
+        );
+        env.storage().instance().set(
+            &MockTokenDataKey::Balance(to.clone()),
+            &(to_balance + amount),
+        );
 
         env.storage()
             .instance()

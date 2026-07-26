@@ -420,7 +420,11 @@ impl StealthSenderContract {
     ///
     /// The batch is capped at 30 entries. If any single entry cannot be
     /// processed, the entire batch aborts and no state changes are retained.
-    pub fn withdraw_many(env: Env, withdrawer: Address, entries: Vec<WithdrawalEntry>) -> Result<(), SenderError> {
+    pub fn withdraw_many(
+        env: Env,
+        withdrawer: Address,
+        entries: Vec<WithdrawalEntry>,
+    ) -> Result<(), SenderError> {
         withdrawer.require_auth();
 
         let len = entries.len();
