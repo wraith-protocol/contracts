@@ -16,7 +16,8 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-soroban-sdk = "22.0.0"
+soroban-sdk = "22.0.11"
+
 
 [profile.release]
 opt-level = "z"
@@ -24,3 +25,4 @@ strip = "debuginfo"
 lto = true
 codegen-units = 1
 panic = "abort"
+
