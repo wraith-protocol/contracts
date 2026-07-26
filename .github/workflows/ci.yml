@@ -152,6 +152,21 @@ jobs:
         run: git diff --exit-code
         working-directory: .
 
+  stellar-kani:
+    needs: changes
+    if: needs.changes.outputs.stellar == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify stealth-registry invariants with Kani
+        uses: model-checking/kani-github-action@v1
+        with:
+          working-directory: stellar/stealth-registry
+
   stellar-nightly:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
