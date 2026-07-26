@@ -10,6 +10,9 @@ use soroban_sdk::{
     String, Vec,
 };
 
+mod multisig;
+pub use multisig::RotationProposal;
+
 pub const WRAITH_NAMES_DOMAIN: &[u8] = b"wraith-names:v1";
 const MIN_LABEL_LEN: usize = 3;
 const MAX_NAME_LEN: usize = 32;
@@ -30,6 +33,12 @@ pub enum DataKey {
     Guardians(BytesN<32>),
     /// Pending recovery proposal for a name.
     Recovery(BytesN<32>),
+    /// Protocol-level governance multisig signer set.
+    MultisigSigners,
+    /// Protocol-level governance multisig quorum threshold.
+    MultisigThreshold,
+    /// Pending protocol-level signer-rotation proposal, if any.
+    PendingRotation,
 }
 
 /// A registered name entry.
@@ -713,6 +722,59 @@ impl WraithNamesContract {
         }
 
         Ok(())
+    }
+
+    /// One-time setup of the protocol-level governance signer set used to
+    /// authorise signer rotations.
+    pub fn init_multisig(
+        env: Env,
+        signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), NamesError> {
+        multisig::init(&env, signers, threshold)
+    }
+
+    /// Current protocol-level governance signer set.
+    pub fn signers(env: Env) -> Vec<Address> {
+        multisig::signers(&env)
+    }
+
+    /// Current protocol-level governance quorum threshold.
+    pub fn threshold(env: Env) -> u32 {
+        multisig::threshold(&env)
+    }
+
+    /// The pending signer-rotation proposal, if any.
+    pub fn pending_rotation(env: Env) -> Option<RotationProposal> {
+        multisig::pending_rotation(&env)
+    }
+
+    /// Propose a new signer set + threshold behind the rotation timelock.
+    /// `caller` must be a current signer; the proposal is auto-approved by
+    /// `caller`. Rejects thresholds that could never reach quorum.
+    pub fn propose_rotate_signers(
+        env: Env,
+        caller: Address,
+        new_signers: Vec<Address>,
+        new_threshold: u32,
+    ) -> Result<(), NamesError> {
+        multisig::propose_rotate_signers(&env, caller, new_signers, new_threshold)
+    }
+
+    /// Approve the pending signer-rotation proposal.
+    pub fn approve_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::approve_rotate_signers(&env, caller)
+    }
+
+    /// Execute the pending rotation once quorum is met and the timelock has
+    /// elapsed. Emits `SignersRotated`.
+    pub fn execute_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::execute_rotate_signers(&env, caller)
+    }
+
+    /// Cancel the pending rotation, clearing all of its state.
+    pub fn cancel_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::cancel_rotate_signers(&env, caller)
     }
 }
 
