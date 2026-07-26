@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
-    IntoVal, Vec,
+    IntoVal, Symbol, Vec,
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
@@ -35,6 +35,20 @@ pub enum SenderError {
     TokenNotAllowed = 4,
     /// The fee configuration is invalid (e.g. fee > 50 bps, or fee > 0 with no recipient).
     InvalidFeeConfig = 5,
+    /// The batch withdrawal exceeds the supported size cap.
+    BatchTooLarge = 6,
+}
+
+/// A single withdrawal entry for batched asset exits.
+#[contracttype]
+#[derive(Clone)]
+pub struct WithdrawalEntry {
+    /// The token contract to withdraw from or to transfer through.
+    pub token: Address,
+    /// The destination address for the withdrawal.
+    pub to: Address,
+    /// The amount to transfer in the token's base unit.
+    pub amount: i128,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -82,6 +96,7 @@ mod asset_policy_client {
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
+const MAX_WITHDRAW_BATCH_SIZE: u32 = 30;
 
 #[contract]
 pub struct StealthSenderContract;
@@ -369,6 +384,46 @@ impl StealthSenderContract {
                 (dimension_names::SCHEME_ID, scheme_id.into_val(&env)),
                 (dimension_names::TOKEN_ADDRESS, token.into_val(&env)),
             ],
+        );
+
+        Ok(())
+    }
+
+    /// Withdraw assets to multiple destinations in a single atomic transaction.
+    ///
+    /// The batch is capped at 30 entries. If any single entry cannot be
+    /// processed, the entire batch aborts and no state changes are retained.
+    pub fn withdraw_many(env: Env, withdrawer: Address, entries: Vec<WithdrawalEntry>) -> Result<(), SenderError> {
+        withdrawer.require_auth();
+
+        let len = entries.len();
+        if len > MAX_WITHDRAW_BATCH_SIZE {
+            return Err(SenderError::BatchTooLarge);
+        }
+
+        let mut total_amount: i128 = 0;
+
+        for i in 0..len {
+            let entry = entries.get(i).unwrap();
+            let token_client = token::Client::new(&env, &entry.token);
+            total_amount += entry.amount;
+
+            token_client.transfer(&withdrawer, &entry.to, &entry.amount);
+
+            env.events().publish(
+                (Symbol::new(&env, "Withdrawn"),),
+                (
+                    withdrawer.clone(),
+                    entry.to.clone(),
+                    entry.amount,
+                    entry.token.clone(),
+                ),
+            );
+        }
+
+        env.events().publish(
+            (Symbol::new(&env, "BatchWithdrawn"),),
+            (withdrawer, len as u32, total_amount),
         );
 
         Ok(())
