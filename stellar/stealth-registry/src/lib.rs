@@ -12,7 +12,7 @@ use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 pub enum DataKey {
     /// Maps (registrant, scheme_id) to their stealth meta-address (64 bytes:
     /// spending_pubkey || viewing_pubkey).
-    MetaAddress(Address, u32),
+    MetaAddress(Address, u16),
 }
 
 /// Errors that the registry can produce.
@@ -43,7 +43,7 @@ impl StealthRegistryContract {
     pub fn register_keys(
         env: Env,
         registrant: Address,
-        scheme_id: u32,
+        scheme_id: u16,
         stealth_meta_address: Bytes,
     ) -> Result<(), RegistryError> {
         // Require authorisation from the registrant.
@@ -73,7 +73,7 @@ impl StealthRegistryContract {
             contract_ids::STEALTH_REGISTRY,
             metric_names::REGISTER_COUNT,
             1,
-            soroban_sdk::vec![&env, (dimension_names::SCHEME_ID, scheme_id.into_val(&env))],
+            soroban_sdk::vec![&env, (dimension_names::SCHEME_ID, (scheme_id as u32).into_val(&env))],
         );
 
         Ok(())
@@ -84,7 +84,7 @@ impl StealthRegistryContract {
     /// # Arguments
     /// * `registrant` - The address whose meta-address is being removed (must authorise).
     /// * `scheme_id`  - The stealth address scheme identifier.
-    pub fn remove_keys(env: Env, registrant: Address, scheme_id: u32) -> Result<(), RegistryError> {
+    pub fn remove_keys(env: Env, registrant: Address, scheme_id: u16) -> Result<(), RegistryError> {
         // Require authorisation from the registrant.
         registrant.require_auth();
 
@@ -105,7 +105,7 @@ impl StealthRegistryContract {
             contract_ids::STEALTH_REGISTRY,
             metric_names::REMOVE_COUNT,
             1,
-            soroban_sdk::vec![&env, (dimension_names::SCHEME_ID, scheme_id.into_val(&env))],
+            soroban_sdk::vec![&env, (dimension_names::SCHEME_ID, (scheme_id as u32).into_val(&env))],
         );
 
         Ok(())
@@ -119,7 +119,7 @@ impl StealthRegistryContract {
     pub fn stealth_meta_address_of(
         env: Env,
         registrant: Address,
-        scheme_id: u32,
+        scheme_id: u16,
     ) -> Result<Bytes, RegistryError> {
         let key = DataKey::MetaAddress(registrant, scheme_id);
 

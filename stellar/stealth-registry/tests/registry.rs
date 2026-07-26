@@ -20,7 +20,7 @@ fn test_register_and_lookup() {
     env.mock_all_auths();
 
     let registrant = Address::generate(&env);
-    let scheme_id: u32 = 1;
+    let scheme_id: u16 = 1;
     let meta_address = Bytes::from_slice(&env, &[42u8; 64]);
 
     client.register_keys(&registrant, &scheme_id, &meta_address);
@@ -47,7 +47,7 @@ fn test_register_rejects_wrong_length() {
     env.mock_all_auths();
 
     let registrant = Address::generate(&env);
-    let scheme_id: u32 = 1;
+    let scheme_id: u16 = 1;
     let bad_meta = Bytes::from_slice(&env, &[0u8; 32]);
 
     let result = client.try_register_keys(&registrant, &scheme_id, &bad_meta);
@@ -59,7 +59,7 @@ fn test_lookup_not_registered() {
     let (env, client) = setup();
 
     let registrant = Address::generate(&env);
-    let scheme_id: u32 = 1;
+    let scheme_id: u16 = 1;
 
     let result = client.try_stealth_meta_address_of(&registrant, &scheme_id);
     assert_eq!(result, Err(Ok(RegistryError::NotRegistered)));
@@ -71,7 +71,7 @@ fn test_update_existing_registration() {
     env.mock_all_auths();
 
     let registrant = Address::generate(&env);
-    let scheme_id: u32 = 1;
+    let scheme_id: u16 = 1;
 
     let meta_v1 = Bytes::from_slice(&env, &[1u8; 64]);
     client.register_keys(&registrant, &scheme_id, &meta_v1);
@@ -94,7 +94,7 @@ fn test_remove_keys() {
     env.mock_all_auths();
 
     let registrant = Address::generate(&env);
-    let scheme_id: u32 = 1;
+    let scheme_id: u16 = 1;
     let meta_address = Bytes::from_slice(&env, &[42u8; 64]);
 
     client.register_keys(&registrant, &scheme_id, &meta_address);
@@ -110,7 +110,7 @@ fn test_remove_not_registered() {
     env.mock_all_auths();
 
     let registrant = Address::generate(&env);
-    let scheme_id: u32 = 1;
+    let scheme_id: u16 = 1;
 
     let result = client.try_remove_keys(&registrant, &scheme_id);
     assert_eq!(result, Err(Ok(RegistryError::NotRegistered)));

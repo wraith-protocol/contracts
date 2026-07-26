@@ -11,7 +11,7 @@ The protocol manages on-chain storage across three main stateful contracts (excl
 | Contract | Operation / Function | Storage Key | Storage Tier | Data Type / Serialized Structure | Estimated Size (Payload + Key) | Entry Size with Overhead | Creator / Submitter | Renewal Responsibility |
 |---|---|---|---|---|---|---|---|---|
 | **stealth-sender** | `init` | `DataKey::Announcer` | **Instance** | `Address` | ~36 bytes | ~100 bytes (shared) | Deployer | Deployer / Contract Admins |
-| **stealth-registry** | `register_keys` | `DataKey::MetaAddress(Address, u32)` | **Persistent** | `Bytes` (64-byte payload) | ~112 bytes | ~176 bytes (separate) | Registrant (User) | User / Client (Permissionless) |
+| **stealth-registry** | `register_keys` | `DataKey::MetaAddress(Address, u16)` | **Persistent** | `Bytes` (64-byte payload) | ~110 bytes | ~174 bytes (separate) | Registrant (User) | User / Client (Permissionless) |
 | **wraith-names** | `register` / `update` | `DataKey::Name(BytesN<32>)` | **Persistent** | `NameEntry` (`name: String`, `stealth_meta_address: Bytes`, `owner: Address`) | ~160 bytes | ~224 bytes (separate) | Registrant (User) | User / Client (Permissionless) |
 | **wraith-names** | `register` / `update` | `DataKey::Reverse(BytesN<32>)` | **Persistent** | `BytesN<32>` (32-byte name hash) | ~72 bytes | ~136 bytes (separate) | Registrant (User) | User / Client (Permissionless) |
 

@@ -22,7 +22,7 @@ fn test_finding_storage_key_collision_risk() {
     let registrant1 = Address::generate(&env);
     let registrant2 = Address::generate(&env);
 
-    let scheme_id = 1u32;
+    let scheme_id = 1u16;
 
     let meta1 = Bytes::from_slice(&env, &[1u8; 64]);
     let meta2 = Bytes::from_slice(&env, &[2u8; 64]);
@@ -49,7 +49,7 @@ fn test_finding_replacement_squatting() {
 
     let attacker = Address::generate(&env);
     let victim = Address::generate(&env);
-    let scheme_id = 1u32;
+    let scheme_id = 1u16;
     let meta = Bytes::from_slice(&env, &[42u8; 64]);
 
     // Attacker tries to register for the victim.
@@ -83,7 +83,7 @@ fn test_finding_scheme_id_forward_compatibility() {
 
     let registrant = Address::generate(&env);
     // Use an arbitrarily high, currently unknown scheme ID
-    let future_scheme_id = 9999u32;
+    let future_scheme_id = 9999u16;
     let meta = Bytes::from_slice(&env, &[8u8; 64]);
 
     // Registration should succeed without knowing what scheme 9999 is
@@ -103,7 +103,7 @@ fn test_finding_replay_protection_across_write_boundary() {
     env.mock_all_auths();
 
     let registrant = Address::generate(&env);
-    let scheme_id = 1u32;
+    let scheme_id = 1u16;
 
     let meta_v1 = Bytes::from_slice(&env, &[1u8; 64]);
     client.register_keys(&registrant, &scheme_id, &meta_v1);

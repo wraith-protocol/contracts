@@ -27,7 +27,7 @@ fn meta_address(env: &Env, data: [u8; 64]) -> Bytes {
 proptest! {
     #![proptest_config(ProptestConfig { cases: cases(), .. ProptestConfig::default() })]
     #[test]
-    fn register_then_lookup_round_trips(scheme_id in any::<u32>(), meta in any::<[u8; 64]>()) {
+    fn register_then_lookup_round_trips(scheme_id in any::<u16>(), meta in any::<[u8; 64]>()) {
         let env = env();
         env.mock_all_auths();
         let contract_id = env.register(StealthRegistryContract, ());
@@ -41,7 +41,7 @@ proptest! {
     }
 
     #[test]
-    fn updating_same_key_replaces_previous_value(scheme_id in any::<u32>(), first in any::<[u8; 64]>(), second in any::<[u8; 64]>()) {
+    fn updating_same_key_replaces_previous_value(scheme_id in any::<u16>(), first in any::<[u8; 64]>(), second in any::<[u8; 64]>()) {
         let env = env();
         env.mock_all_auths();
         let contract_id = env.register(StealthRegistryContract, ());
@@ -57,7 +57,7 @@ proptest! {
     }
 
     #[test]
-    fn scheme_ids_are_independent(first_scheme in any::<u32>(), second_scheme in any::<u32>(), first in any::<[u8; 64]>(), second in any::<[u8; 64]>()) {
+    fn scheme_ids_are_independent(first_scheme in any::<u16>(), second_scheme in any::<u16>(), first in any::<[u8; 64]>(), second in any::<[u8; 64]>()) {
         prop_assume!(first_scheme != second_scheme);
 
         let env = env();
@@ -76,7 +76,7 @@ proptest! {
     }
 
     #[test]
-    fn rejects_any_non_64_byte_meta_address(scheme_id in any::<u32>(), data in prop::collection::vec(any::<u8>(), 0..96)) {
+    fn rejects_any_non_64_byte_meta_address(scheme_id in any::<u16>(), data in prop::collection::vec(any::<u8>(), 0..96)) {
         prop_assume!(data.len() != 64);
 
         let env = env();
@@ -91,7 +91,7 @@ proptest! {
     }
 
     #[test]
-    fn successful_register_emits_one_verbatim_event(scheme_id in any::<u32>(), meta in any::<[u8; 64]>()) {
+    fn successful_register_emits_one_verbatim_event(scheme_id in any::<u16>(), meta in any::<[u8; 64]>()) {
         let env = env();
         env.mock_all_auths();
         let contract_id = env.register(StealthRegistryContract, ());
