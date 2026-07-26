@@ -6,6 +6,9 @@ use soroban_sdk::{
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
+#[cfg(test)]
+mod test;
+
 /// Maximum transfers per batch — justified against Soroban's ~100M instruction
 /// budget. Each transfer costs ~500K instructions (token transfer + event emit).
 /// 100 transfers = ~50M instructions, leaving headroom for overhead.
