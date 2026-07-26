@@ -232,8 +232,11 @@ fn adversarial_name_33_chars_rejected() {
     let owner = Address::generate(&env);
     let meta = Bytes::from_slice(&env, &[1u8; 64]);
 
-    let result =
-        client.try_register(&owner, &String::from_str(&env, "abcdefghijklmnopqrstuvwxyzaaaaaaa"), &meta);
+    let result = client.try_register(
+        &owner,
+        &String::from_str(&env, "abcdefghijklmnopqrstuvwxyzaaaaaaa"),
+        &meta,
+    );
     assert_eq!(result, Err(Ok(NamesError::NameTooLong)));
 }
 
@@ -249,7 +252,11 @@ fn adversarial_name_32_chars_accepted() {
     let owner = Address::generate(&env);
     let meta = Bytes::from_slice(&env, &[1u8; 64]);
 
-    client.register(&owner, &String::from_str(&env, "abcdefghijklmnopqrstuvwxyzaaaa"), &meta);
+    client.register(
+        &owner,
+        &String::from_str(&env, "abcdefghijklmnopqrstuvwxyzaaaa"),
+        &meta,
+    );
     let resolved = client.resolve(&String::from_str(&env, "abcdefghijklmnopqrstuvwxyzaaaa"));
     assert_eq!(resolved, meta);
 }

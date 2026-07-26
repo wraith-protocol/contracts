@@ -73,8 +73,12 @@ impl StealthVaultContract {
         if env.storage().instance().has(&DataKey::Announcer) {
             return Err(VaultError::AlreadyInitialized);
         }
-        env.storage().instance().set(&DataKey::Announcer, &announcer);
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .set(&DataKey::Announcer, &announcer);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
         Ok(())
     }
 
@@ -100,7 +104,9 @@ impl StealthVaultContract {
             .get(&DataKey::Announcer)
             .ok_or(VaultError::NotInitialized)?;
 
-        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
 
         // Build deposit_id from key fields
         let seq = env.ledger().sequence();
@@ -131,15 +137,24 @@ impl StealthVaultContract {
         env.storage()
             .persistent()
             .set(&DataKey::Deposit(deposit_id.clone()), &entry);
-        env.storage()
-            .persistent()
-            .extend_ttl(&DataKey::Deposit(deposit_id.clone()), TTL_THRESHOLD, TTL_EXTEND_TO);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Deposit(deposit_id.clone()),
+            TTL_THRESHOLD,
+            TTL_EXTEND_TO,
+        );
 
         // Emit announcement so recipient finds it during normal scan
         // metadata = [view_tag] where view_tag = first byte of ephemeral_pub_key
         let view_tag = ephemeral_pub_key.get(0).unwrap_or(0);
         let metadata = Bytes::from_slice(&env, &[view_tag]);
-        announcer_client::announce(&env, &announcer, 1u32, &recipient, &ephemeral_pub_key, &metadata);
+        announcer_client::announce(
+            &env,
+            &announcer,
+            1u32,
+            &recipient,
+            &ephemeral_pub_key,
+            &metadata,
+        );
 
         // Emit deposit event
         env.events().publish(
@@ -238,7 +253,13 @@ mod test {
         }
     }
 
-    fn setup() -> (Env, StealthVaultContractClient<'static>, Address, Address, Address) {
+    fn setup() -> (
+        Env,
+        StealthVaultContractClient<'static>,
+        Address,
+        Address,
+        Address,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
         env.ledger().with_mut(|li| {
@@ -254,7 +275,9 @@ mod test {
         let recipient = Address::generate(&env);
 
         let token_admin = Address::generate(&env);
-        let token_id = env.register_stellar_asset_contract_v2(token_admin).address();
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
         let token_admin_client = token::StellarAssetClient::new(&env, &token_id);
         token_admin_client.mint(&sender, &10000);
 
