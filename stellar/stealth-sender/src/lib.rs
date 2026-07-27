@@ -6,6 +6,9 @@ use soroban_sdk::{
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
+mod multisig;
+pub use multisig::RotationProposal;
+
 /// Storage keys.
 #[contracttype]
 #[derive(Clone)]
@@ -18,6 +21,12 @@ pub enum DataKey {
     FeeRecipient,
     /// Protocol fee in basis points (max 50 bps, 0 = disabled).
     FeeBasisPoints,
+    /// Governance multisig signer set.
+    MultisigSigners,
+    /// Governance multisig quorum threshold.
+    MultisigThreshold,
+    /// Pending signer-rotation proposal, if any.
+    PendingRotation,
 }
 
 /// Errors that the sender contract can produce.
@@ -35,21 +44,24 @@ pub enum SenderError {
     TokenNotAllowed = 4,
     /// The fee configuration is invalid (e.g. fee > 50 bps, or fee > 0 with no recipient).
     InvalidFeeConfig = 5,
-    /// The sponsored announcement batch exceeds the maximum entry count.
-    SponsoredBatchTooLarge = 6,
-}
-
-/// A token transfer and announcement authenticated by its sender.
-#[contracttype]
-#[derive(Clone)]
-pub struct SponsoredEntry {
-    pub sender: Address,
-    pub token: Address,
-    pub amount: i128,
-    pub scheme_id: u32,
-    pub stealth_address: Address,
-    pub ephemeral_pub_key: BytesN<32>,
-    pub metadata: Bytes,
+    /// The governance multisig has not been initialised.
+    MultisigNotInitialized = 6,
+    /// The governance multisig has already been initialised.
+    MultisigAlreadyInitialized = 7,
+    /// The caller is not a current governance signer.
+    NotSigner = 8,
+    /// The requested threshold is invalid (zero, or greater than signer count).
+    InvalidThreshold = 9,
+    /// A signer-rotation proposal is already pending.
+    RotationAlreadyPending = 10,
+    /// No signer-rotation proposal is pending.
+    NoPendingRotation = 11,
+    /// The caller has already approved the pending rotation.
+    AlreadyApprovedRotation = 12,
+    /// The pending rotation has not collected enough approvals yet.
+    QuorumNotMet = 13,
+    /// The rotation timelock has not elapsed yet.
+    TimelockNotElapsed = 14,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -389,101 +401,57 @@ impl StealthSenderContract {
         Ok(())
     }
 
-    /// Transfer tokens and emit announcements for entries paid for by a sponsor.
-    ///
-    /// The sponsor and every entry sender must authorise the invocation. The
-    /// sponsor pays the transaction fee through Stellar fee-bump mechanics;
-    /// entry senders remain responsible for their own token transfers.
-    pub fn sponsored_announce(
+    /// One-time setup of the governance signer set used to authorise signer
+    /// rotations. Independent of `init` — does not gate `send`/`batch_send`.
+    pub fn init_multisig(
         env: Env,
-        sponsor: Address,
-        entries: Vec<SponsoredEntry>,
+        signers: Vec<Address>,
+        threshold: u32,
     ) -> Result<(), SenderError> {
-        if entries.len() > MAX_SPONSORED_ENTRIES {
-            return Err(SenderError::SponsoredBatchTooLarge);
-        }
+        multisig::init(&env, signers, threshold)
+    }
 
-        sponsor.require_auth();
+    /// Current governance signer set.
+    pub fn signers(env: Env) -> Vec<Address> {
+        multisig::signers(&env)
+    }
 
-        let announcer: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Announcer)
-            .ok_or(SenderError::NotInitialized)?;
+    /// Current governance quorum threshold.
+    pub fn threshold(env: Env) -> u32 {
+        multisig::threshold(&env)
+    }
 
-        env.storage()
-            .instance()
-            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+    /// The pending signer-rotation proposal, if any.
+    pub fn pending_rotation(env: Env) -> Option<RotationProposal> {
+        multisig::pending_rotation(&env)
+    }
 
-        let mut total_amount: i128 = 0;
-        for entry in entries.iter() {
-            entry.sender.require_auth();
+    /// Propose a new signer set + threshold behind the rotation timelock.
+    /// `caller` must be a current signer; the proposal is auto-approved by
+    /// `caller`. Rejects thresholds that could never reach quorum.
+    pub fn propose_rotate_signers(
+        env: Env,
+        caller: Address,
+        new_signers: Vec<Address>,
+        new_threshold: u32,
+    ) -> Result<(), SenderError> {
+        multisig::propose_rotate_signers(&env, caller, new_signers, new_threshold)
+    }
 
-            if let Some(policy_address) = env
-                .storage()
-                .instance()
-                .get::<_, Address>(&DataKey::AssetPolicy)
-            {
-                if !asset_policy_client::check_asset(&env, &policy_address, &entry.token) {
-                    return Err(SenderError::TokenNotAllowed);
-                }
-            }
+    /// Approve the pending signer-rotation proposal.
+    pub fn approve_rotate_signers(env: Env, caller: Address) -> Result<(), SenderError> {
+        multisig::approve_rotate_signers(&env, caller)
+    }
 
-            let fee_basis_points: u32 = env
-                .storage()
-                .instance()
-                .get(&DataKey::FeeBasisPoints)
-                .unwrap_or(0);
-            let fee_recipient: Option<Address> =
-                env.storage().instance().get(&DataKey::FeeRecipient);
-            let fee = if fee_basis_points > 0 && fee_recipient.is_some() {
-                (entry.amount * (fee_basis_points as i128)) / 10000
-            } else {
-                0
-            };
-            let transfer_amount = entry.amount - fee;
-            let token_client = token::Client::new(&env, &entry.token);
+    /// Execute the pending rotation once quorum is met and the timelock has
+    /// elapsed. Emits `SignersRotated`.
+    pub fn execute_rotate_signers(env: Env, caller: Address) -> Result<(), SenderError> {
+        multisig::execute_rotate_signers(&env, caller)
+    }
 
-            if fee > 0 {
-                if let Some(ref recipient) = fee_recipient {
-                    token_client.transfer(&entry.sender, recipient, &fee);
-                }
-            }
-            token_client.transfer(&entry.sender, &entry.stealth_address, &transfer_amount);
-            announcer_client::announce(
-                &env,
-                &announcer,
-                entry.scheme_id,
-                &entry.stealth_address,
-                &entry.ephemeral_pub_key,
-                &entry.metadata,
-            );
-            total_amount += entry.amount;
-        }
-
-        emit_metric(
-            &env,
-            contract_ids::STEALTH_SENDER,
-            metric_names::BATCH_SEND_COUNT,
-            1,
-            soroban_sdk::vec![&env],
-        );
-        emit_metric(
-            &env,
-            contract_ids::STEALTH_SENDER,
-            metric_names::BATCH_SEND_VOLUME,
-            total_amount,
-            soroban_sdk::vec![&env],
-        );
-        emit_metric(
-            &env,
-            contract_ids::STEALTH_SENDER,
-            metric_names::BATCH_SIZE,
-            entries.len() as i128,
-            soroban_sdk::vec![&env],
-        );
-
-        Ok(())
+    /// Cancel the pending rotation, clearing all of its state.
+    pub fn cancel_rotate_signers(env: Env, caller: Address) -> Result<(), SenderError> {
+        multisig::cancel_rotate_signers(&env, caller)
     }
 }
 
@@ -642,81 +610,146 @@ mod test {
         assert_eq!(token_client.balance(&stealth_addr_2), 800);
     }
 
-    #[test]
-    fn test_sponsored_announce_transfers_each_entry() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let announcer_id = env.register(MockAnnouncer, ());
+    fn setup_multisig(env: &Env) -> (StealthSenderContractClient, Vec<Address>) {
         let sender_id = env.register(StealthSenderContract, ());
-        let client = StealthSenderContractClient::new(&env, &sender_id);
-        client.init(&announcer_id, &None, &None, &0);
+        let client = StealthSenderContractClient::new(env, &sender_id);
 
-        let token_id = env
-            .register_stellar_asset_contract_v2(Address::generate(&env))
-            .address();
-        let token_client = token::Client::new(&env, &token_id);
-        let sponsor = Address::generate(&env);
-        let sender_1 = Address::generate(&env);
-        let sender_2 = Address::generate(&env);
-        let stealth_1 = Address::generate(&env);
-        let stealth_2 = Address::generate(&env);
-        let asset_client = token::StellarAssetClient::new(&env, &token_id);
-        asset_client.mint(&sender_1, &700);
-        asset_client.mint(&sender_2, &800);
-
-        let entries = soroban_sdk::vec![
-            &env,
-            SponsoredEntry {
-                sender: sender_1.clone(),
-                token: token_id.clone(),
-                amount: 700,
-                scheme_id: 1,
-                stealth_address: stealth_1.clone(),
-                ephemeral_pub_key: BytesN::from_array(&env, &[1u8; 32]),
-                metadata: Bytes::from_slice(&env, &[10u8]),
-            },
-            SponsoredEntry {
-                sender: sender_2.clone(),
-                token: token_id.clone(),
-                amount: 800,
-                scheme_id: 1,
-                stealth_address: stealth_2.clone(),
-                ephemeral_pub_key: BytesN::from_array(&env, &[2u8; 32]),
-                metadata: Bytes::from_slice(&env, &[20u8]),
-            },
+        let signers = soroban_sdk::vec![
+            env,
+            Address::generate(env),
+            Address::generate(env),
+            Address::generate(env),
+            Address::generate(env),
+            Address::generate(env),
         ];
+        client.init_multisig(&signers, &3);
 
-        client.sponsored_announce(&sponsor, &entries);
-
-        assert_eq!(token_client.balance(&stealth_1), 700);
-        assert_eq!(token_client.balance(&stealth_2), 800);
-        assert_eq!(token_client.balance(&sender_1), 0);
-        assert_eq!(token_client.balance(&sender_2), 0);
+        (client, signers)
     }
 
     #[test]
-    fn test_sponsored_announce_rejects_more_than_twenty_entries() {
+    fn test_init_multisig_rejects_invalid_threshold() {
         let env = Env::default();
-        let sender = Address::generate(&env);
-        let token = Address::generate(&env);
-        let mut entries = soroban_sdk::Vec::new(&env);
-        for _ in 0..21 {
-            entries.push_back(SponsoredEntry {
-                sender: sender.clone(),
-                token: token.clone(),
-                amount: 1,
-                scheme_id: 1,
-                stealth_address: Address::generate(&env),
-                ephemeral_pub_key: BytesN::from_array(&env, &[1u8; 32]),
-                metadata: Bytes::new(&env),
-            });
-        }
+        env.mock_all_auths();
 
         let sender_id = env.register(StealthSenderContract, ());
         let client = StealthSenderContractClient::new(&env, &sender_id);
-        let result = client.try_sponsored_announce(&Address::generate(&env), &entries);
 
-        assert_eq!(result, Err(Ok(SenderError::SponsoredBatchTooLarge)));
+        let signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+
+        // Zero threshold is unreachable.
+        let res = client.try_init_multisig(&signers, &0);
+        assert_eq!(res, Err(Ok(SenderError::InvalidThreshold)));
+
+        // Threshold greater than signer count is unreachable.
+        let res = client.try_init_multisig(&signers, &3);
+        assert_eq!(res, Err(Ok(SenderError::InvalidThreshold)));
+    }
+
+    #[test]
+    fn test_propose_rotate_signers_rejects_invalid_threshold() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, signers) = setup_multisig(&env);
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+
+        let res = client.try_propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &0);
+        assert_eq!(res, Err(Ok(SenderError::InvalidThreshold)));
+
+        let res = client.try_propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &3);
+        assert_eq!(res, Err(Ok(SenderError::InvalidThreshold)));
+
+        // No proposal was recorded by the rejected attempts.
+        assert!(client.pending_rotation().is_none());
+    }
+
+    #[test]
+    fn test_rotate_signers_requires_quorum_and_timelock() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, signers) = setup_multisig(&env);
+
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
+
+        // Only one rotation may be pending at a time.
+        let res = client.try_propose_rotate_signers(&signers.get(1).unwrap(), &new_signers, &2);
+        assert_eq!(res, Err(Ok(SenderError::RotationAlreadyPending)));
+
+        // Only 1 of 3 required approvals so far (the proposer's).
+        let res = client.try_execute_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(SenderError::QuorumNotMet)));
+
+        client.approve_rotate_signers(&signers.get(1).unwrap());
+        client.approve_rotate_signers(&signers.get(2).unwrap());
+
+        // Quorum met, but the timelock has not elapsed yet.
+        let res = client.try_execute_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(SenderError::TimelockNotElapsed)));
+
+        env.ledger().with_mut(|li| {
+            li.timestamp += multisig::ROTATION_TIMELOCK_SECS;
+        });
+
+        client.execute_rotate_signers(&signers.get(0).unwrap());
+
+        assert_eq!(client.signers(), new_signers);
+        assert_eq!(client.threshold(), 2);
+        assert!(client.pending_rotation().is_none());
+    }
+
+    #[test]
+    fn test_cancelled_rotation_clears_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, signers) = setup_multisig(&env);
+
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
+        client.approve_rotate_signers(&signers.get(1).unwrap());
+
+        client.cancel_rotate_signers(&signers.get(2).unwrap());
+
+        // Cancelling clears the proposal entirely.
+        assert!(client.pending_rotation().is_none());
+
+        // The original signer set / threshold are untouched by the aborted rotation.
+        assert_eq!(client.signers(), signers);
+        assert_eq!(client.threshold(), 3);
+
+        // A stale approve/execute/cancel against the cleared proposal fails cleanly.
+        let res = client.try_approve_rotate_signers(&signers.get(3).unwrap());
+        assert_eq!(res, Err(Ok(SenderError::NoPendingRotation)));
+        let res = client.try_execute_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(SenderError::NoPendingRotation)));
+        let res = client.try_cancel_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(SenderError::NoPendingRotation)));
+
+        // A fresh proposal can be made immediately — no leftover state blocks it.
+        let other_signers =
+            soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &other_signers, &2);
+        assert!(client.pending_rotation().is_some());
+    }
+
+    #[test]
+    fn test_non_signer_cannot_propose_or_approve() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, signers) = setup_multisig(&env);
+        let outsider = Address::generate(&env);
+
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+        let res = client.try_propose_rotate_signers(&outsider, &new_signers, &2);
+        assert_eq!(res, Err(Ok(SenderError::NotSigner)));
+
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
+        let res = client.try_approve_rotate_signers(&outsider);
+        assert_eq!(res, Err(Ok(SenderError::NotSigner)));
     }
 }

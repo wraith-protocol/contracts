@@ -139,6 +139,102 @@ Commit `multisig-setup.log` to your ops runbook repo (not this repository) after
 
 ---
 
+## On-Chain Signer Rotation (`stealth-sender`, `wraith-names`)
+
+The account-level Stellar multisig above governs the *admin key* that submits
+transactions. Separately, `stealth-sender` and `wraith-names` — the two
+contracts GOVERNANCE.md marks **Timelock + Multisig Upgradable** — each keep
+their own on-chain governance signer set and quorum threshold, used to
+authorise a `rotate_signers` flow without a contract redeploy (issue #104).
+
+This is intentionally a second, independent layer: the Stellar account
+multisig above controls *who can submit transactions at all*; the contract's
+own signer set controls *quorum + timelock for signer rotation specifically*,
+enforced by the contract itself regardless of which account submitted the
+call.
+
+### Flow
+
+1. **Propose** — any current signer proposes a new signer set + threshold.
+   Their approval is recorded automatically. Only one rotation may be
+   pending at a time.
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- propose_rotate_signers \
+     --caller <SIGNER_G...> \
+     --new_signers '["G_NEW1","G_NEW2","G_NEW3","G_NEW4","G_NEW5"]' \
+     --new_threshold 3
+   ```
+   Rejected with `InvalidThreshold` if `new_threshold` is `0` or greater than
+   `new_signers.len()` — a quorum that could never be reached.
+
+2. **Approve** — remaining current signers add their approval until quorum
+   (the *current* threshold) is met:
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- approve_rotate_signers \
+     --caller <SIGNER_G...>
+   ```
+
+3. **Wait out the timelock** — 7 days from the `propose` call
+   (`ROTATION_TIMELOCK_SECS`), mirroring the upgrade timelock in
+   GOVERNANCE.md.
+
+4. **Execute** — once quorum is met and the timelock has elapsed, any
+   current signer executes the rotation. This swaps in the new signer set
+   and threshold, clears the proposal, and emits `SignersRotated(new_signers,
+   old_threshold, new_threshold)`:
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- execute_rotate_signers \
+     --caller <SIGNER_G...>
+   ```
+   Fails with `QuorumNotMet` or `TimelockNotElapsed` if either condition
+   isn't satisfied yet.
+
+5. **Cancel (optional)** — any current signer can abort a pending rotation
+   before execution. This fully clears the proposal (including collected
+   approvals), so a fresh `propose_rotate_signers` can start immediately —
+   no leftover state blocks it:
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- cancel_rotate_signers \
+     --caller <SIGNER_G...>
+   ```
+
+### Inspecting state
+
+```bash
+stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDENTITY> -- signers
+stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDENTITY> -- threshold
+stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDENTITY> -- pending_rotation
+```
+
+### Futurenet rehearsal
+
+> **Status: not yet rehearsed.** The flow above is covered by unit tests in
+> `stealth-sender/src/lib.rs` and `wraith-names/src/lib.rs` (quorum + timelock
+> enforcement, invalid-threshold rejection, and cancelled-mid-rotation state
+> cleanup), but has not been exercised against a live futurenet deployment.
+> Before relying on this runbook for a mainnet rotation, a maintainer with
+> futurenet deploy access should walk through propose → approve (x2) →
+> advance ledger time past the 7-day timelock → execute, and separately
+> propose → approve → cancel → propose again, confirming the CLI commands
+> above match the deployed contract interface, then update this section with
+> the confirmed transcript.
+
 ## Script Reference
 
 ```
