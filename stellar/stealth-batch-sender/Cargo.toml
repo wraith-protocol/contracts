@@ -1,0 +1,19 @@
+[package]
+name = "stealth-batch-sender"
+version = "0.1.0"
+edition = "2021"
+description = "Atomic batch stealth sends for the Wraith Protocol on Stellar"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+testutils = ["soroban-sdk/testutils"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+wraith-metrics = { path = "../wraith-metrics" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
