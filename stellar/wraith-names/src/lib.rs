@@ -2,8 +2,11 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
-    String,
+    String, Vec,
 };
+
+mod multisig;
+pub use multisig::RotationProposal;
 
 /// Storage keys.
 #[contracttype]
@@ -13,6 +16,12 @@ pub enum DataKey {
     Name(BytesN<32>),
     /// Reverse lookup: meta-address hash (BytesN<32>) to name hash (BytesN<32>).
     Reverse(BytesN<32>),
+    /// Governance multisig signer set.
+    MultisigSigners,
+    /// Governance multisig quorum threshold.
+    MultisigThreshold,
+    /// Pending signer-rotation proposal, if any.
+    PendingRotation,
 }
 
 /// A registered name entry.
@@ -39,6 +48,24 @@ pub enum NamesError {
     InvalidMetaAddress = 5,
     NameNotFound = 6,
     NotOwner = 7,
+    /// The governance multisig has not been initialised.
+    MultisigNotInitialized = 21,
+    /// The governance multisig has already been initialised.
+    MultisigAlreadyInitialized = 22,
+    /// The caller is not a current governance signer.
+    NotSigner = 23,
+    /// The requested threshold is invalid (zero, or greater than signer count).
+    InvalidThreshold = 24,
+    /// A signer-rotation proposal is already pending.
+    RotationAlreadyPending = 25,
+    /// No signer-rotation proposal is pending.
+    NoPendingRotation = 26,
+    /// The caller has already approved the pending rotation.
+    AlreadyApprovedRotation = 27,
+    /// The pending rotation has not collected enough approvals yet.
+    QuorumNotMet = 28,
+    /// The rotation timelock has not elapsed yet.
+    TimelockNotElapsed = 29,
 }
 
 #[contract]
@@ -228,6 +255,57 @@ impl WraithNamesContract {
         }
         let bytes = Bytes::from_slice(env, &buf[..len]);
         BytesN::from_array(env, &env.crypto().sha256(&bytes).to_array())
+    }
+
+    /// One-time setup of the governance signer set used to authorise signer
+    /// rotations. Independent of name registration.
+    pub fn init_multisig(
+        env: Env,
+        signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), NamesError> {
+        multisig::init(&env, signers, threshold)
+    }
+
+    /// Current governance signer set.
+    pub fn signers(env: Env) -> Vec<Address> {
+        multisig::signers(&env)
+    }
+
+    /// Current governance quorum threshold.
+    pub fn threshold(env: Env) -> u32 {
+        multisig::threshold(&env)
+    }
+
+    /// The pending signer-rotation proposal, if any.
+    pub fn pending_rotation(env: Env) -> Option<RotationProposal> {
+        multisig::pending_rotation(&env)
+    }
+
+    /// Propose a new signer set + threshold behind the rotation timelock.
+    pub fn propose_rotate_signers(
+        env: Env,
+        caller: Address,
+        new_signers: Vec<Address>,
+        new_threshold: u32,
+    ) -> Result<(), NamesError> {
+        multisig::propose_rotate_signers(&env, caller, new_signers, new_threshold)
+    }
+
+    /// Approve the pending signer-rotation proposal.
+    pub fn approve_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::approve_rotate_signers(&env, caller)
+    }
+
+    /// Execute the pending rotation once quorum is met and the timelock has
+    /// elapsed. Emits `SignersRotated`.
+    pub fn execute_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::execute_rotate_signers(&env, caller)
+    }
+
+    /// Cancel the pending rotation, clearing all of its state.
+    pub fn cancel_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::cancel_rotate_signers(&env, caller)
     }
 
     /// Validate name: 3-32 chars, lowercase alphanumeric only.
