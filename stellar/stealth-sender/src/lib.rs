@@ -59,23 +59,23 @@ pub struct WithdrawalEntry {
     /// The amount to transfer in the token's base unit.
     pub amount: i128,
     /// The governance multisig has not been initialised.
-    MultisigNotInitialized = 6,
+    MultisigNotInitialized = 7,
     /// The governance multisig has already been initialised.
-    MultisigAlreadyInitialized = 7,
+    MultisigAlreadyInitialized = 8,
     /// The caller is not a current governance signer.
-    NotSigner = 8,
+    NotSigner = 9,
     /// The requested threshold is invalid (zero, or greater than signer count).
-    InvalidThreshold = 9,
+    InvalidThreshold = 10,
     /// A signer-rotation proposal is already pending.
-    RotationAlreadyPending = 10,
+    RotationAlreadyPending = 11,
     /// No signer-rotation proposal is pending.
-    NoPendingRotation = 11,
+    NoPendingRotation = 12,
     /// The caller has already approved the pending rotation.
-    AlreadyApprovedRotation = 12,
+    AlreadyApprovedRotation = 13,
     /// The pending rotation has not collected enough approvals yet.
-    QuorumNotMet = 13,
+    QuorumNotMet = 14,
     /// The rotation timelock has not elapsed yet.
-    TimelockNotElapsed = 14,
+    TimelockNotElapsed = 15,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
