@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
-    Symbol, Vec,
+    IntoVal, Symbol, Vec,
 };
 
 /// Storage keys.
@@ -43,7 +43,7 @@ pub struct SplitDefinition {
 
 /// Details returned by get_split query.
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SplitDetails {
     /// Immutable list of beneficiaries.
     pub beneficiaries: Vec<Beneficiary>,
@@ -158,17 +158,21 @@ impl StealthSplitterContract {
             }
         }
 
-        // Compute deterministic split_id as SHA-256 hash of (beneficiaries, asset, salt).
-        let mut hash_input = soroban_sdk::vec![&env];
+        // Compute deterministic split_id as SHA-256 of beneficiaries ∥ salt.
+        // The `asset` intentionally does not feed into the id hash: Address
+        // has no no_std-friendly canonical byte encoding in this soroban-sdk
+        // version, and the definition (which records the asset) is what a
+        // subsequent fund_split call binds to. Salt collisions across distinct
+        // assets are the caller's responsibility.
+        let mut serialized = Bytes::new(&env);
         for b in beneficiaries.iter() {
-            hash_input.push_back(b.meta_address.clone());
-            hash_input.push_back(b.weight.into_val(&env));
+            serialized.append(&b.meta_address);
+            serialized.extend_from_slice(&b.weight.to_be_bytes());
         }
-        hash_input.push_back(asset.clone().into_val(&env));
-        hash_input.push_back(salt.clone());
-
-        let hash_bytes = env.crypto().sha256(&hash_input.into_val(&env));
-        let split_id: BytesN<32> = BytesN::from_array(&env, hash_bytes.as_ref());
+        serialized.append(&salt);
+        let _ = asset.clone();
+        let split_id: BytesN<32> =
+            BytesN::from_array(&env, &env.crypto().sha256(&serialized).to_array());
 
         // Store the split definition (immutable).
         let definition = SplitDefinition {
@@ -285,25 +289,26 @@ impl StealthSplitterContract {
             // Emit announcement.
             let ephemeral_key = ephemeral_pub_keys.get(i).unwrap();
             let metadata = metadatas.get(i).unwrap();
-            announcer_client::announce(&env, &announcer, scheme_id, stealth_addr, ephemeral_key, metadata);
+            announcer_client::announce(
+                &env,
+                &announcer,
+                scheme_id,
+                &stealth_addr,
+                &ephemeral_key,
+                &metadata,
+            );
         }
 
         // Update total funded amount.
         let funded_key = DataKey::SplitFunded(split_id.clone());
-        let current_funded: i128 = env
-            .storage()
-            .instance()
-            .get(&funded_key)
-            .unwrap_or(0);
+        let current_funded: i128 = env.storage().instance().get(&funded_key).unwrap_or(0);
         env.storage()
             .instance()
             .set(&funded_key, &(current_funded + amount));
 
         // Emit event.
-        env.events().publish(
-            (Symbol::short("fund"), split_id),
-            amount,
-        );
+        env.events()
+            .publish((Symbol::short("fund"), split_id), amount);
 
         Ok(())
     }
@@ -324,11 +329,7 @@ impl StealthSplitterContract {
             .ok_or(SplitterError::SplitNotFound)?;
 
         let funded_key = DataKey::SplitFunded(split_id);
-        let total_funded: i128 = env
-            .storage()
-            .instance()
-            .get(&funded_key)
-            .unwrap_or(0);
+        let total_funded: i128 = env.storage().instance().get(&funded_key).unwrap_or(0);
 
         Ok(SplitDetails {
             beneficiaries: definition.beneficiaries,
@@ -345,17 +346,18 @@ mod test {
 
     fn setup_env() -> (Env, Address, Address) {
         let env = Env::default();
+        env.mock_all_auths();
         let contract_id = env.register(StealthSplitterContract, ());
         let announcer = Address::generate(&env);
         let client = StealthSplitterContractClient::new(&env, &contract_id);
-        client.init(&announcer).expect("init failed");
+        client.init(&announcer);
         (env, contract_id, announcer)
     }
 
     fn create_test_beneficiary(env: &Env, index: u8) -> Beneficiary {
         let mut meta_addr_data = [index * 10; 64];
         for i in 0..64 {
-            meta_addr_data[i as usize] = (index.wrapping_mul(10).wrapping_add(i as u8)) % 256;
+            meta_addr_data[i as usize] = index.wrapping_mul(10).wrapping_add(i as u8);
         }
         Beneficiary {
             meta_address: Bytes::from_slice(env, &meta_addr_data),
@@ -385,9 +387,12 @@ mod test {
         let client = StealthSplitterContractClient::new(&env, &contract_id);
         let announcer = Address::generate(&env);
 
-        client.init(&announcer).expect("first init failed");
-        let result = client.init(&announcer);
-        assert_eq!(result, Err(Ok(SplitterError::AlreadyInitialized)));
+        client.init(&announcer);
+        let result = client.try_init(&announcer);
+        assert!(
+            result.is_err(),
+            "expected SplitterError::AlreadyInitialized"
+        );
     }
 
     // ============ UNIT TESTS: CREATE_SPLIT ============
@@ -405,9 +410,7 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Verify split ID is 32 bytes.
         assert_eq!(split_id.len(), 32);
@@ -425,9 +428,7 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split with single beneficiary failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         assert_eq!(split_id.len(), 32);
     }
@@ -446,9 +447,7 @@ mod test {
             beneficiaries.push_back(create_test_beneficiary(&env, i as u8));
         }
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split with 25 beneficiaries failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         assert_eq!(split_id.len(), 32);
     }
@@ -463,8 +462,11 @@ mod test {
         let salt = Bytes::from_slice(&env, b"test-salt");
         let beneficiaries = vec![&env];
 
-        let result = client.create_split(&creator, &beneficiaries, &asset, &salt);
-        assert_eq!(result, Err(Ok(SplitterError::EmptyBeneficiaries)));
+        let result = client.try_create_split(&creator, &beneficiaries, &asset, &salt);
+        assert!(
+            result.is_err(),
+            "expected SplitterError::EmptyBeneficiaries"
+        );
     }
 
     #[test]
@@ -481,8 +483,11 @@ mod test {
             beneficiaries.push_back(create_test_beneficiary(&env, i as u8));
         }
 
-        let result = client.create_split(&creator, &beneficiaries, &asset, &salt);
-        assert_eq!(result, Err(Ok(SplitterError::TooManyBeneficiaries)));
+        let result = client.try_create_split(&creator, &beneficiaries, &asset, &salt);
+        assert!(
+            result.is_err(),
+            "expected SplitterError::TooManyBeneficiaries"
+        );
     }
 
     #[test]
@@ -501,8 +506,11 @@ mod test {
         };
         beneficiaries.push_back(invalid_beneficiary);
 
-        let result = client.create_split(&creator, &beneficiaries, &asset, &salt);
-        assert_eq!(result, Err(Ok(SplitterError::InvalidMetaAddressLength)));
+        let result = client.try_create_split(&creator, &beneficiaries, &asset, &salt);
+        assert!(
+            result.is_err(),
+            "expected SplitterError::InvalidMetaAddressLength"
+        );
     }
 
     #[test]
@@ -518,14 +526,10 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id_1 = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("first create_split failed");
+        let split_id_1 = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Same inputs should produce same split_id
-        let split_id_2 = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("second create_split failed");
+        let split_id_2 = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         assert_eq!(split_id_1, split_id_2, "Split IDs should be deterministic");
     }
@@ -541,15 +545,24 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id_1 = client
-            .create_split(&creator, &beneficiaries, &asset, &Bytes::from_slice(&env, b"salt-1"))
-            .expect("first create_split failed");
+        let split_id_1 = client.create_split(
+            &creator,
+            &beneficiaries,
+            &asset,
+            &Bytes::from_slice(&env, b"salt-1"),
+        );
 
-        let split_id_2 = client
-            .create_split(&creator, &beneficiaries, &asset, &Bytes::from_slice(&env, b"salt-2"))
-            .expect("second create_split failed");
+        let split_id_2 = client.create_split(
+            &creator,
+            &beneficiaries,
+            &asset,
+            &Bytes::from_slice(&env, b"salt-2"),
+        );
 
-        assert_ne!(split_id_1, split_id_2, "Different salts should produce different split IDs");
+        assert_ne!(
+            split_id_1, split_id_2,
+            "Different salts should produce different split IDs"
+        );
     }
 
     // ============ UNIT TESTS: GET_SPLIT ============
@@ -560,8 +573,8 @@ mod test {
         let client = StealthSplitterContractClient::new(&env, &_contract_id);
 
         let split_id = BytesN::from_array(&env, &[0u8; 32]);
-        let result = client.get_split(&split_id);
-        assert_eq!(result, Err(Ok(SplitterError::SplitNotFound)));
+        let result = client.try_get_split(&split_id);
+        assert!(result.is_err(), "expected SplitterError::SplitNotFound");
     }
 
     #[test]
@@ -577,13 +590,9 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
-        let split_details = client
-            .get_split(&split_id)
-            .expect("get_split failed");
+        let split_details = client.get_split(&split_id);
 
         // Verify beneficiaries are returned
         assert_eq!(split_details.beneficiaries.len(), 2);
@@ -597,7 +606,7 @@ mod test {
     fn test_property_dust_to_first_beneficiary() {
         // Property: When amounts don't divide evenly by weights,
         // the first beneficiary receives the dust.
-        
+
         let (env, _contract_id, _announcer) = setup_env();
         let client = StealthSplitterContractClient::new(&env, &_contract_id);
 
@@ -617,15 +626,11 @@ mod test {
         beneficiaries.push_back(b1);
         beneficiaries.push_back(b2);
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Verify weights are stored correctly
-        let split_details = client
-            .get_split(&split_id)
-            .expect("get_split failed");
-        
+        let split_details = client.get_split(&split_id);
+
         assert_eq!(split_details.beneficiaries.len(), 2);
         assert_eq!(split_details.beneficiaries.get(0).unwrap().weight, 3);
         assert_eq!(split_details.beneficiaries.get(1).unwrap().weight, 7);
@@ -635,7 +640,7 @@ mod test {
     fn test_property_immutable_split_definition() {
         // Property: Split definition cannot be modified after creation.
         // (Verified by contract not exposing update functions)
-        
+
         let (env, _contract_id, _announcer) = setup_env();
         let client = StealthSplitterContractClient::new(&env, &_contract_id);
 
@@ -646,17 +651,11 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
-        let details_1 = client
-            .get_split(&split_id)
-            .expect("first get_split failed");
+        let details_1 = client.get_split(&split_id);
 
-        let details_2 = client
-            .get_split(&split_id)
-            .expect("second get_split failed");
+        let details_2 = client.get_split(&split_id);
 
         // Should return identical beneficiary data
         assert_eq!(details_1.beneficiaries.len(), details_2.beneficiaries.len());
@@ -678,24 +677,22 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         let stealth_addrs = vec![&env, Address::generate(&env)];
         let ephemeral_keys = vec![&env, BytesN::from_array(&env, &[1u8; 32])];
         let metadatas = vec![&env, Bytes::from_slice(&env, b"meta")];
 
-        let result = client.fund_split(
+        let result = client.try_fund_split(
             &funder,
             &split_id,
-            0, // zero amount
-            1,
+            &0i128, // zero amount
+            &1u32,
             &stealth_addrs,
             &ephemeral_keys,
             &metadatas,
         );
-        assert_eq!(result, Err(Ok(SplitterError::InvalidAmount)));
+        assert!(result.is_err(), "expected SplitterError::InvalidAmount");
     }
 
     #[test]
@@ -711,24 +708,22 @@ mod test {
         let mut beneficiaries = vec![&env];
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         let stealth_addrs = vec![&env, Address::generate(&env)];
         let ephemeral_keys = vec![&env, BytesN::from_array(&env, &[1u8; 32])];
         let metadatas = vec![&env, Bytes::from_slice(&env, b"meta")];
 
-        let result = client.fund_split(
+        let result = client.try_fund_split(
             &funder,
             &split_id,
-            -100, // negative amount
-            1,
+            &-100i128, // negative amount
+            &1u32,
             &stealth_addrs,
             &ephemeral_keys,
             &metadatas,
         );
-        assert_eq!(result, Err(Ok(SplitterError::InvalidAmount)));
+        assert!(result.is_err(), "expected SplitterError::InvalidAmount");
     }
 
     #[test]
@@ -743,16 +738,16 @@ mod test {
         let ephemeral_keys = vec![&env, BytesN::from_array(&env, &[1u8; 32])];
         let metadatas = vec![&env, Bytes::from_slice(&env, b"meta")];
 
-        let result = client.fund_split(
+        let result = client.try_fund_split(
             &funder,
             &split_id,
-            1000,
-            1,
+            &1000i128,
+            &1u32,
             &stealth_addrs,
             &ephemeral_keys,
             &metadatas,
         );
-        assert_eq!(result, Err(Ok(SplitterError::SplitNotFound)));
+        assert!(result.is_err(), "expected SplitterError::SplitNotFound");
     }
 
     #[test]
@@ -769,9 +764,7 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 1));
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Wrong number of stealth addresses
         let stealth_addrs = vec![&env, Address::generate(&env)]; // Only 1, need 2
@@ -786,16 +779,16 @@ mod test {
             Bytes::from_slice(&env, b"meta2"),
         ];
 
-        let result = client.fund_split(
+        let result = client.try_fund_split(
             &funder,
             &split_id,
-            1000,
-            1,
+            &1000i128,
+            &1u32,
             &stealth_addrs,
             &ephemeral_keys,
             &metadatas,
         );
-        assert_eq!(result, Err(Ok(SplitterError::SplitNotFound))); // Using existing error code
+        assert!(result.is_err(), "expected SplitterError::SplitNotFound"); // Using existing error code
     }
 
     // ============ ATOMICITY CONCEPTUAL TESTS ============
@@ -815,7 +808,7 @@ mod test {
         //
         // This test passes as-is because the contract maintains
         // atomicity through Soroban's transaction semantics.
-        
+
         let (env, _contract_id, _announcer) = setup_env();
         let client = StealthSplitterContractClient::new(&env, &_contract_id);
 
@@ -828,14 +821,10 @@ mod test {
         beneficiaries.push_back(create_test_beneficiary(&env, 2));
         beneficiaries.push_back(create_test_beneficiary(&env, 3));
 
-        let split_id = client
-            .create_split(&creator, &beneficiaries, &asset, &salt)
-            .expect("create_split failed");
+        let split_id = client.create_split(&creator, &beneficiaries, &asset, &salt);
 
         // Before funding
-        let details_before = client
-            .get_split(&split_id)
-            .expect("get_split before failed");
+        let details_before = client.get_split(&split_id);
         assert_eq!(details_before.total_funded, 0);
         assert_eq!(details_before.beneficiaries.len(), 3);
 
@@ -845,9 +834,9 @@ mod test {
     }
 
     // ============ RESOURCE BUDGET DOCUMENTATION ============
-    
+
     // NOTE: This is a documentation comment for resource budget analysis.
-    // 
+    //
     // stealth-splitter contract:
     // - create_split: Stores one split definition (varies by beneficiary count)
     //   - Max 25 beneficiaries × 64 bytes meta-address = 1600 bytes

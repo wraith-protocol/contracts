@@ -4,7 +4,9 @@
 /// issued asset and is safe for stealth flows.
 ///
 /// The "immutability" is enforced by the absence of any admin mutation methods.
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String, token::TokenInterface as _};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, token, token::TokenInterface as _, Address, Env, String,
+};
 
 #[contracttype]
 #[derive(Clone)]
@@ -59,13 +61,7 @@ impl token::Interface for ImmutableSafeToken {
             .temporary()
             .set(&DataKey::Balance(to), &(to_bal + amount));
     }
-    fn transfer_from(
-        env: Env,
-        _spender: Address,
-        from: Address,
-        to: Address,
-        amount: i128,
-    ) {
+    fn transfer_from(env: Env, _spender: Address, from: Address, to: Address, amount: i128) {
         Self::transfer(env, from, to, amount);
     }
     fn burn(env: Env, from: Address, amount: i128) {

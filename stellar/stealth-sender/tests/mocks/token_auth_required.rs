@@ -1,7 +1,9 @@
 /// Mock: AUTH_REQUIRED asset.
 /// A contract-balance recipient must be explicitly authorized via `set_authorized`
 /// before it can receive tokens. Mirrors SAC BalanceDeauthorizedError (error 11).
-use soroban_sdk::{contract, contractimpl, contracttype, contracterror, token, Address, Env, String};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, token, Address, Env, String,
+};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -50,7 +52,12 @@ impl AuthRequiredToken {
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
         // Recipient must be pre-authorized.
-        if !env.storage().temporary().get(&DataKey::Authorized(to.clone())).unwrap_or(false) {
+        if !env
+            .storage()
+            .temporary()
+            .get(&DataKey::Authorized(to.clone()))
+            .unwrap_or(false)
+        {
             panic!("BalanceDeauthorizedError");
         }
         let from_bal: i128 = env
@@ -70,13 +77,7 @@ impl AuthRequiredToken {
             .temporary()
             .set(&DataKey::Balance(to), &(to_bal + amount));
     }
-    pub fn transfer_from(
-        env: Env,
-        _spender: Address,
-        from: Address,
-        to: Address,
-        amount: i128,
-    ) {
+    pub fn transfer_from(env: Env, _spender: Address, from: Address, to: Address, amount: i128) {
         Self::transfer(env, from, to, amount);
     }
     pub fn burn(env: Env, from: Address, amount: i128) {
