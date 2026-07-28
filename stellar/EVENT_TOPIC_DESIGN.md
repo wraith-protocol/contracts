@@ -77,6 +77,10 @@ Reserve the last slot for coarse discovery classes such as:
 
 This is optional at launch, but it is worth reserving now because Soroban only gives us four indexed topic slots. If we spend the last slot on something less selective today, we will likely regret it later.
 
+### Topic-3: view-tag hint and discovery classes
+
+Topic 3 (`metadata_kind`) should be selected to act as a compact discovery hint. Use short, stable symbols such as `"default"`, `"invoice"`, or domain-specific hints like `"view_hint"`. Indexers can optionally include topic-3 in filters to further reduce client-side validation work while keeping the primary partitioning responsibility in `view_tag_bucket` (Topic 2).
+
 ## Why `stealth_address` Should Leave Topics
 
 The current schema indexes `stealth_address`, but that field is not a useful scan key:
@@ -207,6 +211,15 @@ Specifically:
 - Set `scheme_id = 2` for the new Stellar scheme.
 - Keep v1 readable during transition.
 - Update SDK fetch logic to query by bucket at the RPC layer.
+
+## Structured error events (optional)
+
+To aid indexer and operator diagnostics without changing the primary announce schema, consider emitting structured, optional error events from parsing/agent layers:
+
+- Topics: `("announce_error", scheme_id, error_code, metadata_kind)`
+- Data: `(caller, stealth_address_opt, ephemeral_pub_key_opt, metadata, message)`
+
+`error_code` should be a small integer enum (e.g., `1 = malformed_metadata`, `2 = invalid_ephemeral_key`, `3 = auth_failure`). Contracts should avoid embedding sensitive details in `message`; prefer short machine-readable codes and let off-chain tooling map codes to human-friendly explanations.
 
 ## Follow-Up Work
 

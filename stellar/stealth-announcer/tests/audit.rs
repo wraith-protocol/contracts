@@ -32,8 +32,13 @@ fn wa_ann_01_v2_payload_uses_stealth_address_not_caller() {
     );
 
     let events = env.events().all();
-    let event = events.last().unwrap();
-    let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
+    // We emit both v2 and legacy v1-shaped events; ensure v2 payload uses stealth_address
+    let v2 = events
+        .iter()
+        .rev()
+        .find(|e| e.1.len() == 4)
+        .expect("v2 event should be present");
+    let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &v2.2);
 
     assert_ne!(contract_id, invoker);
     assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));

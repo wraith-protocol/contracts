@@ -82,6 +82,19 @@ impl StealthAnnouncerContract {
             ),
             (stealth_address, ephemeral_pub_key, metadata),
         );
+
+        // Also emit a legacy v1-shaped announcement for backward
+        // compatibility. Many existing indexers expect the older three-topic
+        // layout `("announce", scheme_id, stealth_address)` with data
+        // `(caller, ephemeral_pub_key, metadata)`. To avoid breaking those
+        // indexers during migration, emit the legacy shape in addition to
+        // the v2 authoritative shape. The `caller` value is the announcer
+        // contract address (Soroban semantics), matching historical
+        // behavior documented in audits.
+        env.events().publish(
+            (symbol_short!("announce"), scheme_id, stealth_address),
+            (env.current_contract_address(), ephemeral_pub_key, metadata),
+        );
     }
 }
 
@@ -105,26 +118,49 @@ mod test {
         client.announce(&scheme_id, &stealth_address, &ephemeral_pub_key, &metadata);
 
         let events = env.events().all();
-        assert_eq!(events.len(), 1);
+        // We now emit both v2 (4-topic) and legacy v1-shaped (3-topic) events.
+        assert_eq!(events.len(), 2);
 
-        let event = events.last().unwrap();
+        // Locate v2 and v1 events by topic length.
+        let mut found_v2 = false;
+        let mut found_v1 = false;
+        for e in events.iter() {
+            // Verify the event was published by the correct contract.
+            assert_eq!(e.0, contract_id);
+            let topics_len = e.1.len();
+            if topics_len == 4 {
+                // v2 event
+                let expected_topics: soroban_sdk::Vec<Val> = vec![
+                    &env,
+                    symbol_short!("announce").into_val(&env),
+                    scheme_id.into_val(&env),
+                    42u32.into_val(&env),
+                    METADATA_KIND_VIEW_TAG.into_val(&env),
+                ];
+                assert_eq!(e.1, expected_topics);
 
-        // Verify the event was published by the correct contract.
-        assert_eq!(event.0, contract_id);
+                let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &e.2);
+                assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
+                found_v2 = true;
+            } else if topics_len == 3 {
+                // legacy v1-shaped event: topics ("announce", scheme_id, stealth_address)
+                let expected_topics_v1: soroban_sdk::Vec<Val> = vec![
+                    &env,
+                    symbol_short!("announce").into_val(&env),
+                    scheme_id.into_val(&env),
+                    stealth_address.clone().into_val(&env),
+                ];
+                assert_eq!(e.1, expected_topics_v1);
 
-        // Verify topics: ("announce", scheme_id, view_tag_bucket, metadata_kind).
-        let expected_topics: soroban_sdk::Vec<Val> = vec![
-            &env,
-            symbol_short!("announce").into_val(&env),
-            scheme_id.into_val(&env),
-            42u32.into_val(&env),
-            METADATA_KIND_VIEW_TAG.into_val(&env),
-        ];
-        assert_eq!(event.1, expected_topics);
+                let actual_value_v1: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &e.2);
+                // Caller in Soroban historical behavior is the contract address.
+                assert_eq!(actual_value_v1.1, ephemeral_pub_key);
+                assert_eq!(actual_value_v1.2, metadata);
+                found_v1 = true;
+            }
+        }
 
-        // Verify data: (stealth_address, ephemeral_pub_key, metadata).
-        let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
-        assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
+        assert!(found_v2 && found_v1, "Both v2 and legacy v1 events should be emitted");
     }
 
     #[test]
@@ -140,8 +176,13 @@ mod test {
 
         client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &first_meta);
         let events = env.events().all();
-        let event = events.last().unwrap();
-        assert_eq!(event.0, contract_id.clone());
+        // find the most recent v2 event and validate its topics
+        let v2_event = events
+            .iter()
+            .rev()
+            .find(|e| e.1.len() == 4)
+            .expect("v2 event must be present");
+        assert_eq!(v2_event.0, contract_id.clone());
 
         let expected_topics: soroban_sdk::Vec<Val> = vec![
             &env,
@@ -150,11 +191,15 @@ mod test {
             0u32.into_val(&env),
             METADATA_KIND_VIEW_TAG.into_val(&env),
         ];
-        assert_eq!(event.1, expected_topics);
+        assert_eq!(v2_event.1, expected_topics);
 
         client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &second_meta);
         let events2 = env.events().all();
-        let event2 = events2.last().unwrap();
+        let v2_event2 = events2
+            .iter()
+            .rev()
+            .find(|e| e.1.len() == 4)
+            .expect("second v2 event must be present");
         let expected_topics2: soroban_sdk::Vec<Val> = vec![
             &env,
             symbol_short!("announce").into_val(&env),
@@ -162,7 +207,7 @@ mod test {
             255u32.into_val(&env),
             METADATA_KIND_VIEW_TAG.into_val(&env),
         ];
-        assert_eq!(event2.1, expected_topics2);
+        assert_eq!(v2_event2.1, expected_topics2);
     }
 
     #[test]

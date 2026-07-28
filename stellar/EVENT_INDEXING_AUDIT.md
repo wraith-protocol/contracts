@@ -39,6 +39,14 @@ All 4 topic slots are used. `view_tag_bucket` is `metadata[0] as u32`, partition
 
 **No changes needed.**
 
+## Migration: dual-emit and deprecation window
+
+To preserve existing indexer integrations during rollout, the new v2 announcer deployment MUST emit both the v2 authoritative topic shape and a legacy v1-shaped event for a limited migration window. The repository's `stealth-announcer` implementation now emits both shapes (v2: `("announce", scheme_id, view_tag_bucket, metadata_kind)`; legacy: `("announce", scheme_id, stealth_address)` with data `(caller, ephemeral_pub_key, metadata)`).
+
+- **Deprecation window:** Indexers should migrate to v2 and stop relying on the legacy three-topic shape within **3 months** of the v2 announcer launch. After that window the legacy shape may be removed from new deployments.
+
+Indexers and SDKs should be updated to: (a) subscribe to v2 topics for primary scanning efficiency, and (b) continue reading the legacy shape during the migration window for backward compatibility.
+
 ---
 
 ### stealth-registry
