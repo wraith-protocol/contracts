@@ -2,7 +2,7 @@
 /// Transfer succeeds, but the admin can revoke authorization from any address
 /// (including a stealth address) after receipt, freezing the balance.
 /// This defeats unlinkability: the issuer can identify and freeze stealth recipients.
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone)]

@@ -5,7 +5,7 @@
 /// In practice: no stealth address can ever receive this token without the issuer
 /// explicitly authorizing it first, and the issuer cannot be removed.
 /// This is a permanent UX blocker for stealth flows.
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone)]

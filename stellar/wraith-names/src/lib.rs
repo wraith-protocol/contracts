@@ -13,6 +13,7 @@ pub use multisig::RotationProposal;
 
 pub const WRAITH_NAMES_DOMAIN: &[u8] = b"wraith-names:v1";
 
+#[allow(dead_code)]
 const DELAY_WINDOW: u32 = 100_000;
 
 /// Storage keys.
@@ -563,8 +564,6 @@ impl WraithNamesContract {
         let mut buf = [0u8; MAX_NAME_LEN];
         name.copy_into_slice(&mut buf[..len]);
 
-        let mut dot_pos: Option<usize> = None;
-        let mut dot_count: u32 = 0;
         for i in 0..len {
             let c = buf[i];
             if !(c >= b'a' && c <= b'z') && !(c >= b'0' && c <= b'9') {

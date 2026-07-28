@@ -3,7 +3,7 @@
 /// amount, crediting the fee to a treasury address.
 /// This means the stealth address receives less than `amount`, which can break
 /// assumptions in the announcement (the announced amount ≠ received amount).
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone)]

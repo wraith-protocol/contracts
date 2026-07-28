@@ -3,7 +3,7 @@
 /// balance, including a stealth address. The clawback flag is set at balance
 /// creation time and cannot be removed.
 /// This defeats unlinkability: the issuer can reverse a stealth payment.
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone)]
