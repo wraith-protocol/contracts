@@ -62,6 +62,8 @@ pub enum SenderError {
     QuorumNotMet = 13,
     /// The rotation timelock has not elapsed yet.
     TimelockNotElapsed = 14,
+    /// The sponsored announcement entry list exceeded the per-call cap.
+    BatchTooLarge = 15,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -109,6 +111,32 @@ mod asset_policy_client {
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
+
+/// Maximum entries permitted in a single `sponsored_announce` call.
+///
+/// Enforced to keep a single fee-bumped Stellar op bounded: base + 20 op-count
+/// fits the standard Soroban resource budget comfortably and protects against
+/// landmark-bloat of the announcement event stream.
+pub const SPONSORED_MAX_ENTRIES: u32 = 20;
+
+/// One signer's bundled stealth announcement inside a `sponsored_announce` call.
+///
+/// The `sender` field carries the per-entry signer authentication (the fee
+/// source the Stellar fee-bump envelope delegates per-op charging to). The
+/// `sponsor` carrying the network-level fee is recorded at the function
+/// argument level so it is recorded on the transaction auth list without being
+/// conflated with any individual entry's signer.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct SponsoredEntry {
+    pub sender: Address,
+    pub token: Address,
+    pub amount: i128,
+    pub scheme_id: u32,
+    pub stealth_address: Address,
+    pub ephemeral_pub_key: BytesN<32>,
+    pub metadata: Bytes,
+}
 
 #[contract]
 pub struct StealthSenderContract;
@@ -401,6 +429,123 @@ impl StealthSenderContract {
         Ok(())
     }
 
+    /// Bundle multiple stealth address announcements into a single Stellar op.
+    ///
+    /// Designed for fee-bumped sponsorship: `sponsor` authenticates the bundle
+    /// at the transaction envelope level so the recorded `fee_account` on
+    /// Horizon is the sponsor, and each `entry.sender` authenticates only its
+    /// own entry. Each entry performs the same atomic send + announce as
+    /// `send`/`batch_send`, so mid-bundle failure rolls the entire transaction
+    /// back.
+    ///
+    /// `entries.len()` must be in `[1, SPONSORED_MAX_ENTRIES]` (call returns
+    /// `LengthMismatch` if the list is empty and `BatchTooLarge` if the cap
+    /// is exceeded). Per-entry token allow-list and protocol-fee behaviour are
+    /// identical to `batch_send`'s single-token path.
+    pub fn sponsored_announce(
+        env: Env,
+        sponsor: Address,
+        entries: Vec<SponsoredEntry>,
+    ) -> Result<(), SenderError> {
+        sponsor.require_auth();
+
+        let len = entries.len();
+        if len == 0 {
+            return Err(SenderError::LengthMismatch);
+        }
+        if len > SPONSORED_MAX_ENTRIES {
+            return Err(SenderError::BatchTooLarge);
+        }
+
+        let announcer: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Announcer)
+            .ok_or(SenderError::NotInitialized)?;
+
+        // Extend instance TTL
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
+
+        // Check asset policy if configured
+        let policy_address: Option<Address> =
+            env.storage().instance().get(&DataKey::AssetPolicy);
+
+        let mut total_amount: i128 = 0;
+
+        // Dedupe signers: `Address::require_auth` is not idempotent — repeated
+        // calls for the same address raise `AuthError::ExistingValue`. One sig
+        // per signer key is also the right Stellar envelope semantics for a
+        // fee-bumped bundle.
+        let mut auth_seen: Vec<Address> = Vec::new(&env);
+        auth_seen.push_back(sponsor.clone());
+
+        for i in 0..len {
+            let entry = entries.get(i).unwrap();
+
+            if !auth_seen.contains(&entry.sender) {
+                entry.sender.require_auth();
+                auth_seen.push_back(entry.sender.clone());
+            }
+
+            if let Some(ref policy) = policy_address {
+                if !asset_policy_client::check_asset(&env, policy, &entry.token) {
+                    return Err(SenderError::TokenNotAllowed);
+                }
+            }
+
+            let token_client = token::Client::new(&env, &entry.token);
+            token_client.transfer(&entry.sender, &entry.stealth_address, &entry.amount);
+            total_amount += entry.amount;
+
+            announcer_client::announce(
+                &env,
+                &announcer,
+                entry.scheme_id,
+                &entry.stealth_address,
+                &entry.ephemeral_pub_key,
+                &entry.metadata,
+            );
+        }
+
+        // Emit metric events for the whole bundle. Per-entry token dimensions
+        // are heterogeneous, so we tag the metrics with the sponsor (the
+        // observable fee source) instead of any single token address.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::BATCH_SEND_COUNT,
+            1,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::TOKEN_ADDRESS, sponsor.into_val(&env)),
+            ],
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::BATCH_SEND_VOLUME,
+            total_amount,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::TOKEN_ADDRESS, sponsor.into_val(&env)),
+            ],
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SENDER,
+            metric_names::BATCH_SIZE,
+            len as i128,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::TOKEN_ADDRESS, sponsor.into_val(&env)),
+            ],
+        );
+
+        Ok(())
+    }
+
     /// One-time setup of the governance signer set used to authorise signer
     /// rotations. Independent of `init` — does not gate `send`/`batch_send`.
     pub fn init_multisig(
@@ -482,6 +627,16 @@ mod test {
                 ),
                 (env.current_contract_address(), ephemeral_pub_key, metadata),
             );
+            let key = soroban_sdk::symbol_short!("count");
+            let count: u32 = env.storage().instance().get(&key).unwrap_or(0);
+            env.storage().instance().set(&key, &(count + 1));
+        }
+
+        pub fn count(env: Env) -> u32 {
+            env.storage()
+                .instance()
+                .get(&soroban_sdk::symbol_short!("count"))
+                .unwrap_or(0)
         }
     }
 
@@ -751,5 +906,334 @@ mod test {
         client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
         let res = client.try_approve_rotate_signers(&outsider);
         assert_eq!(res, Err(Ok(SenderError::NotSigner)));
+    }
+
+    fn setup_sponsored(
+        env: &Env,
+    ) -> (
+        StealthSenderContractClient,
+        Address,
+        Address,
+        Address,
+        Address,
+        BytesN<32>,
+        Bytes,
+    ) {
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(env, &sender_id);
+        client.init(&announcer_id, &None, &None, &0);
+
+        let token_admin = Address::generate(env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+
+        let sender = Address::generate(env);
+        let stealth = Address::generate(env);
+
+        let epk = BytesN::from_array(env, &[0xabu8; 32]);
+        let meta = Bytes::from_slice(env, &[0x01]);
+
+        (client, sender_id, token_id, sender, stealth, epk, meta)
+    }
+
+    #[test]
+    fn test_sponsored_announce_single_entry() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _sender_id, token_id, sender, stealth, epk, meta) = setup_sponsored(&env);
+
+        let asset = token::StellarAssetClient::new(&env, &token_id);
+        asset.mint(&sender, &1_000);
+
+        let sponsor = Address::generate(&env);
+        let entries = soroban_sdk::vec![
+            &env,
+            SponsoredEntry {
+                sender: sender.clone(),
+                token: token_id.clone(),
+                amount: 100,
+                scheme_id: 1,
+                stealth_address: stealth.clone(),
+                ephemeral_pub_key: epk.clone(),
+                metadata: meta.clone(),
+            },
+        ];
+
+        client.sponsored_announce(&sponsor, &entries);
+
+        let token_client = token::Client::new(&env, &token_id);
+        assert_eq!(token_client.balance(&sender), 900);
+        assert_eq!(token_client.balance(&stealth), 100);
+    }
+
+    #[test]
+    fn test_sponsored_announce_at_cap_succeeds() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, _sender_id, token_id, _sender, _stealth, epk, meta) = setup_sponsored(&env);
+        let asset = token::StellarAssetClient::new(&env, &token_id);
+
+        let sponsor = Address::generate(&env);
+        let per_entry_sender = Address::generate(&env);
+        let total_mint = SPONSORED_MAX_ENTRIES as i128 * 100 + 1;
+        asset.mint(&per_entry_sender, &total_mint);
+
+        let mut entries: Vec<SponsoredEntry> = Vec::new(&env);
+        for _ in 0..SPONSORED_MAX_ENTRIES {
+            entries.push_back(SponsoredEntry {
+                sender: per_entry_sender.clone(),
+                token: token_id.clone(),
+                amount: 100,
+                scheme_id: 1,
+                stealth_address: Address::generate(&env),
+                ephemeral_pub_key: epk.clone(),
+                metadata: meta.clone(),
+            });
+        }
+
+        client.sponsored_announce(&sponsor, &entries);
+
+        let token_client = token::Client::new(&env, &token_id);
+        assert_eq!(
+            token_client.balance(&per_entry_sender),
+            1,
+            "SPONSORED_MAX_ENTRIES transfers must be applied atomically",
+        );
+    }
+
+    #[test]
+    fn test_sponsored_announce_cap_exceeded() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, _sender_id, token_id, _sender, _stealth, epk, meta) = setup_sponsored(&env);
+
+        let sponsor = Address::generate(&env);
+        let bogus_sender = Address::generate(&env);
+
+        // One over the cap must reject with BatchTooLarge and roll back.
+        let mut entries: Vec<SponsoredEntry> = Vec::new(&env);
+        for _ in 0..(SPONSORED_MAX_ENTRIES + 1) {
+            entries.push_back(SponsoredEntry {
+                sender: bogus_sender.clone(),
+                token: token_id.clone(),
+                amount: 1,
+                scheme_id: 1,
+                stealth_address: Address::generate(&env),
+                ephemeral_pub_key: epk.clone(),
+                metadata: meta.clone(),
+            });
+        }
+
+        let res = client.try_sponsored_announce(&sponsor, &entries);
+        assert_eq!(res, Err(Ok(SenderError::BatchTooLarge)));
+
+        // Sanity: the rejected bundle must not have moved any tokens.
+        let token_client = token::Client::new(&env, &token_id);
+        assert_eq!(token_client.balance(&bogus_sender), 0);
+    }
+
+    #[test]
+    fn test_sponsored_announce_empty_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, _sender_id, _token_id, _sender, _stealth, _epk, _meta) =
+            setup_sponsored(&env);
+
+        let sponsor = Address::generate(&env);
+        let entries: Vec<SponsoredEntry> = Vec::new(&env);
+
+        let res = client.try_sponsored_announce(&sponsor, &entries);
+        assert_eq!(res, Err(Ok(SenderError::LengthMismatch)));
+    }
+
+    #[test]
+    fn test_sponsored_announce_not_initialized_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let sponsor = Address::generate(&env);
+        let bogus_sender = Address::generate(&env);
+        let bogus_token = Address::generate(&env);
+
+        let entries = soroban_sdk::vec![
+            &env,
+            SponsoredEntry {
+                sender: bogus_sender,
+                token: bogus_token,
+                amount: 1,
+                scheme_id: 1,
+                stealth_address: Address::generate(&env),
+                ephemeral_pub_key: BytesN::from_array(&env, &[0u8; 32]),
+                metadata: Bytes::from_slice(&env, &[0u8; 1]),
+            },
+        ];
+
+        let res = client.try_sponsored_announce(&sponsor, &entries);
+        assert_eq!(res, Err(Ok(SenderError::NotInitialized)));
+    }
+
+    #[test]
+    fn test_sponsored_announce_emits_one_announcement_per_entry() {
+        // Wire the announcer/sender/token explicitly so we can ask the mock
+        // contract how many announcements it received end-to-end.
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let mock_client = MockAnnouncerClient::new(&env, &announcer_id);
+        assert_eq!(mock_client.count(), 0, "mock must start empty");
+
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+        client.init(&announcer_id, &None, &None, &0);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+        let asset = token::StellarAssetClient::new(&env, &token_id);
+        let sender = Address::generate(&env);
+        asset.mint(&sender, &10_000);
+
+        let epk = BytesN::from_array(&env, &[0xabu8; 32]);
+        let meta = Bytes::from_slice(&env, &[0x01]);
+
+        let sponsor = Address::generate(&env);
+        let entries = soroban_sdk::vec![
+            &env,
+            SponsoredEntry {
+                sender: sender.clone(),
+                token: token_id.clone(),
+                amount: 100,
+                scheme_id: 1,
+                stealth_address: Address::generate(&env),
+                ephemeral_pub_key: epk.clone(),
+                metadata: meta.clone(),
+            },
+            SponsoredEntry {
+                sender: sender.clone(),
+                token: token_id.clone(),
+                amount: 200,
+                scheme_id: 1,
+                stealth_address: Address::generate(&env),
+                ephemeral_pub_key: epk.clone(),
+                metadata: meta.clone(),
+            },
+        ];
+
+        client.sponsored_announce(&sponsor, &entries);
+
+        assert_eq!(
+            mock_client.count(),
+            2,
+            "two entries should drive exactly two cross-contract announces",
+        );
+    }
+
+    #[test]
+    fn test_sponsored_announce_token_not_allowed() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let policy_admin = Address::generate(&env);
+        let policy_id = env.register(wraith_asset_policy::WraithAssetPolicy, ());
+        let policy_client = wraith_asset_policy::WraithAssetPolicyClient::new(&env, &policy_id);
+        policy_client.init(&policy_admin, &soroban_sdk::Vec::new(&env));
+
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+        client.init(&announcer_id, &Some(policy_id), &None, &0);
+
+        let token_admin = Address::generate(&env);
+        let blocked_token = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+
+        let sponsor = Address::generate(&env);
+        let blocked_sender = Address::generate(&env);
+        let entries = soroban_sdk::vec![
+            &env,
+            SponsoredEntry {
+                sender: blocked_sender.clone(),
+                token: blocked_token.clone(),
+                amount: 1,
+                scheme_id: 1,
+                stealth_address: Address::generate(&env),
+                ephemeral_pub_key: BytesN::from_array(&env, &[0u8; 32]),
+                metadata: Bytes::from_slice(&env, &[0u8; 1]),
+            },
+        ];
+
+        let res = client.try_sponsored_announce(&sponsor, &entries);
+        assert_eq!(res, Err(Ok(SenderError::TokenNotAllowed)));
+
+        // No announce event should have been emitted and no tokens moved.
+        let token_client = token::Client::new(&env, &blocked_token);
+        assert_eq!(token_client.balance(&blocked_sender), 0);
+    }
+
+    #[test]
+    fn test_sponsored_announce_mid_bundle_failure_rolls_back() {
+        // Mint only enough balance for entry 0; entry 1 must fail and roll entry 0 back.
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _sender_id, token_id, _sender, _stealth, epk, meta) =
+            setup_sponsored(&env);
+
+        let asset = token::StellarAssetClient::new(&env, &token_id);
+        let survivor = Address::generate(&env);
+        asset.mint(&survivor, &500);
+
+        let broke_sender = Address::generate(&env); // SAC starts broke_sender at 0
+
+        let sponsor = Address::generate(&env);
+        let survivor_stealth = Address::generate(&env);
+        let entries = soroban_sdk::vec![
+            &env,
+            SponsoredEntry {
+                sender: survivor.clone(),
+                token: token_id.clone(),
+                amount: 200,
+                scheme_id: 1,
+                stealth_address: survivor_stealth.clone(),
+                ephemeral_pub_key: epk.clone(),
+                metadata: meta.clone(),
+            },
+            SponsoredEntry {
+                sender: broke_sender.clone(),
+                token: token_id.clone(),
+                amount: 999_999,
+                scheme_id: 1,
+                stealth_address: Address::generate(&env),
+                ephemeral_pub_key: epk.clone(),
+                metadata: meta.clone(),
+            },
+        ];
+
+        let res = client.try_sponsored_announce(&sponsor, &entries);
+        assert!(
+            res.is_err(),
+            "second entry's insufficient-balance transfer must revert the bundle",
+        );
+
+        // Entry 0's successful transfer must have been rolled back.
+        let token_client = token::Client::new(&env, &token_id);
+        assert_eq!(
+            token_client.balance(&survivor),
+            500,
+            "first entry's transfer must be rolled back when a later entry fails",
+        );
+        assert_eq!(token_client.balance(&survivor_stealth), 0);
     }
 }

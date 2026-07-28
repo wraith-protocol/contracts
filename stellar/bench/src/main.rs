@@ -24,7 +24,7 @@ struct Row {
 fn main() {
     let mut rows = std::vec::Vec::new();
 
-    for metadata_len in [0u32, 32, 256, 1024, 4096] {
+    for metadata_len in [1u32, 32, 256, 1024, 4096] {
         rows.push(measure(
             "stealth-announcer",
             "announce",
@@ -33,7 +33,7 @@ fn main() {
                 let contract_id = env.register(StealthAnnouncerContract, ());
                 let client = StealthAnnouncerContractClient::new(env, &contract_id);
                 client.announce(
-                    &1,
+                    &stealth_announcer::STELLAR_V2_SCHEME_ID,
                     &Address::generate(env),
                     &BytesN::from_array(env, &[7u8; 32]),
                     &bytes(env, metadata_len, 9),
@@ -84,7 +84,7 @@ fn main() {
                     &sender,
                     &token,
                     &100,
-                    &1,
+                    &stealth_announcer::STELLAR_V2_SCHEME_ID,
                     &Address::generate(env),
                     &BytesN::from_array(env, &[3u8; 32]),
                     &bytes(env, 32, 4),
@@ -115,7 +115,15 @@ fn main() {
                     metadatas.push_back(bytes(env, 32, i as u8));
                     amounts.push_back(100);
                 }
-                client.batch_send(&sender, &token, &1, &addresses, &keys, &metadatas, &amounts);
+                client.batch_send(
+                    &sender,
+                    &token,
+                    &stealth_announcer::STELLAR_V2_SCHEME_ID,
+                    &addresses,
+                    &keys,
+                    &metadatas,
+                    &amounts,
+                );
             },
         ));
     }
@@ -139,7 +147,7 @@ fn main() {
                         sender: sender.clone(),
                         token: token.clone(),
                         amount: 100,
-                        scheme_id: 1,
+                        scheme_id: stealth_announcer::STELLAR_V2_SCHEME_ID,
                         stealth_address: Address::generate(env),
                         ephemeral_pub_key: BytesN::from_array(env, &[i as u8; 32]),
                         metadata: bytes(env, 32, i as u8),
