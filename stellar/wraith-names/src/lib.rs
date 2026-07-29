@@ -113,7 +113,6 @@ pub enum NamesError {
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
-
 const MIN_LABEL_LEN: usize = 3;
 const MAX_NAME_LEN: usize = 32;
 
@@ -563,8 +562,6 @@ impl WraithNamesContract {
         let mut buf = [0u8; MAX_NAME_LEN];
         name.copy_into_slice(&mut buf[..len]);
 
-        let mut dot_pos: Option<usize> = None;
-        let mut dot_count: u32 = 0;
         for i in 0..len {
             let c = buf[i];
             if !(c >= b'a' && c <= b'z') && !(c >= b'0' && c <= b'9') {
