@@ -1,11 +1,13 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short,
-    token::Client as TokenClient,
-    Address, Env, Vec,
+    contract, contractimpl, contracttype, symbol_short, token::Client as TokenClient, Address, Env,
+    IntoVal, Vec,
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
+
+#[cfg(test)]
+mod test;
 
 /// Maximum transfers per batch — justified against Soroban's ~100M instruction
 /// budget. Each transfer costs ~500K instructions (token transfer + event emit).
@@ -43,12 +45,7 @@ impl StealthBatchSender {
     /// well under Soroban's per-transaction limit while still being ~100x more
     /// efficient than N individual stealth-sender::send calls (one auth, one
     /// ledger round-trip vs N).
-    pub fn batch_send(
-        env: Env,
-        from: Address,
-        transfers: Vec<Transfer>,
-        asset: Address,
-    ) {
+    pub fn batch_send(env: Env, from: Address, transfers: Vec<Transfer>, asset: Address) {
         // Auth: sender must sign once for the entire batch
         from.require_auth();
 
@@ -92,10 +89,8 @@ impl StealthBatchSender {
         }
 
         // Batch-level summary event
-        env.events().publish(
-            (symbol_short!("BATCH"),),
-            (from, count, asset),
-        );
+        env.events()
+            .publish((symbol_short!("BATCH"),), (from, count, asset.clone()));
 
         // Emit metric events.
         emit_metric(

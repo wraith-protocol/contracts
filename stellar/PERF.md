@@ -90,6 +90,73 @@ These are the post-optimization harness results.
 | wraith-names | name_of | hit | 47042 | 5383 | 1 | 0 | 452 | 0 | 0 |
 | wraith-names | name_of | miss | 21581 | 1513 | 1 | 0 | 104 | 0 | 0 |
 
+## Batch vs Individual Crossover
+
+`stealth-batch-sender` and `stealth-sender` overlap for multi-recipient pays.
+Partners keep asking: at what batch size does the dedicated batch contract become
+cheaper than N individual `stealth-sender::send` calls?
+
+Re-run with:
+
+```sh
+cargo bench -p wraith-stellar-bench-crossover --bench crossover
+# or
+cargo run -p wraith-stellar-bench-crossover
+```
+
+Chart data is checked into [`stellar/bench/data/`](bench/data/).
+
+### Methodology
+
+- Entry counts: 1, 2, 5, 10, 15, 20
+- **Individual**: N isolated `stealth-sender::send` transactions (instructions
+  summed; Soroban `resources()` only reports the last top-level invoke)
+- **Batch**: one `stealth-batch-sender::batch_send` with N transfers
+- Metrics: Soroban instruction count (fee-relevant "gas") and wall-clock ns,
+  reported total and per-entry
+- Setup (register / init / mint) is excluded from the metered window
+
+### Results
+
+<!-- CROSSOVER_TABLE_START -->
+| N | Individual instr | Batch instr | Indiv /entry | Batch /entry | Individual ns | Batch ns | Indiv ns/entry | Batch ns/entry | Winner |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| 1 | 216310 | 182837 | 216310 | 182837 | 782800 | 575600 | 782800 | 575600 | batch |
+| 2 | 432620 | 320986 | 216310 | 160493 | 1002900 | 412000 | 501450 | 206000 | batch |
+| 5 | 1081550 | 743151 | 216310 | 148630 | 1992000 | 1003000 | 398400 | 200600 | batch |
+| 10 | 2163100 | 1496019 | 216310 | 149601 | 4135300 | 2783400 | 413530 | 278340 | batch |
+| 15 | 3244650 | 2292557 | 216310 | 152837 | 7869400 | 6136100 | 524626 | 409073 | batch |
+| 20 | 4326200 | 3103832 | 216310 | 155191 | 12951500 | 6341200 | 647575 | 317060 | batch |
+<!-- CROSSOVER_TABLE_END -->
+
+### Crossover Point
+
+<!-- CROSSOVER_SUMMARY_START -->
+Instruction crossover: `stealth-batch-sender` becomes cheaper at **N = 1**.
+
+Batch stays cheaper across the full measured range. Per-entry batch cost falls
+from ~183k instructions at N=1 toward ~149–155k as N grows, while individual
+`stealth-sender::send` stays flat at 216,310 instructions per entry (it always
+pays for a cross-contract `announce` invoke). Prefer `stealth-batch-sender`
+whenever more than zero recipients share a payment.
+<!-- CROSSOVER_SUMMARY_END -->
+
+### Chart
+
+<!-- CROSSOVER_CHART_START -->
+```mermaid
+xychart-beta
+    title "Instructions: individual send vs batch send"
+    x-axis [1, 2, 5, 10, 15, 20]
+    y-axis "Instructions"
+    line "individual (N x send)" [216310, 432620, 1081550, 2163100, 3244650, 4326200]
+    line "batch (batch_send)" [182837, 320986, 743151, 1496019, 2292557, 3103832]
+```
+<!-- CROSSOVER_CHART_END -->
+
+Raw CSV: [`bench/data/crossover.csv`](bench/data/crossover.csv).
+Mermaid source: [`bench/data/crossover-chart.md`](bench/data/crossover-chart.md).
+
 ## Top Optimization Opportunities
 
 1. Reduce per-recipient `batch_send` overhead. Batch size 25 costs 4,322,337

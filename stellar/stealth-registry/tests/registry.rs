@@ -1,7 +1,11 @@
 #![cfg(test)]
 
-use stealth_registry::{StealthRegistryContract, StealthRegistryContractClient, RegistryError};
-use soroban_sdk::{testutils::{Address as _, Events}, vec, Address, Bytes, Env, IntoVal, Val, symbol_short};
+use soroban_sdk::{
+    symbol_short,
+    testutils::{Address as _, Events},
+    vec, Address, Bytes, Env, IntoVal, Val,
+};
+use stealth_registry::{RegistryError, StealthRegistryContract, StealthRegistryContractClient};
 
 fn setup() -> (Env, StealthRegistryContractClient<'static>) {
     let env = Env::default();
@@ -23,7 +27,8 @@ fn test_register_and_lookup() {
 
     let events = env.events().all();
     assert!(!events.is_empty());
-    let event = events.last().unwrap();
+    // register_keys emits the register event first, then a wraith-metrics event.
+    let event = events.first().unwrap();
     let expected_topics: soroban_sdk::Vec<Val> = vec![
         &env,
         symbol_short!("register").into_val(&env),
@@ -43,7 +48,7 @@ fn test_register_rejects_wrong_length() {
 
     let registrant = Address::generate(&env);
     let scheme_id: u32 = 1;
-    let bad_meta = Bytes::from_slice(&env, &[0u8; 32]); 
+    let bad_meta = Bytes::from_slice(&env, &[0u8; 32]);
 
     let result = client.try_register_keys(&registrant, &scheme_id, &bad_meta);
     assert_eq!(result, Err(Ok(RegistryError::InvalidMetaAddressLength)));
@@ -70,11 +75,17 @@ fn test_update_existing_registration() {
 
     let meta_v1 = Bytes::from_slice(&env, &[1u8; 64]);
     client.register_keys(&registrant, &scheme_id, &meta_v1);
-    assert_eq!(client.stealth_meta_address_of(&registrant, &scheme_id), meta_v1);
+    assert_eq!(
+        client.stealth_meta_address_of(&registrant, &scheme_id),
+        meta_v1
+    );
 
     let meta_v2 = Bytes::from_slice(&env, &[2u8; 64]);
     client.register_keys(&registrant, &scheme_id, &meta_v2);
-    assert_eq!(client.stealth_meta_address_of(&registrant, &scheme_id), meta_v2);
+    assert_eq!(
+        client.stealth_meta_address_of(&registrant, &scheme_id),
+        meta_v2
+    );
 }
 
 #[test]

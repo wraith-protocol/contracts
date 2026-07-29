@@ -1,0 +1,19 @@
+[package]
+name = "wraith-stellar-bench-crossover"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bench]]
+name = "crossover"
+harness = false
+
+[[bin]]
+name = "wraith-stellar-bench-crossover"
+path = "src/main.rs"
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-announcer = { path = "../stealth-announcer", features = ["testutils"] }
+stealth-batch-sender = { path = "../stealth-batch-sender", features = ["testutils"] }
+stealth-sender = { path = "../stealth-sender", features = ["testutils"] }

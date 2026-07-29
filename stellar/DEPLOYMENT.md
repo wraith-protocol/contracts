@@ -9,7 +9,10 @@ contracts. It was written after completing a full futurenet dry-run on
 ## Quick Reference
 
 ```
-# Dry-run (no real transactions)
+# One-command end-to-end dry-run (futurenet)
+STELLAR_ADMIN_SECRET=<secret> ./scripts/deploy-dryrun.sh
+
+# Legacy dry-run (prints commands without executing)
 cd stellar
 ./deploy.sh futurenet <identity> --dry-run
 
@@ -17,6 +20,78 @@ cd stellar
 ./deploy.sh futurenet <identity>
 ./deploy.sh testnet  <identity>
 ./deploy.sh mainnet  <identity> --force
+```
+
+---
+
+## One-Command End-to-End Dry-Run
+
+`scripts/deploy-dryrun.sh` is a self-contained script that performs a full
+futurenet deployment — build → deploy → wire → register a name → announce →
+scan → verify — and prints contract IDs with stellar.expert links.
+
+It is **idempotent**: re-running with the same `STELLAR_ADMIN_SECRET` produces
+the same contract IDs (deterministic deploy salts).
+
+### Usage
+
+```bash
+# Minimal (uses default RPC: https://rpc-futurenet.stellar.org)
+STELLAR_ADMIN_SECRET=SCVAL... ./scripts/deploy-dryrun.sh
+
+# Custom RPC + identity name
+STELLAR_ADMIN_SECRET=SCVAL... \
+  RPC_URL=https://custom-rpc.example.com \
+  IDENTITY_NAME=my-deployer \
+  ./scripts/deploy-dryrun.sh
+```
+
+### Requirements
+
+- `STELLAR_ADMIN_SECRET` env var (Stellar secret key, must be funded on futurenet)
+- `stellar-cli >= 22.0.1` (or `soroban-cli`)
+- Rust `wasm32-unknown-unknown` target installed
+- The admin account must have sufficient XLM balance (≥ 10 XLM recommended)
+
+### What It Does
+
+1. **Preflight** — checks env vars, tooling, network reachability, account balance
+2. **Build** — `cargo build --target wasm32-unknown-unknown --release`
+3. **Optimize** — `stellar contract optimize` on each WASM
+4. **Deploy** — deploys all 4 contracts with deterministic salts
+5. **Wire** — `init` on `stealth-sender` with the announcer contract ID
+6. **Smoke tests**:
+   - Register a test name in `wraith-names`
+   - Resolve the name
+   - Emit an `announce` event via `stealth-announcer`
+   - Query `stealth-registry`
+   - Verify `stealth-sender` initialization
+7. **Summary** — prints all 4 contract IDs + stellar.expert links
+
+### CI Integration
+
+This script runs on the `stellar-nightly` schedule in CI. See
+`.github/workflows/ci.yml` for the `stellar-deploy-dryrun` job.
+
+### Expected Output (excerpt)
+
+```
+═══ Results ═══
+
+  Contract              Contract ID
+  ───────               ───────────
+  stealth-announcer     CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBB4
+  stealth-registry      CBAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBB5
+  stealth-sender        CCAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBB6
+  wraith-names          CDAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBB7
+
+  Stellar Expert links:
+  ├─ Announcer: https://futurenet.stellar.expert/explorer/futurenet/contract/...
+  ├─ Registry:  https://futurenet.stellar.expert/explorer/futurenet/contract/...
+  ├─ Sender:    https://futurenet.stellar.expert/explorer/futurenet/contract/...
+  └─ Names:     https://futurenet.stellar.expert/explorer/futurenet/contract/...
+
+  ✔ Dry-run complete.
 ```
 
 ---

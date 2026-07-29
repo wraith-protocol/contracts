@@ -1,4 +1,4 @@
-use soroban_sdk::testutils::{Address as _, Ledger};
+use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::{Address, Bytes, Env, String};
 
 use wraith_names::{NamesError, WraithNamesContract, WraithNamesContractClient};
@@ -104,7 +104,10 @@ fn test_extend_name_ttl_invalid_extend_ledger() {
     assert_eq!(result, Err(Ok(NamesError::InvalidExtendLedger)));
 
     // Try to extend to past ledger
-    let result = client.try_extend_name_ttl(&name, &u32::try_from(current_ledger - 1).unwrap_or(0));
+    let result = client.try_extend_name_ttl(
+        &name,
+        &u32::try_from(current_ledger.saturating_sub(1)).unwrap_or(0),
+    );
     assert_eq!(result, Err(Ok(NamesError::InvalidExtendLedger)));
 }
 
