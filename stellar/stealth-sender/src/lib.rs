@@ -46,18 +46,6 @@ pub enum SenderError {
     InvalidFeeConfig = 5,
     /// The batch withdrawal exceeds the supported size cap.
     BatchTooLarge = 6,
-}
-
-/// A single withdrawal entry for batched asset exits.
-#[contracttype]
-#[derive(Clone)]
-pub struct WithdrawalEntry {
-    /// The token contract to withdraw from or to transfer through.
-    pub token: Address,
-    /// The destination address for the withdrawal.
-    pub to: Address,
-    /// The amount to transfer in the token's base unit.
-    pub amount: i128,
     /// The governance multisig has not been initialised.
     MultisigNotInitialized = 7,
     /// The governance multisig has already been initialised.
@@ -76,6 +64,18 @@ pub struct WithdrawalEntry {
     QuorumNotMet = 14,
     /// The rotation timelock has not elapsed yet.
     TimelockNotElapsed = 15,
+}
+
+/// A single withdrawal entry for batched asset exits.
+#[contracttype]
+#[derive(Clone)]
+pub struct WithdrawalEntry {
+    /// The token contract to withdraw from or to transfer through.
+    pub token: Address,
+    /// The destination address for the withdrawal.
+    pub to: Address,
+    /// The amount to transfer in the token's base unit.
+    pub amount: i128,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -458,6 +458,8 @@ impl StealthSenderContract {
         );
 
         Ok(())
+    }
+
     /// One-time setup of the governance signer set used to authorise signer
     /// rotations. Independent of `init` — does not gate `send`/`batch_send`.
     pub fn init_multisig(
