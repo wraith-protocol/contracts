@@ -95,22 +95,30 @@ pub enum NamesError {
     ThresholdNotMet = 16,
     TooManyGuardians = 17,
     InvalidThreshold = 18,
-    NotGuardian = 8,
-    NoProposal = 9,
-    ProposalAlreadyExists = 10,
-    AlreadyApproved = 11,
-    DelayNotElapsed = 12,
-    ThresholdNotMet = 13,
-    TooManyGuardians = 14,
-    InvalidThreshold = 15,
-    InvalidExtendLedger = 16,
+    InvalidExtendLedger = 19,
+    ParentNotFound = 20,
+    /// The protocol-level governance multisig has not been initialised.
+    MultisigNotInitialized = 21,
+    /// The protocol-level governance multisig has already been initialised.
+    MultisigAlreadyInitialized = 22,
+    /// The caller is not a current protocol-level governance signer.
+    NotSigner = 23,
+    /// A signer-rotation proposal is already pending.
+    RotationAlreadyPending = 24,
+    /// No signer-rotation proposal is pending.
+    NoPendingRotation = 25,
+    /// The caller has already approved the pending rotation.
+    AlreadyApprovedRotation = 26,
+    /// The pending rotation has not collected enough approvals yet.
+    QuorumNotMet = 27,
+    /// The rotation timelock has not elapsed yet.
+    TimelockNotElapsed = 28,
+    NameTooDeep = 29,
+    BulkLimitExceeded = 30,
 }
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
-
-const MIN_LABEL_LEN: usize = 3;
-const MAX_NAME_LEN: usize = 32;
 
 #[contract]
 pub struct WraithNamesContract;
@@ -402,7 +410,7 @@ impl WraithNamesContract {
         if let Some(ref ph) = parent_hash {
             let parent: NameEntry = env
                 .storage()
-                .instance()
+                .persistent()
                 .get(&DataKey::Name(ph.clone()))
                 .ok_or(NamesError::ParentNotFound)?;
             if parent.owner != owner {
@@ -414,6 +422,7 @@ impl WraithNamesContract {
             name: name.clone(),
             stealth_meta_address: stealth_meta_address.clone(),
             owner,
+            parent: parent_hash.clone(),
         };
 
         env.storage().persistent().set(&name_key, &entry);
@@ -665,11 +674,12 @@ impl WraithNamesContract {
     /// Hash a name string to BytesN<32> for use as storage key.
     fn hash_name(env: &Env, name: &String) -> BytesN<32> {
         let len = name.len() as usize;
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; MAX_NAME_LEN];
         if len > 0 {
             name.copy_into_slice(&mut buf[..len]);
         }
-        Ok(())
+        let name_bytes = Bytes::from_slice(env, &buf[..len]);
+        BytesN::from_array(env, &env.crypto().sha256(&name_bytes).to_array())
     }
 
     fn authorization_message(
@@ -1186,9 +1196,9 @@ mod test {
         let owner = Address::generate(&env);
         let meta = Bytes::from_slice(&env, &[1u8; 64]);
 
-        // Dotted names are rejected (subdomain nesting is not yet supported).
+        // Dotted names nested more than one level deep are rejected.
         let result = client.try_register(&owner, &String::from_str(&env, "a.b.alice"), &meta);
-        assert_eq!(result, Err(Ok(NamesError::InvalidNameCharacter)));
+        assert_eq!(result, Err(Ok(NamesError::NameTooDeep)));
     }
 
     #[test]
