@@ -17,5 +17,11 @@ contract ERC5564Announcer is IERC5564Announcer {
         bytes memory metadata
     ) external {
         emit Announcement(schemeId, stealthAddress, msg.sender, ephemeralPubKey, metadata);
+
+        // Also emit legacy v1-shaped announcement for indexer compatibility.
+        // The legacy shape used topics ("announce", schemeId, stealthAddress)
+        // and put `caller` in the data payload (non-indexed), resulting in
+        // three topics. Emit here to avoid breaking existing indexers.
+        emit LegacyAnnouncement(schemeId, stealthAddress, msg.sender, ephemeralPubKey, metadata);
     }
 }

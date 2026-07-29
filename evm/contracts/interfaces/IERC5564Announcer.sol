@@ -18,6 +18,19 @@ interface IERC5564Announcer {
         bytes metadata
     );
 
+    /// @notice Legacy v1-shaped announcement retained for indexer compatibility.
+    /// @dev Legacy shape used the topic tuple `("announce", schemeId, stealthAddress)`
+    /// and placed `caller` in data (non-indexed) so there were only 3 topics.
+    /// Keep this event so off-chain indexers that expect the older layout continue
+    /// to function during a migration window.
+    event LegacyAnnouncement(
+        uint256 indexed schemeId,
+        address indexed stealthAddress,
+        address caller,
+        bytes ephemeralPubKey,
+        bytes metadata
+    );
+
     /// @notice Publishes a stealth address announcement.
     /// @param schemeId The scheme ID (1 for secp256k1 with view tags).
     /// @param stealthAddress The generated stealth address.
