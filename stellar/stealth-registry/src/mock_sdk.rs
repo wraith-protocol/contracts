@@ -1,5 +1,8 @@
-use std::cell::RefCell;
-use std::rc::Rc;
+use alloc::rc::Rc;
+use core::cell::RefCell;
+use core::marker::PhantomData;
+
+pub use alloc::vec::Vec;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Address {
@@ -171,13 +174,13 @@ impl IntoVal<Env, Val> for u32 {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VecMock<T> {
-    _phantom: std::marker::PhantomData<T>,
+    _phantom: PhantomData<T>,
 }
 
 impl<T> VecMock<T> {
     pub fn new(_env: &Env) -> Self {
         VecMock {
-            _phantom: std::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 }

@@ -1,5 +1,8 @@
 #![no_std]
 
+#[cfg(kani)]
+extern crate alloc;
+
 #[cfg(not(kani))]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, Env,

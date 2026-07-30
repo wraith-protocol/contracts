@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use crate::mock_sdk::{Address, Bytes, DataKey, Env, StorageEntry};
 use crate::StealthRegistryContract;
 
@@ -36,11 +38,8 @@ pub fn proof_register_then_resolve() {
     assert!(res.is_ok());
 
     // Resolve keys
-    let resolved = StealthRegistryContract::stealth_meta_address_of(
-        env.clone(),
-        registrant,
-        scheme_id,
-    );
+    let resolved =
+        StealthRegistryContract::stealth_meta_address_of(env.clone(), registrant, scheme_id);
 
     // Assert lookup returns Ok and matches meta
     assert_eq!(resolved.unwrap(), meta);
@@ -96,12 +95,7 @@ pub fn proof_no_duplicate_keys() {
     }
     let meta = Bytes { data, len: 64 };
 
-    let _ = StealthRegistryContract::register_keys(
-        env.clone(),
-        registrant,
-        scheme_id,
-        meta,
-    );
+    let _ = StealthRegistryContract::register_keys(env.clone(), registrant, scheme_id, meta);
 
     // Assert that in the new storage, no two distinct elements share the same key
     let final_storage = &env.state.borrow().storage;
@@ -167,11 +161,8 @@ pub fn proof_expiry_monotonicity() {
     assert!(expiry_after_reg >= initial_expiry);
 
     // 2. Verify monotonicity during stealth_meta_address_of (lookup)
-    let res_lookup = StealthRegistryContract::stealth_meta_address_of(
-        env.clone(),
-        registrant,
-        scheme_id,
-    );
+    let res_lookup =
+        StealthRegistryContract::stealth_meta_address_of(env.clone(), registrant, scheme_id);
     assert!(res_lookup.is_ok());
 
     let expiry_after_lookup = env.state.borrow().storage[0].expiry_ledger;
