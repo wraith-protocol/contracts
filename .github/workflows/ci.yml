@@ -150,7 +150,6 @@ jobs:
         if: steps.bindings.outcome == 'success'
         run: git diff --exit-code
         working-directory: .
-      - uses: stellar/actions/setup-cli@main
       - run: ./abi/update.sh
       - name: Check ABI snapshots
         run: git diff --exit-code abi/
