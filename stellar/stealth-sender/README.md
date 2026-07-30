@@ -1,56 +1,76 @@
 # stealth-sender
 
-Atomic asset transfer + stealth announcement for the Wraith protocol on Stellar/Soroban.
+Soroban contract for atomic asset transfer + stealth announcement on Stellar.
 
-- `send` — transfer tokens to a single stealth address and emit an announcement via the configured `StealthAnnouncer` contract.
-- `batch_send` — same as `send`, but for parallel vectors of stealth addresses, ephemeral public keys, metadata, and amounts. All four vectors must be the same length or the call is rejected with `SenderError::LengthMismatch`.
+`init` stores the announcer address; `send` transfers tokens to a single
+stealth address and emits one announcement; `batch_send` does the same for a
+variable-length batch of parallel vectors (`stealth_addresses`,
+`ephemeral_pub_keys`, `metadatas`, `amounts`), rejecting mismatched lengths.
 
-## Testing
-
-```sh
-cargo test
+```bash
+cargo test          # unit tests (from stellar/)
 ```
 
 ## Fuzzing
 
-`batch_send` accepts variable-length batch payloads, which makes it the richest
-attack surface in this contract. `fuzz/` contains two `cargo-fuzz` targets:
+The batch path accepts variable-length, caller-controlled payloads and is the
+richest attack surface in this contract. A [`cargo-fuzz`](https://github.com/rust-fuzz/cargo-fuzz)
+harness under [`fuzz/`](./fuzz) drives it with arbitrary input.
 
-| Target | What it covers |
+Because Soroban contracts run in Wasm against host objects rather than raw byte
+buffers, `fuzz/src/lib.rs` reimplements the two byte-facing behaviours as a
+self-contained pure-Rust model that mirrors the contract semantics.
+
+### Targets
+
+| Target | What it checks |
 |---|---|
-| `batch_decode` | Builds arbitrary-shaped (and often length-mismatched) batches, round-trips each container (`Vec<Address>`, `Vec<BytesN<32>>`, `Vec<Bytes>`, `Vec<i128>`) through the same XDR encoding a contract invocation argument goes through, and asserts the decoded value never drifts from the original and never panics. It does not call the contract — pure (de)serialization. |
-| `batch_execute` | Deploys a real `StealthAnnouncer` and SAC token, then calls `batch_send` with arbitrary batches (including mismatched lengths, duplicate recipients, and negative/zero/large amounts). Asserts: the call never panics; on success, lengths matched and sender/recipient balances and the announcement-event count moved by exactly the batch amounts (no overwrites when a recipient repeats); on failure, balances and event count are byte-for-byte unchanged (no partial-batch drift). |
+| `batch_decode` | Round-trips an arbitrary batch payload through the wire codec: decoding never panics or over-reads, and `decode → encode → decode` is a stable fixed point. |
+| `batch_execute` | Runs arbitrary parallel batch vectors through the `batch_send` model and asserts its invariants: no event drift (one announcement per entry, in order), no index drift, and no silent over-write of accumulated recipient balances. |
+
+The committed corpus lives under [`fuzz/corpus/`](./fuzz/corpus) (one directory
+per target) and seeds each run with valid and boundary payloads plus
+coverage-expanding inputs.
 
 ### Running locally
 
-Requires the nightly toolchain and `cargo-fuzz`:
+Requires a nightly toolchain and `cargo-fuzz`:
 
-```sh
-cargo install cargo-fuzz
-cargo +nightly fuzz run batch_decode
-cargo +nightly fuzz run batch_execute
+```bash
+rustup toolchain install nightly
+cargo install cargo-fuzz --locked
+
+cd stellar/stealth-sender/fuzz
+cargo +nightly fuzz run batch_decode      # or batch_execute
 ```
 
-Add `-- -max_total_time=<seconds>` to bound a run.
+The model (without the fuzzer) can be exercised on stable:
 
-### Reproducing a crash
-
-A crashing input is written to `fuzz/artifacts/<target>/crash-<hash>`. Reproduce it with:
-
-```sh
-cargo +nightly fuzz run <target> fuzz/artifacts/<target>/crash-<hash>
+```bash
+cargo test --manifest-path stellar/stealth-sender/fuzz/Cargo.toml --lib
 ```
-
-Once triaged, copy the crashing file into `fuzz/corpus/<target>/` and commit it so the
-regression is fuzzed on every future run.
 
 ### CI
 
-A scheduled job (`stellar-fuzz` in `.github/workflows/ci.yml`) runs both targets nightly,
-each bounded to 15 minutes (30 minutes total), and uploads any crash artifacts for triage.
-It can also be triggered manually via `workflow_dispatch`.
+The `fuzz` job in [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)
+runs on a nightly schedule (03:00 UTC) and on manual `workflow_dispatch`, on the
+Rust nightly toolchain, with a 30-minute budget split evenly across the two
+targets (`-max_total_time=900` each). It is not run on every PR — a half-hour
+fuzz run is too heavy for that. Crash inputs are uploaded as build artifacts on
+failure.
 
-### Corpus
+### Reproducing a crash
 
-`fuzz/corpus/` holds a seed corpus (minimized with `cargo fuzz cmin`) for both targets,
-committed so CI and local runs start from good coverage instead of from scratch.
+When a run finds a crash, `cargo-fuzz` writes the offending input to
+`fuzz/artifacts/<target>/crash-<hash>`. Replay it deterministically with:
+
+```bash
+cargo +nightly fuzz run <target> fuzz/artifacts/<target>/crash-<hash>
+```
+
+Commit the crash input into `fuzz/corpus/<target>/` so the case becomes a
+permanent regression seed:
+
+```bash
+cp fuzz/artifacts/<target>/crash-<hash> fuzz/corpus/<target>/
+```

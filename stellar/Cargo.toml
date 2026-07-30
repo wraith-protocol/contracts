@@ -3,10 +3,32 @@ members = [
   "stealth-announcer",
   "stealth-registry",
   "stealth-sender",
-  "stealth-sender/fuzz",
+  "stealth-splitter",
+  "stealth-batch-sender",
+  "stealth-vault",
   "wraith-names",
+  "bench",
+  "bench-crossover",
+  "wraith-asset-policy",
+  "wraith-metrics",
+  "integration-tests",
+  "contracts/governance",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-soroban-sdk = "22.0.0"
+soroban-sdk = "22.0.11"
+
+# Keep the release profile at the workspace root: Cargo ignores profiles declared
+# in member manifests. These settings apply to every contract cdylib, including
+# contracts added to the workspace later.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false

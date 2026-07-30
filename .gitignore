@@ -9,9 +9,7 @@ evm/dist/
 
 # Stellar
 stellar/target/
-stellar/*/fuzz/target/
-stellar/*/fuzz/artifacts/
-stellar/*/fuzz/Cargo.lock
+stellar/node_modules/
 
 # Solana
 solana/target/
@@ -21,3 +19,7 @@ solana/.anchor/
 # CKB
 ckb/target/
 ckb/build/
+
+# Root Node/TS Build & Dependencies
+node_modules/
+dist/
