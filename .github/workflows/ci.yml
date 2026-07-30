@@ -150,7 +150,17 @@ jobs:
 
       - name: Check for bindings drift (diff detection)
         if: steps.bindings.outcome == 'success'
-        run: git diff --exit-code
+        run: |
+          if ! git diff --exit-code; then
+            echo "ERROR: Generated Stellar bindings differ from committed files."
+            echo "Regenerate and commit them locally with:"
+            echo "  cd stellar && pnpm bindings:stellar && git add -A && git commit -m 'chore(stellar): regenerate TypeScript bindings' && git push"
+            echo ""
+            echo "Diff:"
+            git --no-pager diff --stat
+            git --no-pager diff
+            exit 1
+          fi
         working-directory: .
 
   stellar-nightly:
