@@ -1,0 +1,29 @@
+[package]
+name = "stealth-sender-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = "1"
+libfuzzer-sys = "0.4"
+soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-announcer = { path = "../../stealth-announcer" }
+stealth-sender = { path = ".." }
+
+[[bin]]
+name = "batch_decode"
+path = "fuzz_targets/batch_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "batch_execute"
+path = "fuzz_targets/batch_execute.rs"
+test = false
+doc = false
+bench = false

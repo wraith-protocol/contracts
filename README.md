@@ -20,7 +20,7 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 |---|---|
 | **stealth-announcer** | Emits stealth address announcement events. No storage. |
 | **stealth-registry** | Maps addresses to 64-byte stealth meta-addresses with auth-gated registration. |
-| **stealth-sender** | Atomic token transfer + announcement via the announcer contract. Supports batch sends. |
+| **stealth-sender** | Atomic token transfer + announcement via the announcer contract. Supports batch sends, fuzzed via `cargo-fuzz` (see `stellar/stealth-sender/README.md`). |
 | **wraith-names** | Name registry with SHA-256 hashed storage keys, reverse lookup, and lowercase alphanumeric validation (3-32 chars). |
 
 ## Solana Programs (Anchor/Rust)
