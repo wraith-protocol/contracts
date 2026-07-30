@@ -161,7 +161,7 @@ describe('WraithSender', function () {
           return false;
         }
       });
-      expect(announcementLogs.length).to.equal(3);
+      expect(announcementLogs.length).to.equal(stealthAddresses.length * 2);
 
       for (let i = 0; i < stealthAddresses.length; i++) {
         const balanceAfter = await ethers.provider.getBalance(stealthAddresses[i]);
@@ -229,7 +229,7 @@ describe('WraithSender', function () {
       const announcementLogs = receipt!.logs.filter(
         (log) => log.address.toLowerCase() === announcerAddress,
       );
-      expect(announcementLogs.length).to.equal(2);
+      expect(announcementLogs.length).to.equal(stealthAddresses.length * 2);
 
       for (let i = 0; i < stealthAddresses.length; i++) {
         expect(await token.balanceOf(stealthAddresses[i])).to.equal(amounts[i]);
