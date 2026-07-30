@@ -114,7 +114,6 @@ pub enum NamesError {
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
-
 const MIN_LABEL_LEN: usize = 3;
 const MAX_NAME_LEN: usize = 32;
 

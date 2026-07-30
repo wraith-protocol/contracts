@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
-    IntoVal, Vec,
+    IntoVal, Symbol, Vec,
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
@@ -44,26 +44,38 @@ pub enum SenderError {
     TokenNotAllowed = 4,
     /// The fee configuration is invalid (e.g. fee > 50 bps, or fee > 0 with no recipient).
     InvalidFeeConfig = 5,
+    /// The batch withdrawal exceeds the supported size cap.
+    BatchTooLarge = 6,
     /// The governance multisig has not been initialised.
-    MultisigNotInitialized = 6,
+    MultisigNotInitialized = 7,
     /// The governance multisig has already been initialised.
-    MultisigAlreadyInitialized = 7,
+    MultisigAlreadyInitialized = 8,
     /// The caller is not a current governance signer.
-    NotSigner = 8,
+    NotSigner = 9,
     /// The requested threshold is invalid (zero, or greater than signer count).
-    InvalidThreshold = 9,
+    InvalidThreshold = 10,
     /// A signer-rotation proposal is already pending.
-    RotationAlreadyPending = 10,
+    RotationAlreadyPending = 11,
     /// No signer-rotation proposal is pending.
-    NoPendingRotation = 11,
+    NoPendingRotation = 12,
     /// The caller has already approved the pending rotation.
-    AlreadyApprovedRotation = 12,
+    AlreadyApprovedRotation = 13,
     /// The pending rotation has not collected enough approvals yet.
-    QuorumNotMet = 13,
+    QuorumNotMet = 14,
     /// The rotation timelock has not elapsed yet.
-    TimelockNotElapsed = 14,
-    /// The sponsored announcement entry list exceeded the per-call cap.
-    BatchTooLarge = 15,
+    TimelockNotElapsed = 15,
+}
+
+/// A single withdrawal entry for batched asset exits.
+#[contracttype]
+#[derive(Clone)]
+pub struct WithdrawalEntry {
+    /// The token contract to withdraw from or to transfer through.
+    pub token: Address,
+    /// The destination address for the withdrawal.
+    pub to: Address,
+    /// The amount to transfer in the token's base unit.
+    pub amount: i128,
 }
 
 /// Lightweight client wrapper that invokes the StealthAnnouncer contract via
@@ -111,6 +123,7 @@ mod asset_policy_client {
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
+const MAX_WITHDRAW_BATCH_SIZE: u32 = 30;
 
 /// Maximum entries permitted in a single `sponsored_announce` call.
 ///
@@ -429,118 +442,45 @@ impl StealthSenderContract {
         Ok(())
     }
 
-    /// Bundle multiple stealth address announcements into a single Stellar op.
+    /// Withdraw assets to multiple destinations in a single atomic transaction.
     ///
-    /// Designed for fee-bumped sponsorship: `sponsor` authenticates the bundle
-    /// at the transaction envelope level so the recorded `fee_account` on
-    /// Horizon is the sponsor, and each `entry.sender` authenticates only its
-    /// own entry. Each entry performs the same atomic send + announce as
-    /// `send`/`batch_send`, so mid-bundle failure rolls the entire transaction
-    /// back.
-    ///
-    /// `entries.len()` must be in `[1, SPONSORED_MAX_ENTRIES]` (call returns
-    /// `LengthMismatch` if the list is empty and `BatchTooLarge` if the cap
-    /// is exceeded). Per-entry token allow-list and protocol-fee behaviour are
-    /// identical to `batch_send`'s single-token path.
-    pub fn sponsored_announce(
+    /// The batch is capped at 30 entries. If any single entry cannot be
+    /// processed, the entire batch aborts and no state changes are retained.
+    pub fn withdraw_many(
         env: Env,
-        sponsor: Address,
-        entries: Vec<SponsoredEntry>,
+        withdrawer: Address,
+        entries: Vec<WithdrawalEntry>,
     ) -> Result<(), SenderError> {
-        sponsor.require_auth();
+        withdrawer.require_auth();
 
         let len = entries.len();
-        if len == 0 {
-            return Err(SenderError::LengthMismatch);
-        }
-        if len > SPONSORED_MAX_ENTRIES {
+        if len > MAX_WITHDRAW_BATCH_SIZE {
             return Err(SenderError::BatchTooLarge);
         }
 
-        let announcer: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Announcer)
-            .ok_or(SenderError::NotInitialized)?;
-
-        // Extend instance TTL
-        env.storage()
-            .instance()
-            .extend_ttl(TTL_THRESHOLD, TTL_EXTEND_TO);
-
-        // Check asset policy if configured
-        let policy_address: Option<Address> =
-            env.storage().instance().get(&DataKey::AssetPolicy);
-
         let mut total_amount: i128 = 0;
-
-        // Dedupe signers: `Address::require_auth` is not idempotent — repeated
-        // calls for the same address raise `AuthError::ExistingValue`. One sig
-        // per signer key is also the right Stellar envelope semantics for a
-        // fee-bumped bundle.
-        let mut auth_seen: Vec<Address> = Vec::new(&env);
-        auth_seen.push_back(sponsor.clone());
 
         for i in 0..len {
             let entry = entries.get(i).unwrap();
-
-            if !auth_seen.contains(&entry.sender) {
-                entry.sender.require_auth();
-                auth_seen.push_back(entry.sender.clone());
-            }
-
-            if let Some(ref policy) = policy_address {
-                if !asset_policy_client::check_asset(&env, policy, &entry.token) {
-                    return Err(SenderError::TokenNotAllowed);
-                }
-            }
-
             let token_client = token::Client::new(&env, &entry.token);
-            token_client.transfer(&entry.sender, &entry.stealth_address, &entry.amount);
             total_amount += entry.amount;
 
-            announcer_client::announce(
-                &env,
-                &announcer,
-                entry.scheme_id,
-                &entry.stealth_address,
-                &entry.ephemeral_pub_key,
-                &entry.metadata,
+            token_client.transfer(&withdrawer, &entry.to, &entry.amount);
+
+            env.events().publish(
+                (Symbol::new(&env, "Withdrawn"),),
+                (
+                    withdrawer.clone(),
+                    entry.to.clone(),
+                    entry.amount,
+                    entry.token.clone(),
+                ),
             );
         }
 
-        // Emit metric events for the whole bundle. Per-entry token dimensions
-        // are heterogeneous, so we tag the metrics with the sponsor (the
-        // observable fee source) instead of any single token address.
-        emit_metric(
-            &env,
-            contract_ids::STEALTH_SENDER,
-            metric_names::BATCH_SEND_COUNT,
-            1,
-            soroban_sdk::vec![
-                &env,
-                (dimension_names::TOKEN_ADDRESS, sponsor.into_val(&env)),
-            ],
-        );
-        emit_metric(
-            &env,
-            contract_ids::STEALTH_SENDER,
-            metric_names::BATCH_SEND_VOLUME,
-            total_amount,
-            soroban_sdk::vec![
-                &env,
-                (dimension_names::TOKEN_ADDRESS, sponsor.into_val(&env)),
-            ],
-        );
-        emit_metric(
-            &env,
-            contract_ids::STEALTH_SENDER,
-            metric_names::BATCH_SIZE,
-            len as i128,
-            soroban_sdk::vec![
-                &env,
-                (dimension_names::TOKEN_ADDRESS, sponsor.into_val(&env)),
-            ],
+        env.events().publish(
+            (Symbol::new(&env, "BatchWithdrawn"),),
+            (withdrawer, len as u32, total_amount),
         );
 
         Ok(())

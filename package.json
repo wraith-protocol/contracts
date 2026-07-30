@@ -7,6 +7,9 @@
     "bindings:stellar": "tsx stellar/scripts/generate-bindings.ts",
     "build:stellar": "pnpm bindings:stellar && cd stellar && cargo build --target wasm32-unknown-unknown --release"
   },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  },
   "devDependencies": {
     "@stellar/stellar-sdk": "^15.1.0",
     "@types/node": "^22.0.0",

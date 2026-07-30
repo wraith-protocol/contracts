@@ -1,0 +1,12 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "integration-tests"
+path = "src/withdraw_batch.rs"
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-sender = { path = "../stealth-sender" }

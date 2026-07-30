@@ -9,6 +9,7 @@ on:
 
 jobs:
   changes:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -90,8 +91,6 @@ jobs:
           targets: wasm32-unknown-unknown
           components: rustfmt
 
-      - run: cargo fmt --all --check
-      - run: cargo test --workspace
       - run: cargo fmt --all --check
       - run: cargo test --workspace
       - name: Run stellar resource benches
@@ -253,3 +252,28 @@ jobs:
           targets: riscv64imac-unknown-none-elf
       - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
       - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock
+
+  fuzz:
+    # Nightly cargo-fuzz run against stealth-sender's batch payload surface.
+    # Scheduled/manual only — a 30-minute budget is too heavy for every PR.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar/stealth-sender/fuzz
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version "^0.12" --locked
+      # 30-minute total budget, split evenly across the two targets (900s each).
+      - name: Fuzz batch_decode
+        run: cargo fuzz run batch_decode -- -max_total_time=900
+      - name: Fuzz batch_execute
+        run: cargo fuzz run batch_execute -- -max_total_time=900
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: stellar/stealth-sender/fuzz/artifacts/

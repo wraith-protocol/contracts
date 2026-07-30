@@ -79,29 +79,28 @@ These are the post-optimization harness results.
 
 | Contract | Function | Parameters | Instructions | Mem bytes | Read entries | Write entries | Read bytes | Write bytes | Event bytes |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| stealth-announcer | announce | metadata_len=1 | 15096 | 1610 | 1 | 0 | 104 | 0 | 196 |
-| stealth-announcer | announce | metadata_len=32 | 15096 | 1610 | 1 | 0 | 104 | 0 | 224 |
-| stealth-announcer | announce | metadata_len=256 | 15096 | 1610 | 1 | 0 | 104 | 0 | 448 |
-| stealth-announcer | announce | metadata_len=1024 | 15096 | 1610 | 1 | 0 | 104 | 0 | 1216 |
-| stealth-announcer | announce | metadata_len=4096 | 15096 | 1610 | 1 | 0 | 104 | 0 | 4288 |
-| stealth-registry | register_keys | first_time | 52852 | 7481 | 3 | 2 | 156 | 280 | 372 |
-| stealth-registry | register_keys | replacement | 50934 | 6801 | 3 | 2 | 364 | 280 | 372 |
-| stealth-sender | send | asset=xlm | 216310 | 31700 | 6 | 3 | 1164 | 520 | 964 |
-| stealth-sender | send | asset=issued | 216262 | 31700 | 6 | 3 | 1164 | 520 | 964 |
-| stealth-sender | batch_send | batch_size=1 | 225322 | 32365 | 6 | 3 | 1164 | 520 | 1216 |
-| stealth-sender | batch_send | batch_size=5 | 846167 | 124433 | 6 | 7 | 1164 | 1416 | 3056 |
-| stealth-sender | batch_send | batch_size=10 | 1667725 | 249823 | 6 | 12 | 1164 | 2536 | 5356 |
-| stealth-sender | batch_send | batch_size=25 | 4345781 | 694693 | 6 | 27 | 1164 | 5896 | 12256 |
-| stealth-sender | sponsored_announce | batch_size=1 | 233980 | 36242 | 7 | 4 | 1164 | 592 | 1096 |
-| stealth-sender | sponsored_announce | batch_size=5 | 867569 | 130706 | 7 | 8 | 1164 | 1488 | 2936 |
-| stealth-sender | sponsored_announce | batch_size=10 | 1696152 | 259091 | 7 | 13 | 1164 | 2608 | 5236 |
-| stealth-sender | sponsored_announce | batch_size=20 | 3462395 | 550211 | 7 | 23 | 1164 | 4848 | 9836 |
-| wraith-names | register | name_len=3 | 81415 | 10327 | 2 | 3 | 104 | 568 | 204 |
-| wraith-names | register | name_len=32 | 83028 | 10385 | 2 | 3 | 104 | 596 | 232 |
-| wraith-names | resolve | hit | 34962 | 3569 | 2 | 0 | 440 | 0 | 0 |
-| wraith-names | resolve | miss | 23559 | 2214 | 2 | 0 | 104 | 0 | 0 |
-| wraith-names | name_of | hit | 49222 | 4865 | 3 | 0 | 604 | 0 | 0 |
-| wraith-names | name_of | miss | 25374 | 2127 | 2 | 0 | 104 | 0 | 0 |
+| stealth-announcer | announce | metadata_len=0 | 15458 | 1666 | 1 | 0 | 104 | 0 | 216 |
+| stealth-announcer | announce | metadata_len=32 | 15458 | 1666 | 1 | 0 | 104 | 0 | 248 |
+| stealth-announcer | announce | metadata_len=256 | 15458 | 1666 | 1 | 0 | 104 | 0 | 472 |
+| stealth-announcer | announce | metadata_len=1024 | 15458 | 1666 | 1 | 0 | 104 | 0 | 1240 |
+| stealth-announcer | announce | metadata_len=4096 | 15458 | 1666 | 1 | 0 | 104 | 0 | 4312 |
+| stealth-registry | register_keys | first_time | 33345 | 4461 | 1 | 2 | 104 | 332 | 188 |
+| stealth-registry | register_keys | replacement | 44880 | 6553 | 1 | 2 | 260 | 332 | 188 |
+| stealth-sender | send | asset=xlm | 182403 | 28137 | 5 | 3 | 1068 | 520 | 484 |
+| stealth-sender | send | asset=issued | 182355 | 28137 | 5 | 3 | 1068 | 520 | 484 |
+| stealth-sender | batch_send | batch_size=1 | 184674 | 28137 | 5 | 3 | 1068 | 520 | 484 |
+| stealth-sender | batch_send | batch_size=5 | 807519 | 120229 | 5 | 7 | 1068 | 1416 | 2420 |
+| stealth-sender | batch_send | batch_size=10 | 1633634 | 245649 | 5 | 12 | 1068 | 2536 | 4840 |
+| stealth-sender | batch_send | batch_size=25 | 4322337 | 690609 | 5 | 27 | 1068 | 5896 | 12100 |
+| stealth-sender | withdraw_many | entries=1 | 166455 | 24918 | 4 | 3 | 888 | 520 | 616 |
+| stealth-sender | withdraw_many | entries=10 | 1478512 | 218040 | 4 | 12 | 888 | 2536 | 4756 |
+| stealth-sender | withdraw_many | entries=30 | 4826570 | 760300 | 4 | 32 | 7016 | 7016 | 13956 |
+| wraith-names | register | name_len=3 | 59792 | 6240 | 1 | 2 | 104 | 516 | 204 |
+| wraith-names | register | name_len=32 | 61413 | 6327 | 1 | 2 | 104 | 572 | 232 |
+| wraith-names | resolve | hit | 46096 | 5456 | 1 | 0 | 452 | 0 | 0 |
+| wraith-names | resolve | miss | 19766 | 1600 | 1 | 0 | 104 | 0 | 0 |
+| wraith-names | name_of | hit | 47042 | 5383 | 1 | 0 | 452 | 0 | 0 |
+| wraith-names | name_of | miss | 21581 | 1513 | 1 | 0 | 104 | 0 | 0 |
 
 ## Batch vs Individual Crossover
 
