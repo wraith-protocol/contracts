@@ -8,6 +8,9 @@ use soroban_sdk::{
     String, Vec,
 };
 
+mod multisig;
+pub use multisig::RotationProposal;
+
 pub const WRAITH_NAMES_DOMAIN: &[u8] = b"wraith-names:v1";
 
 const DELAY_WINDOW: u32 = 100_000;
@@ -30,6 +33,12 @@ pub enum DataKey {
     Admin,
     /// Whether the contract is paused.
     Paused,
+    /// Protocol-level governance multisig signer set.
+    MultisigSigners,
+    /// Protocol-level governance multisig quorum threshold.
+    MultisigThreshold,
+    /// Pending protocol-level signer-rotation proposal, if any.
+    PendingRotation,
 }
 
 /// A registered name entry.
@@ -90,11 +99,26 @@ pub enum NamesError {
     ParentNotFound = 20,
     /// The contract is paused.
     Paused = 21,
+    /// The protocol-level governance multisig has not been initialised.
+    MultisigNotInitialized = 21,
+    /// The protocol-level governance multisig has already been initialised.
+    MultisigAlreadyInitialized = 22,
+    /// The caller is not a current protocol-level governance signer.
+    NotSigner = 23,
+    /// A signer-rotation proposal is already pending.
+    RotationAlreadyPending = 24,
+    /// No signer-rotation proposal is pending.
+    NoPendingRotation = 25,
+    /// The caller has already approved the pending rotation.
+    AlreadyApprovedRotation = 26,
+    /// The pending rotation has not collected enough approvals yet.
+    QuorumNotMet = 27,
+    /// The rotation timelock has not elapsed yet.
+    TimelockNotElapsed = 28,
 }
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
-
 const MIN_LABEL_LEN: usize = 3;
 const MAX_NAME_LEN: usize = 32;
 
@@ -631,8 +655,6 @@ impl WraithNamesContract {
         let mut buf = [0u8; MAX_NAME_LEN];
         name.copy_into_slice(&mut buf[..len]);
 
-        let mut dot_pos: Option<usize> = None;
-        let mut dot_count: u32 = 0;
         for i in 0..len {
             let c = buf[i];
             if !(c >= b'a' && c <= b'z') && !(c >= b'0' && c <= b'9') {
@@ -640,6 +662,59 @@ impl WraithNamesContract {
             }
         }
         Ok(())
+    }
+
+    /// One-time setup of the protocol-level governance signer set used to
+    /// authorise signer rotations.
+    pub fn init_multisig(
+        env: Env,
+        signers: Vec<Address>,
+        threshold: u32,
+    ) -> Result<(), NamesError> {
+        multisig::init(&env, signers, threshold)
+    }
+
+    /// Current protocol-level governance signer set.
+    pub fn signers(env: Env) -> Vec<Address> {
+        multisig::signers(&env)
+    }
+
+    /// Current protocol-level governance quorum threshold.
+    pub fn threshold(env: Env) -> u32 {
+        multisig::threshold(&env)
+    }
+
+    /// The pending signer-rotation proposal, if any.
+    pub fn pending_rotation(env: Env) -> Option<RotationProposal> {
+        multisig::pending_rotation(&env)
+    }
+
+    /// Propose a new signer set + threshold behind the rotation timelock.
+    /// `caller` must be a current signer; the proposal is auto-approved by
+    /// `caller`. Rejects thresholds that could never reach quorum.
+    pub fn propose_rotate_signers(
+        env: Env,
+        caller: Address,
+        new_signers: Vec<Address>,
+        new_threshold: u32,
+    ) -> Result<(), NamesError> {
+        multisig::propose_rotate_signers(&env, caller, new_signers, new_threshold)
+    }
+
+    /// Approve the pending signer-rotation proposal.
+    pub fn approve_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::approve_rotate_signers(&env, caller)
+    }
+
+    /// Execute the pending rotation once quorum is met and the timelock has
+    /// elapsed. Emits `SignersRotated`.
+    pub fn execute_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::execute_rotate_signers(&env, caller)
+    }
+
+    /// Cancel the pending rotation, clearing all of its state.
+    pub fn cancel_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::cancel_rotate_signers(&env, caller)
     }
 }
 
@@ -1084,6 +1159,25 @@ mod test {
 
     #[test]
     fn test_register_rejected_when_paused() {
+    fn setup_multisig(env: &Env) -> (WraithNamesContractClient, Vec<Address>) {
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(env, &contract_id);
+
+        let signers = soroban_sdk::vec![
+            env,
+            Address::generate(env),
+            Address::generate(env),
+            Address::generate(env),
+            Address::generate(env),
+            Address::generate(env),
+        ];
+        client.init_multisig(&signers, &3);
+
+        (client, signers)
+    }
+
+    #[test]
+    fn test_init_multisig_rejects_invalid_threshold() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -1143,6 +1237,34 @@ mod test {
 
     #[test]
     fn test_release_rejected_when_paused() {
+        let signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+
+        let res = client.try_init_multisig(&signers, &0);
+        assert_eq!(res, Err(Ok(NamesError::InvalidThreshold)));
+
+        let res = client.try_init_multisig(&signers, &3);
+        assert_eq!(res, Err(Ok(NamesError::InvalidThreshold)));
+    }
+
+    #[test]
+    fn test_propose_rotate_signers_rejects_invalid_threshold() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, signers) = setup_multisig(&env);
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+
+        let res = client.try_propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &0);
+        assert_eq!(res, Err(Ok(NamesError::InvalidThreshold)));
+
+        let res = client.try_propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &3);
+        assert_eq!(res, Err(Ok(NamesError::InvalidThreshold)));
+
+        assert!(client.pending_rotation().is_none());
+    }
+
+    #[test]
+    fn test_rotate_signers_requires_quorum_and_timelock() {
         use soroban_sdk::testutils::Ledger;
 
         let env = Env::default();
@@ -1320,5 +1442,86 @@ mod test {
         // Register should succeed
         client.register(&owner, &name, &meta);
         assert_eq!(client.resolve(&name), meta);
+        let (client, signers) = setup_multisig(&env);
+
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
+
+        // Only one rotation may be pending at a time.
+        let res = client.try_propose_rotate_signers(&signers.get(1).unwrap(), &new_signers, &2);
+        assert_eq!(res, Err(Ok(NamesError::RotationAlreadyPending)));
+
+        // Only 1 of 3 required approvals so far (the proposer's).
+        let res = client.try_execute_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(NamesError::QuorumNotMet)));
+
+        client.approve_rotate_signers(&signers.get(1).unwrap());
+        client.approve_rotate_signers(&signers.get(2).unwrap());
+
+        // Quorum met, but the timelock has not elapsed yet.
+        let res = client.try_execute_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(NamesError::TimelockNotElapsed)));
+
+        env.ledger().with_mut(|li| {
+            li.timestamp += multisig::ROTATION_TIMELOCK_SECS;
+        });
+
+        client.execute_rotate_signers(&signers.get(0).unwrap());
+
+        assert_eq!(client.signers(), new_signers);
+        assert_eq!(client.threshold(), 2);
+        assert!(client.pending_rotation().is_none());
+    }
+
+    #[test]
+    fn test_cancelled_rotation_clears_state() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, signers) = setup_multisig(&env);
+
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
+        client.approve_rotate_signers(&signers.get(1).unwrap());
+
+        client.cancel_rotate_signers(&signers.get(2).unwrap());
+
+        // Cancelling clears the proposal entirely.
+        assert!(client.pending_rotation().is_none());
+
+        // The original signer set / threshold are untouched by the aborted rotation.
+        assert_eq!(client.signers(), signers);
+        assert_eq!(client.threshold(), 3);
+
+        // A stale approve/execute/cancel against the cleared proposal fails cleanly.
+        let res = client.try_approve_rotate_signers(&signers.get(3).unwrap());
+        assert_eq!(res, Err(Ok(NamesError::NoPendingRotation)));
+        let res = client.try_execute_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(NamesError::NoPendingRotation)));
+        let res = client.try_cancel_rotate_signers(&signers.get(0).unwrap());
+        assert_eq!(res, Err(Ok(NamesError::NoPendingRotation)));
+
+        // A fresh proposal can be made immediately — no leftover state blocks it.
+        let other_signers =
+            soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &other_signers, &2);
+        assert!(client.pending_rotation().is_some());
+    }
+
+    #[test]
+    fn test_non_signer_cannot_propose_or_approve() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let (client, signers) = setup_multisig(&env);
+        let outsider = Address::generate(&env);
+
+        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
+        let res = client.try_propose_rotate_signers(&outsider, &new_signers, &2);
+        assert_eq!(res, Err(Ok(NamesError::NotSigner)));
+
+        client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
+        let res = client.try_approve_rotate_signers(&outsider);
+        assert_eq!(res, Err(Ok(NamesError::NotSigner)));
     }
 }
