@@ -147,7 +147,10 @@ fn test_bulk_register_mismatched_lengths() {
     let (env, client) = setup();
     let owner = Address::generate(&env);
 
-    let names = Vec::from_array(&env, [String::from_str(&env, "a"), String::from_str(&env, "b")]);
+    let names = Vec::from_array(
+        &env,
+        [String::from_str(&env, "a"), String::from_str(&env, "b")],
+    );
     let metas = Vec::from_array(&env, [Bytes::from_slice(&env, &[1u8; 64])]);
 
     let result = client.try_bulk_register(&owner, &names, &metas);

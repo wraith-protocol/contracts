@@ -273,10 +273,8 @@ impl WraithNamesContract {
             registered.push_back(name_hash);
         }
 
-        env.events().publish(
-            (symbol_short!("bulk_reg"), owner.clone()),
-            registered,
-        );
+        env.events()
+            .publish((symbol_short!("bulk_reg"), owner.clone()), registered);
 
         Ok(())
     }
@@ -315,16 +313,21 @@ impl WraithNamesContract {
             let name_key = DataKey::Name(name_hash.clone());
 
             let entry: NameEntry = env.storage().persistent().get(&name_key).unwrap();
-            let meta_hash = BytesN::from_array(&env, &env.crypto().sha256(&entry.stealth_meta_address).to_array());
+            let meta_hash = BytesN::from_array(
+                &env,
+                &env.crypto().sha256(&entry.stealth_meta_address).to_array(),
+            );
             let reverse_key = DataKey::Reverse(meta_hash);
 
-            env.storage().persistent().extend_ttl(&name_key, current_ledger, extend_to_ledger);
-            env.storage().persistent().extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+            env.storage()
+                .persistent()
+                .extend_ttl(&name_key, current_ledger, extend_to_ledger);
+            env.storage()
+                .persistent()
+                .extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
 
-            env.events().publish(
-                (symbol_short!("extend"), name_hash),
-                extend_to_ledger,
-            );
+            env.events()
+                .publish((symbol_short!("extend"), name_hash), extend_to_ledger);
         }
 
         let mut name_hashes: Vec<BytesN<32>> = Vec::new(&env);
@@ -390,7 +393,10 @@ impl WraithNamesContract {
             for i in 0..parent_len {
                 parent_buf[i] = name_buf[last_dot + 1 + i];
             }
-            let parent_str = String::from_str(env, core::str::from_utf8(&parent_buf[..parent_len]).unwrap());
+            let parent_str = String::from_str(
+                env,
+                core::str::from_utf8(&parent_buf[..parent_len]).unwrap(),
+            );
             let ph = Self::hash_name(env, &parent_str);
             Some(ph)
         } else {
@@ -531,7 +537,11 @@ impl WraithNamesContract {
         }
         // Check if caller is the parent owner
         if let Some(ref ph) = entry.parent {
-            if let Some(parent_entry) = env.storage().persistent().get::<_, NameEntry>(&DataKey::Name(ph.clone())) {
+            if let Some(parent_entry) = env
+                .storage()
+                .persistent()
+                .get::<_, NameEntry>(&DataKey::Name(ph.clone()))
+            {
                 if parent_entry.owner == *caller {
                     return Ok(());
                 }
@@ -587,7 +597,7 @@ impl WraithNamesContract {
             .persistent()
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
-        
+
         Self::extend_ttls(&env, &name_key, None);
 
         Ok(entry.stealth_meta_address)
@@ -609,7 +619,7 @@ impl WraithNamesContract {
             .persistent()
             .get(&name_key)
             .ok_or(NamesError::NameNotFound)?;
-        
+
         Self::extend_ttls(&env, &name_key, Some(&reverse_key));
 
         Ok(entry.name)
@@ -648,9 +658,15 @@ impl WraithNamesContract {
         let reverse_key = DataKey::Reverse(meta_hash);
 
         // Extend TTLs to the specified ledger
-        env.storage().persistent().extend_ttl(&name_key, current_ledger, extend_to_ledger);
-        env.storage().persistent().extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
-        env.storage().instance().extend_ttl(current_ledger, extend_to_ledger);
+        env.storage()
+            .persistent()
+            .extend_ttl(&name_key, current_ledger, extend_to_ledger);
+        env.storage()
+            .persistent()
+            .extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+        env.storage()
+            .instance()
+            .extend_ttl(current_ledger, extend_to_ledger);
 
         // Emit extend event for observability
         env.events()
@@ -1225,9 +1241,18 @@ mod test {
 
         client.bulk_register(&owner, &names, &metas);
 
-        assert_eq!(client.resolve(&String::from_str(&env, "app")), Bytes::from_slice(&env, &[1u8; 64]));
-        assert_eq!(client.resolve(&String::from_str(&env, "docs")), Bytes::from_slice(&env, &[2u8; 64]));
-        assert_eq!(client.resolve(&String::from_str(&env, "pay")), Bytes::from_slice(&env, &[3u8; 64]));
+        assert_eq!(
+            client.resolve(&String::from_str(&env, "app")),
+            Bytes::from_slice(&env, &[1u8; 64])
+        );
+        assert_eq!(
+            client.resolve(&String::from_str(&env, "docs")),
+            Bytes::from_slice(&env, &[2u8; 64])
+        );
+        assert_eq!(
+            client.resolve(&String::from_str(&env, "pay")),
+            Bytes::from_slice(&env, &[3u8; 64])
+        );
     }
 
     #[test]
@@ -1240,7 +1265,11 @@ mod test {
 
         let owner = Address::generate(&env);
         // Pre-register "taken"
-        client.register(&owner, &String::from_str(&env, "taken"), &Bytes::from_slice(&env, &[1u8; 64]));
+        client.register(
+            &owner,
+            &String::from_str(&env, "taken"),
+            &Bytes::from_slice(&env, &[1u8; 64]),
+        );
 
         let names = soroban_sdk::vec![
             &env,
@@ -1319,7 +1348,11 @@ mod test {
         let client = WraithNamesContractClient::new(&env, &contract_id);
 
         let owner = Address::generate(&env);
-        client.register(&owner, &String::from_str(&env, "exists"), &Bytes::from_slice(&env, &[1u8; 64]));
+        client.register(
+            &owner,
+            &String::from_str(&env, "exists"),
+            &Bytes::from_slice(&env, &[1u8; 64]),
+        );
 
         let names = soroban_sdk::vec![
             &env,
@@ -1373,7 +1406,11 @@ mod test {
         let client = WraithNamesContractClient::new(&env, &contract_id);
 
         let owner = Address::generate(&env);
-        let names = soroban_sdk::vec![&env, String::from_str(&env, "a"), String::from_str(&env, "b")];
+        let names = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "a"),
+            String::from_str(&env, "b")
+        ];
         let metas = soroban_sdk::vec![&env, Bytes::from_slice(&env, &[1u8; 64])];
 
         let result = client.try_bulk_register(&owner, &names, &metas);
