@@ -83,6 +83,9 @@ These are the post-optimization harness results.
 | stealth-sender | batch_send | batch_size=5 | 807519 | 120229 | 5 | 7 | 1068 | 1416 | 2420 |
 | stealth-sender | batch_send | batch_size=10 | 1633634 | 245649 | 5 | 12 | 1068 | 2536 | 4840 |
 | stealth-sender | batch_send | batch_size=25 | 4322337 | 690609 | 5 | 27 | 1068 | 5896 | 12100 |
+| stealth-sender | withdraw_many | entries=1 | 166455 | 24918 | 4 | 3 | 888 | 520 | 616 |
+| stealth-sender | withdraw_many | entries=10 | 1478512 | 218040 | 4 | 12 | 888 | 2536 | 4756 |
+| stealth-sender | withdraw_many | entries=30 | 4826570 | 760300 | 4 | 32 | 7016 | 7016 | 13956 |
 | wraith-names | register | name_len=3 | 59792 | 6240 | 1 | 2 | 104 | 516 | 204 |
 | wraith-names | register | name_len=32 | 61413 | 6327 | 1 | 2 | 104 | 572 | 232 |
 | wraith-names | resolve | hit | 46096 | 5456 | 1 | 0 | 452 | 0 | 0 |

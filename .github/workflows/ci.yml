@@ -9,6 +9,7 @@ on:
 
 jobs:
   changes:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -149,6 +150,16 @@ jobs:
         if: steps.bindings.outcome == 'success'
         run: git diff --exit-code
         working-directory: .
+      # ABI extraction depends on the same soroban-sdk 22 WASM build as above.
+      # When the SDK bump (23.x/27.x) lands, remove continue-on-error to
+      # enforce ABI snapshot freshness on every PR.
+      - name: Extract ABI snapshots
+        id: abi
+        continue-on-error: true
+        run: ./abi/update.sh
+      - name: Check ABI snapshots
+        if: steps.abi.outcome == 'success'
+        run: git diff --exit-code abi/
 
   stellar-nightly:
     if: github.event_name == 'schedule'
@@ -221,7 +232,6 @@ jobs:
           path: |
             stellar/deploy-dryrun-output.txt
             stellar/contract-ids.txt
-
   solana:
     needs: changes
     if: needs.changes.outputs.solana == 'true'
