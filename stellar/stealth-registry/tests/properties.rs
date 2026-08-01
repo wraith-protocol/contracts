@@ -101,9 +101,11 @@ proptest! {
 
         client.register_keys(&registrant, &scheme_id, &meta);
 
+        // register_keys emits two events: the register event and a
+        // wraith-metrics event. The register event is emitted first.
         let events = env.events().all();
-        prop_assert_eq!(events.len(), 1);
-        let event = events.last().unwrap();
+        prop_assert_eq!(events.len(), 2);
+        let event = events.first().unwrap();
         let expected_topics: soroban_sdk::Vec<Val> = vec![
             &env,
             symbol_short!("register").into_val(&env),
