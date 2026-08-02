@@ -232,6 +232,22 @@ jobs:
           path: |
             stellar/deploy-dryrun-output.txt
             stellar/contract-ids.txt
+
+  stellar-chaos-nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    env:
+      WRAITHCHAOS_MODE: "1"
+      WRAITHCHAOS_FAILURE_RATE: "0.3"
+      WRAITHCHAOS_SEED: "42"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run chaos integration tests
+        run: cargo test --package integration-tests -- --nocapture
   solana:
     needs: changes
     if: needs.changes.outputs.solana == 'true'
