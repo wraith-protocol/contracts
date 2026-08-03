@@ -182,7 +182,8 @@ fn sender_send_eth_through_chaos() {
         let announcer_id = env.register(mock_announcer::MockAnnouncer, ());
         let sender_id = env.register(StealthSenderContract, ());
         let client = StealthSenderContractClient::new(&env, &sender_id);
-        client.init(&announcer_id, &None, &None, &0);
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
         let (token, sender_addr) = funded_token(&env);
         let stealth = Address::generate(&env);
         let epk = bytes32(&env, &[0xab; 32]);
@@ -209,7 +210,8 @@ fn sender_batch_send_through_chaos() {
         let announcer_id = env.register(mock_announcer::MockAnnouncer, ());
         let sender_id = env.register(StealthSenderContract, ());
         let client = StealthSenderContractClient::new(&env, &sender_id);
-        client.init(&announcer_id, &None, &None, &0);
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
         let (token, sender_addr) = funded_token(&env);
         let stealth1 = Address::generate(&env);
         let stealth2 = Address::generate(&env);
@@ -382,7 +384,8 @@ fn sender_announcer_lifecycle_through_chaos() {
         let announcer_id = env.register(StealthAnnouncerContract, ());
         let sender_id = env.register(StealthSenderContract, ());
         let client = StealthSenderContractClient::new(&env, &sender_id);
-        client.init(&announcer_id, &None, &None, &0);
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
         let (token, sender_addr) = funded_token(&env);
         let stealth = Address::generate(&env);
         let epk = bytes32(&env, &[0xff; 32]);

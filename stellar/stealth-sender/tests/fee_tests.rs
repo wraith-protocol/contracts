@@ -69,7 +69,13 @@ impl Harness {
 
         let admin = Address::generate(&env);
         let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
-        sender_client.init(&announcer_id, &None, &fee_recipient, &fee_basis_points, &admin);
+        sender_client.init(
+            &announcer_id,
+            &None,
+            &fee_recipient,
+            &fee_basis_points,
+            &admin,
+        );
 
         let sender = Address::generate(&env);
         let stealth = Address::generate(&env);

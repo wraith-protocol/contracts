@@ -102,7 +102,7 @@ pub enum NamesError {
     InvalidExtendLedger = 19,
     ParentNotFound = 20,
     /// The contract is paused.
-    Paused = 21,
+    Paused = 32,
     /// The protocol-level governance multisig has not been initialised.
     MultisigNotInitialized = 21,
     /// The protocol-level governance multisig has already been initialised.
@@ -156,9 +156,7 @@ impl WraithNamesContract {
         if caller != admin {
             panic!("unauthorized: only admin can pause");
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::Paused, &true);
+        env.storage().instance().set(&DataKey::Paused, &true);
         env.events()
             .publish((soroban_sdk::symbol_short!("paused"),), (caller,));
         Ok(())
@@ -175,9 +173,7 @@ impl WraithNamesContract {
         if caller != admin {
             panic!("unauthorized: only admin can unpause");
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::Paused, &false);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
             .publish((soroban_sdk::symbol_short!("unpaused"),), (caller,));
         Ok(())
@@ -1310,34 +1306,6 @@ mod test {
         assert_eq!(result, Err(Ok(NamesError::NameTooDeep)));
     }
 
-    // ── Pause / unpause tests ──────────────────────────────────────────────
-
-    #[test]
-    fn test_pause_by_admin() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-        client.init(&admin);
-
-        // Initially not paused
-        assert!(!client.is_paused());
-
-        // Admin pauses
-        client.pause(&admin);
-        assert!(client.is_paused());
-
-        // Admin unpauses
-        client.unpause(&admin);
-        assert!(!client.is_paused());
-    }
-
-    #[test]
-    fn test_register_rejected_when_paused() {
-    fn setup_multisig(env: &Env) -> (WraithNamesContractClient, Vec<Address>) {
     #[test]
     fn test_bulk_register_happy_path() {
         let env = Env::default();
@@ -1378,6 +1346,193 @@ mod test {
 
     #[test]
     fn test_bulk_register_atomic_revert_on_taken() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        // Pre-register "taken"
+        client.register(
+            &owner,
+            &String::from_str(&env, "taken"),
+            &Bytes::from_slice(&env, &[1u8; 64]),
+        );
+
+        let names = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "free1"),
+            String::from_str(&env, "taken"),
+            String::from_str(&env, "free2"),
+        ];
+        let metas = soroban_sdk::vec![
+            &env,
+            Bytes::from_slice(&env, &[1u8; 64]),
+            Bytes::from_slice(&env, &[2u8; 64]),
+            Bytes::from_slice(&env, &[3u8; 64]),
+        ];
+
+        let result = client.try_bulk_register(&owner, &names, &metas);
+        assert_eq!(result, Err(Ok(NamesError::NameTaken)));
+
+        // Verify none of the names were registered
+        assert_eq!(
+            client.try_resolve(&String::from_str(&env, "free1")),
+            Err(Ok(NamesError::NameNotFound))
+        );
+        assert_eq!(
+            client.try_resolve(&String::from_str(&env, "free2")),
+            Err(Ok(NamesError::NameNotFound))
+        );
+    }
+
+    #[test]
+    fn test_bulk_register_exceeds_limit() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let mut names_vec = soroban_sdk::Vec::new(&env);
+        let mut metas_vec = soroban_sdk::Vec::new(&env);
+        for i in 0..21 {
+            let name_str = format!("name{}", i);
+            names_vec.push_back(String::from_str(&env, &name_str));
+            metas_vec.push_back(Bytes::from_slice(&env, &[i as u8; 64]));
+        }
+
+        let result = client.try_bulk_register(&owner, &names_vec, &metas_vec);
+        assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
+    }
+
+    #[test]
+    fn test_bulk_renew_happy_path() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let name1 = String::from_str(&env, "alpha");
+        let name2 = String::from_str(&env, "beta");
+        client.register(&owner, &name1, &Bytes::from_slice(&env, &[1u8; 64]));
+        client.register(&owner, &name2, &Bytes::from_slice(&env, &[2u8; 64]));
+
+        let names = soroban_sdk::vec![&env, name1.clone(), name2.clone()];
+        let extend_to = env.ledger().sequence() + 10000;
+        let result = client.try_bulk_renew(&names, &extend_to);
+        assert_eq!(result, Ok(Ok(())));
+    }
+
+    #[test]
+    fn test_bulk_renew_atomic_revert_on_missing() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        client.register(
+            &owner,
+            &String::from_str(&env, "exists"),
+            &Bytes::from_slice(&env, &[1u8; 64]),
+        );
+
+        let names = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "exists"),
+            String::from_str(&env, "ghost"),
+        ];
+        let extend_to = env.ledger().sequence() + 10000;
+        let result = client.try_bulk_renew(&names, &extend_to);
+        assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
+    }
+
+    #[test]
+    fn test_bulk_renew_exceeds_limit() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let mut names_vec = soroban_sdk::Vec::new(&env);
+        for i in 0..21 {
+            names_vec.push_back(String::from_str(&env, &format!("name{}", i)));
+        }
+        let extend_to = env.ledger().sequence() + 10000;
+        let result = client.try_bulk_renew(&names_vec, &extend_to);
+        assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
+    }
+
+    #[test]
+    fn test_bulk_register_invalid_meta_length() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let names = soroban_sdk::vec![&env, String::from_str(&env, "test")];
+        let metas = soroban_sdk::vec![&env, Bytes::from_slice(&env, &[1u8; 63])];
+
+        let result = client.try_bulk_register(&owner, &names, &metas);
+        assert_eq!(result, Err(Ok(NamesError::InvalidMetaAddress)));
+    }
+
+    #[test]
+    fn test_bulk_register_mismatched_lengths() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let owner = Address::generate(&env);
+        let names = soroban_sdk::vec![
+            &env,
+            String::from_str(&env, "a"),
+            String::from_str(&env, "b")
+        ];
+        let metas = soroban_sdk::vec![&env, Bytes::from_slice(&env, &[1u8; 64])];
+
+        let result = client.try_bulk_register(&owner, &names, &metas);
+        assert_eq!(result, Err(Ok(NamesError::InvalidMetaAddress)));
+    }
+
+    // ── Pause / unpause tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_pause_by_admin() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let contract_id = env.register(WraithNamesContract, ());
+        let client = WraithNamesContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.init(&admin);
+
+        // Initially not paused
+        assert!(!client.is_paused());
+
+        // Admin pauses
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Admin unpauses
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_register_rejected_when_paused() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -1437,65 +1592,8 @@ mod test {
 
     #[test]
     fn test_release_rejected_when_paused() {
-        let signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
-        let owner = Address::generate(&env);
-        // Pre-register "taken"
-        client.register(
-            &owner,
-            &String::from_str(&env, "taken"),
-            &Bytes::from_slice(&env, &[1u8; 64]),
-        );
+        use soroban_sdk::testutils::Ledger;
 
-        let names = soroban_sdk::vec![
-            &env,
-            String::from_str(&env, "free1"),
-            String::from_str(&env, "taken"),
-            String::from_str(&env, "free2"),
-        ];
-        let metas = soroban_sdk::vec![
-            &env,
-            Bytes::from_slice(&env, &[1u8; 64]),
-            Bytes::from_slice(&env, &[2u8; 64]),
-            Bytes::from_slice(&env, &[3u8; 64]),
-        ];
-
-        let result = client.try_bulk_register(&owner, &names, &metas);
-        assert_eq!(result, Err(Ok(NamesError::NameTaken)));
-
-        // Verify none of the names were registered
-        assert_eq!(
-            client.try_resolve(&String::from_str(&env, "free1")),
-            Err(Ok(NamesError::NameNotFound))
-        );
-        assert_eq!(
-            client.try_resolve(&String::from_str(&env, "free2")),
-            Err(Ok(NamesError::NameNotFound))
-        );
-    }
-
-    #[test]
-    fn test_bulk_register_exceeds_limit() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
-
-        let owner = Address::generate(&env);
-        let mut names_vec = soroban_sdk::Vec::new(&env);
-        let mut metas_vec = soroban_sdk::Vec::new(&env);
-        for i in 0..21 {
-            let name_str = format!("name{}", i);
-            names_vec.push_back(String::from_str(&env, &name_str));
-            metas_vec.push_back(Bytes::from_slice(&env, &[i as u8; 64]));
-        }
-
-        let result = client.try_bulk_register(&owner, &names_vec, &metas_vec);
-        assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
-    }
-
-    #[test]
-    fn test_bulk_renew_happy_path() {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -1671,108 +1769,5 @@ mod test {
         // Register should succeed
         client.register(&owner, &name, &meta);
         assert_eq!(client.resolve(&name), meta);
-        let (client, signers) = setup_multisig(&env);
-
-        let new_signers = soroban_sdk::vec![&env, Address::generate(&env), Address::generate(&env)];
-        client.propose_rotate_signers(&signers.get(0).unwrap(), &new_signers, &2);
-
-        // Only one rotation may be pending at a time.
-        let res = client.try_propose_rotate_signers(&signers.get(1).unwrap(), &new_signers, &2);
-        assert_eq!(res, Err(Ok(NamesError::RotationAlreadyPending)));
-
-        // Only 1 of 3 required approvals so far (the proposer's).
-        let res = client.try_execute_rotate_signers(&signers.get(0).unwrap());
-        assert_eq!(res, Err(Ok(NamesError::QuorumNotMet)));
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
-
-        let owner = Address::generate(&env);
-        let name1 = String::from_str(&env, "alpha");
-        let name2 = String::from_str(&env, "beta");
-        client.register(&owner, &name1, &Bytes::from_slice(&env, &[1u8; 64]));
-        client.register(&owner, &name2, &Bytes::from_slice(&env, &[2u8; 64]));
-
-        let names = soroban_sdk::vec![&env, name1.clone(), name2.clone()];
-        let extend_to = env.ledger().sequence() + 10000;
-        let result = client.try_bulk_renew(&names, &extend_to);
-        assert_eq!(result, Ok(Ok(())));
-    }
-
-    #[test]
-    fn test_bulk_renew_atomic_revert_on_missing() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
-
-        let owner = Address::generate(&env);
-        client.register(
-            &owner,
-            &String::from_str(&env, "exists"),
-            &Bytes::from_slice(&env, &[1u8; 64]),
-        );
-
-        let names = soroban_sdk::vec![
-            &env,
-            String::from_str(&env, "exists"),
-            String::from_str(&env, "ghost"),
-        ];
-        let extend_to = env.ledger().sequence() + 10000;
-        let result = client.try_bulk_renew(&names, &extend_to);
-        assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
-    }
-
-    #[test]
-    fn test_bulk_renew_exceeds_limit() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
-
-        let mut names_vec = soroban_sdk::Vec::new(&env);
-        for i in 0..21 {
-            names_vec.push_back(String::from_str(&env, &format!("name{}", i)));
-        }
-        let extend_to = env.ledger().sequence() + 10000;
-        let result = client.try_bulk_renew(&names_vec, &extend_to);
-        assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
-    }
-
-    #[test]
-    fn test_bulk_register_invalid_meta_length() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
-
-        let owner = Address::generate(&env);
-        let names = soroban_sdk::vec![&env, String::from_str(&env, "test")];
-        let metas = soroban_sdk::vec![&env, Bytes::from_slice(&env, &[1u8; 63])];
-
-        let result = client.try_bulk_register(&owner, &names, &metas);
-        assert_eq!(result, Err(Ok(NamesError::InvalidMetaAddress)));
-    }
-
-    #[test]
-    fn test_bulk_register_mismatched_lengths() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let contract_id = env.register(WraithNamesContract, ());
-        let client = WraithNamesContractClient::new(&env, &contract_id);
-
-        let owner = Address::generate(&env);
-        let names = soroban_sdk::vec![
-            &env,
-            String::from_str(&env, "a"),
-            String::from_str(&env, "b")
-        ];
-        let metas = soroban_sdk::vec![&env, Bytes::from_slice(&env, &[1u8; 64])];
-
-        let result = client.try_bulk_register(&owner, &names, &metas);
-        assert_eq!(result, Err(Ok(NamesError::InvalidMetaAddress)));
     }
 }

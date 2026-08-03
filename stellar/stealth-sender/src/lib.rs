@@ -49,7 +49,7 @@ pub enum SenderError {
     /// The fee configuration is invalid (e.g. fee > 50 bps, or fee > 0 with no recipient).
     InvalidFeeConfig = 5,
     /// The contract is paused.
-    Paused = 6,
+    Paused = 16,
     /// The batch withdrawal exceeds the supported size cap.
     BatchTooLarge = 6,
     /// The governance multisig has not been initialised.
@@ -196,9 +196,7 @@ impl StealthSenderContract {
         if caller != admin {
             panic!("unauthorized: only admin can pause");
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::Paused, &true);
+        env.storage().instance().set(&DataKey::Paused, &true);
         env.events()
             .publish((soroban_sdk::symbol_short!("paused"),), (caller,));
         Ok(())
@@ -215,9 +213,7 @@ impl StealthSenderContract {
         if caller != admin {
             panic!("unauthorized: only admin can unpause");
         }
-        env.storage()
-            .instance()
-            .set(&DataKey::Paused, &false);
+        env.storage().instance().set(&DataKey::Paused, &false);
         env.events()
             .publish((soroban_sdk::symbol_short!("unpaused"),), (caller,));
         Ok(())
@@ -806,9 +802,7 @@ mod test {
         assert!(client.is_paused());
 
         // Send should be rejected
-        let result = client.try_send(
-            &sender, &token_id, &500, &1, &stealth_address, &epk, &meta,
-        );
+        let result = client.try_send(&sender, &token_id, &500, &1, &stealth_address, &epk, &meta);
         assert_eq!(result, Err(Ok(SenderError::Paused)));
 
         // Balances unchanged
@@ -921,6 +915,8 @@ mod test {
         client.send(&sender, &token_id, &500, &1, &stealth_address, &epk, &meta);
         assert_eq!(token_client.balance(&sender), 500);
         assert_eq!(token_client.balance(&stealth_address), 500);
+    }
+
     fn setup_multisig(env: &Env) -> (StealthSenderContractClient, Vec<Address>) {
         let sender_id = env.register(StealthSenderContract, ());
         let client = StealthSenderContractClient::new(env, &sender_id);
