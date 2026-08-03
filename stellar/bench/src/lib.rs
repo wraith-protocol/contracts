@@ -210,11 +210,11 @@ pub fn to_json(rows: &[Row], meta: &BenchMeta) -> std::string::String {
         "  \"generated_at\": \"{}\",\n",
         escape_json(&meta.generated_at)
     ));
-    out.push_str(&format!("  \"commit\": \"{}\",\n", escape_json(&meta.commit)));
     out.push_str(&format!(
-        "  \"threshold_pct\": {},\n",
-        meta.threshold_pct
+        "  \"commit\": \"{}\",\n",
+        escape_json(&meta.commit)
     ));
+    out.push_str(&format!("  \"threshold_pct\": {},\n", meta.threshold_pct));
     out.push_str("  \"results\": [\n");
     for (i, row) in rows.iter().enumerate() {
         out.push_str("    {\n");
@@ -233,7 +233,10 @@ pub fn to_json(rows: &[Row], meta: &BenchMeta) -> std::string::String {
         out.push_str(&format!("      \"instructions\": {},\n", row.instructions));
         out.push_str(&format!("      \"mem_bytes\": {},\n", row.mem_bytes));
         out.push_str(&format!("      \"read_entries\": {},\n", row.read_entries));
-        out.push_str(&format!("      \"write_entries\": {},\n", row.write_entries));
+        out.push_str(&format!(
+            "      \"write_entries\": {},\n",
+            row.write_entries
+        ));
         out.push_str(&format!("      \"read_bytes\": {},\n", row.read_bytes));
         out.push_str(&format!("      \"write_bytes\": {},\n", row.write_bytes));
         out.push_str(&format!("      \"events_bytes\": {}\n", row.events_bytes));
