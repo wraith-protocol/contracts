@@ -7,14 +7,14 @@ All state-mutating functions guard with `require_not_paused()` which returns
 the contract-specific `Paused` error.
 
 `Paused` / `Unpaused` events are emitted (topic: `"paused"` / `"unpaused"`,
-data: `(caller,)`) matching the pattern used in stealth-registry.
+data: `(caller,)`).
 
 ## Per-Contract Decision
 
 | Contract           | Pausable? | Reason |
 |--------------------|-----------|--------|
 | stealth-announcer  | No        | Stateless event emitter — no storage, nothing to pause |
-| stealth-registry   | Yes       | Stores stealth meta-addresses; pause prevents new registrations during incident |
+| stealth-registry   | No        | Not implemented; non-custodial metadata writes, registrations are not guarded |
 | stealth-sender     | Yes       | Moves tokens; pause prevents sends during incident |
 | wraith-names       | Yes       | Name registry with ownership; pause prevents registrations, updates, releases, and TTL extensions |
 
@@ -26,7 +26,8 @@ Guarded by `require_not_paused`:
 - `send` — token transfer + announcement
 - `batch_send` — batch token transfers + announcements
 
-No withdrawal function exists; users do not hold assets in the contract.
+NOT guarded (users must be able to exit during an incident):
+- `withdraw_many` — batch asset exits
 
 ### wraith-names
 

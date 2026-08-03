@@ -917,6 +917,50 @@ mod test {
         assert_eq!(token_client.balance(&stealth_address), 500);
     }
 
+    #[test]
+    fn test_withdraw_allowed_when_paused() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        env.ledger().with_mut(|li| {
+            li.min_persistent_entry_ttl = 600000;
+        });
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+
+        let admin = Address::generate(&env);
+        client.init(&announcer_id, &None, &None, &0, &admin);
+
+        let token_admin = Address::generate(&env);
+        let token_id = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+        let token_client = soroban_sdk::token::Client::new(&env, &token_id);
+
+        let withdrawer = Address::generate(&env);
+        let to = Address::generate(&env);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+        token_admin_client.mint(&withdrawer, &1000);
+
+        let mut entries = Vec::new(&env);
+        entries.push_back(WithdrawalEntry {
+            token: token_id.clone(),
+            to: to.clone(),
+            amount: 600,
+        });
+
+        // Pause the contract
+        client.pause(&admin);
+        assert!(client.is_paused());
+
+        // Withdrawals remain available while paused so users can always exit.
+        client.withdraw_many(&withdrawer, &entries);
+        assert_eq!(token_client.balance(&withdrawer), 400);
+        assert_eq!(token_client.balance(&to), 600);
+    }
+
     fn setup_multisig(env: &Env) -> (StealthSenderContractClient, Vec<Address>) {
         let sender_id = env.register(StealthSenderContract, ());
         let client = StealthSenderContractClient::new(env, &sender_id);
