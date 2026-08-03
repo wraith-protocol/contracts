@@ -3,10 +3,16 @@ name = "integration-tests"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "integration-tests"
+[[test]]
+name = "withdraw_batch"
 path = "src/withdraw_batch.rs"
 
 [dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-announcer = { path = "../stealth-announcer" }
+stealth-registry = { path = "../stealth-registry" }
 stealth-sender = { path = "../stealth-sender" }
+wraith-names = { path = "../wraith-names" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

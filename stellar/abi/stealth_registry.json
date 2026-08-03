@@ -1,0 +1,109 @@
+[
+  {
+    "udt_union_v0": {
+      "doc": "Storage keys.",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "tuple_v0": {
+            "doc": "Maps (registrant, scheme_id) to their stealth meta-address (64 bytes:\\nspending_pubkey || viewing_pubkey).",
+            "name": "MetaAddress",
+            "type_": [
+              "address",
+              "u32"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register or update a stealth meta-address.\\n\\n# Arguments\\n* `registrant` - The address whose meta-address is being set (must authorise).\\n* `scheme_id`  - The stealth address scheme identifier.\\n* `stealth_meta_address` - 64-byte value: `spending_pubkey || viewing_pubkey`.",
+      "name": "register_keys",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "registrant",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "scheme_id",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "stealth_meta_address",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "RegistryError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "Errors that the registry can produce.",
+      "lib": "",
+      "name": "RegistryError",
+      "cases": [
+        {
+          "doc": "The supplied stealth meta-address is not exactly 64 bytes.",
+          "name": "InvalidMetaAddressLength",
+          "value": 1
+        },
+        {
+          "doc": "No stealth meta-address has been registered for the given address and scheme.",
+          "name": "NotRegistered",
+          "value": 2
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Look up a previously registered stealth meta-address.\\n\\n# Arguments\\n* `registrant` - The address to look up.\\n* `scheme_id`  - The stealth address scheme identifier.",
+      "name": "stealth_meta_address_of",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "registrant",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "scheme_id",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "bytes",
+            "error_type": {
+              "udt": {
+                "name": "RegistryError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+]
