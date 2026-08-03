@@ -10,7 +10,10 @@ use soroban_sdk::{
     String, Vec,
 };
 
+pub mod auction;
 mod multisig;
+
+pub use auction::{Auction, AuctionConfig, AuctionError, SealedBid};
 pub use multisig::RotationProposal;
 
 pub const WRAITH_NAMES_DOMAIN: &[u8] = b"wraith-names:v1";
@@ -115,6 +118,9 @@ pub enum NamesError {
     TimelockNotElapsed = 28,
     NameTooDeep = 29,
     BulkLimitExceeded = 30,
+    /// The name is premium (<= 4 chars) and the auction window is active, so
+    /// it can only be obtained through the sealed-bid auction.
+    PremiumAuctionRequired = 31,
 }
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
@@ -133,7 +139,7 @@ impl WraithNamesContract {
         stealth_meta_address: Bytes,
     ) -> Result<(), NamesError> {
         owner.require_auth();
-        Self::register_internal(&env, owner, name, stealth_meta_address)
+        Self::register_internal(&env, owner, name, stealth_meta_address, false)
     }
 
     /// Register a name on behalf of an owner using a signed authorization.
@@ -154,7 +160,7 @@ impl WraithNamesContract {
             &signature,
             expiry,
         )?;
-        Self::register_internal(&env, owner, name, stealth_meta_address)?;
+        Self::register_internal(&env, owner, name, stealth_meta_address, false)?;
         // Persist replay protection to prevent signature reuse
         env.storage()
             .persistent()
@@ -268,7 +274,7 @@ impl WraithNamesContract {
         for i in 0..count {
             let name = names.get(i).unwrap();
             let meta = meta_addresses.get(i).unwrap();
-            Self::register_internal(&env, owner.clone(), name.clone(), meta)?;
+            Self::register_internal(&env, owner.clone(), name.clone(), meta, false)?;
             let name_hash = Self::hash_name(&env, &name);
             registered.push_back(name_hash);
         }
@@ -363,6 +369,7 @@ impl WraithNamesContract {
         owner: Address,
         name: String,
         stealth_meta_address: Bytes,
+        via_auction: bool,
     ) -> Result<(), NamesError> {
         Self::validate_name(env, &name)?;
         if stealth_meta_address.len() != 64 {
@@ -402,6 +409,12 @@ impl WraithNamesContract {
         } else {
             None
         };
+
+        // During the 90-day premium window, top-level names of 4 characters
+        // or fewer can only be obtained through the sealed-bid auction.
+        if !via_auction && parent_hash.is_none() && auction::premium_block_active(env, len) {
+            return Err(NamesError::PremiumAuctionRequired);
+        }
 
         let name_hash = Self::hash_name(env, &name);
         let name_key = DataKey::Name(name_hash.clone());
@@ -801,6 +814,148 @@ impl WraithNamesContract {
     /// Cancel the pending rotation, clearing all of its state.
     pub fn cancel_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
         multisig::cancel_rotate_signers(&env, caller)
+    }
+
+    // ── premium name auctions ────────────────────────────────────────────────
+
+    /// One-time initialization of the premium-name auction system.
+    ///
+    /// `admin` operates settlements per the runbook, `treasury` receives
+    /// winning bids, `token` is the payment asset (native XLM SAC on mainnet),
+    /// `reserve_price` is the minimum bid, and `commit_secs` / `reveal_secs`
+    /// are the phase durations for each auction. The 90-day premium window
+    /// starts at the ledger timestamp of this call.
+    pub fn init_auctions(
+        env: Env,
+        admin: Address,
+        treasury: Address,
+        token: Address,
+        reserve_price: i128,
+        commit_secs: u64,
+        reveal_secs: u64,
+    ) -> Result<(), AuctionError> {
+        auction::init(
+            &env,
+            admin,
+            treasury,
+            token,
+            reserve_price,
+            commit_secs,
+            reveal_secs,
+        )
+    }
+
+    /// Start a sealed-bid auction for a premium name (<= 4 chars, top-level).
+    /// Permissionless: anyone may open the auction for an eligible name.
+    pub fn start_auction(env: Env, name: String) -> Result<(), AuctionError> {
+        Self::validate_name(&env, &name).map_err(|_| AuctionError::NotPremiumName)?;
+
+        let len = name.len() as usize;
+        if len > auction::PREMIUM_NAME_MAX_LEN {
+            return Err(AuctionError::NotPremiumName);
+        }
+        // Only top-level names are auctioned; subdomains are gated by parent
+        // ownership instead.
+        let mut buf = [0u8; MAX_NAME_LEN];
+        name.copy_into_slice(&mut buf[..len]);
+        for i in 0..len {
+            if buf[i] == b'.' {
+                return Err(AuctionError::NotPremiumName);
+            }
+        }
+
+        let name_hash = Self::hash_name(&env, &name);
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Name(name_hash.clone()))
+        {
+            return Err(AuctionError::NameAlreadyRegistered);
+        }
+        auction::start(&env, name_hash, name)
+    }
+
+    /// Commit a sealed bid. `commitment` hides the bid amount; `deposit` is
+    /// transferred to the contract and must cover the bid revealed later.
+    pub fn commit_bid(
+        env: Env,
+        bidder: Address,
+        name: String,
+        commitment: BytesN<32>,
+        deposit: i128,
+    ) -> Result<(), AuctionError> {
+        let name_hash = Self::hash_name(&env, &name);
+        auction::commit(&env, bidder, name_hash, commitment, deposit)
+    }
+
+    /// Reveal a previously committed bid by disclosing the amount and salt.
+    pub fn reveal_bid(
+        env: Env,
+        bidder: Address,
+        name: String,
+        amount: i128,
+        salt: BytesN<32>,
+    ) -> Result<(), AuctionError> {
+        let name_hash = Self::hash_name(&env, &name);
+        auction::reveal(&env, bidder, name_hash, amount, salt)
+    }
+
+    /// Settle an auction after the reveal phase: pays the winning bid to the
+    /// treasury and refunds the winner's excess deposit. Permissionless so
+    /// funds can never be trapped, operated by the admin per the runbook.
+    pub fn settle_auction(env: Env, name: String) -> Result<(), AuctionError> {
+        let name_hash = Self::hash_name(&env, &name);
+        auction::settle(&env, name_hash)
+    }
+
+    /// Withdraw a losing (or unrevealed) bid deposit in full.
+    pub fn withdraw_bid(env: Env, bidder: Address, name: String) -> Result<(), AuctionError> {
+        let name_hash = Self::hash_name(&env, &name);
+        auction::withdraw(&env, bidder, name_hash)
+    }
+
+    /// Claim a won auction: registers the name to the winner with their
+    /// stealth meta-address.
+    pub fn claim_name(
+        env: Env,
+        winner: Address,
+        name: String,
+        stealth_meta_address: Bytes,
+    ) -> Result<(), AuctionError> {
+        winner.require_auth();
+        let name_hash = Self::hash_name(&env, &name);
+        auction::verify_claim(&env, &winner, &name_hash)?;
+        Self::register_internal(&env, winner, name, stealth_meta_address, true).map_err(|e| match e
+        {
+            NamesError::NameTaken => AuctionError::NameAlreadyRegistered,
+            NamesError::InvalidMetaAddress => AuctionError::InvalidMetaAddress,
+            _ => AuctionError::RegistrationFailed,
+        })
+    }
+
+    /// Read the auction state for a name, if any.
+    pub fn get_auction(env: Env, name: String) -> Option<Auction> {
+        let name_hash = Self::hash_name(&env, &name);
+        auction::load(&env, &name_hash)
+    }
+
+    /// Read the auction configuration, if initialized.
+    pub fn auction_config(env: Env) -> Option<AuctionConfig> {
+        auction::config(&env)
+    }
+
+    /// Compute the sealed-bid commitment for the given parameters.
+    ///
+    /// Intended for off-chain use (simulation only): calling this in a real
+    /// transaction would leak the bid amount.
+    pub fn compute_commitment(
+        env: Env,
+        name: String,
+        bidder: Address,
+        amount: i128,
+        salt: BytesN<32>,
+    ) -> BytesN<32> {
+        auction::compute_commitment(&env, &name, &bidder, amount, &salt)
     }
 }
 
