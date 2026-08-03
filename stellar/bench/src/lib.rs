@@ -2,7 +2,9 @@ use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::{vec, Address, Bytes, BytesN, Env, String as SorobanString, Vec as SorobanVec};
 
-use stealth_announcer::{StealthAnnouncerContract, StealthAnnouncerContractClient};
+use stealth_announcer::{
+    StealthAnnouncerContract, StealthAnnouncerContractClient, STELLAR_V2_SCHEME_ID,
+};
 use stealth_registry::{StealthRegistryContract, StealthRegistryContractClient};
 use stealth_sender::{StealthSenderContract, StealthSenderContractClient};
 use wraith_names::{WraithNamesContract, WraithNamesContractClient};
@@ -31,7 +33,8 @@ impl Row {
 pub fn collect_rows() -> std::vec::Vec<Row> {
     let mut rows = std::vec::Vec::new();
 
-    for metadata_len in [0u32, 32, 256, 1024, 4096] {
+    // v2 announcer requires scheme_id=2 and non-empty metadata (byte 0 = view tag).
+    for metadata_len in [1u32, 32, 256, 1024, 4096] {
         rows.push(measure(
             "stealth-announcer",
             "announce",
@@ -40,7 +43,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 let contract_id = env.register(StealthAnnouncerContract, ());
                 let client = StealthAnnouncerContractClient::new(env, &contract_id);
                 client.announce(
-                    &1,
+                    &STELLAR_V2_SCHEME_ID,
                     &Address::generate(env),
                     &BytesN::from_array(env, &[7u8; 32]),
                     &bytes(env, metadata_len, 9),
@@ -91,7 +94,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                     &sender,
                     &token,
                     &100,
-                    &1,
+                    &STELLAR_V2_SCHEME_ID,
                     &Address::generate(env),
                     &BytesN::from_array(env, &[3u8; 32]),
                     &bytes(env, 32, 4),
@@ -122,7 +125,15 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                     metadatas.push_back(bytes(env, 32, i as u8));
                     amounts.push_back(100);
                 }
-                client.batch_send(&sender, &token, &1, &addresses, &keys, &metadatas, &amounts);
+                client.batch_send(
+                    &sender,
+                    &token,
+                    &STELLAR_V2_SCHEME_ID,
+                    &addresses,
+                    &keys,
+                    &metadatas,
+                    &amounts,
+                );
             },
         ));
     }
