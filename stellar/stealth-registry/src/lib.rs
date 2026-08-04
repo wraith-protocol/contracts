@@ -121,7 +121,11 @@ impl StealthRegistryContract {
     /// # Arguments
     /// * `registrant` - The address whose meta-address is being removed (must authorise).
     /// * `scheme_id`  - The stealth address scheme identifier.
-    pub fn remove_keys(env: Env, registrant: Address, scheme_id: u32) -> Result<(), RegistryError> {
+    pub fn remove_keys(
+        env: Env,
+        registrant: Address,
+        scheme_id: u32,
+    ) -> Result<(), RegistryError> {
         // Require authorisation from the registrant.
         registrant.require_auth();
 
