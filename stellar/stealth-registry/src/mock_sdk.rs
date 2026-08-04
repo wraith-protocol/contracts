@@ -88,11 +88,15 @@ pub struct Storage {
 
 impl Storage {
     pub fn persistent(&self) -> PersistentStorage {
-        PersistentStorage { env: self.env.clone() }
+        PersistentStorage {
+            env: self.env.clone(),
+        }
     }
 
     pub fn instance(&self) -> InstanceStorage {
-        InstanceStorage { _env: self.env.clone() }
+        InstanceStorage {
+            _env: self.env.clone(),
+        }
     }
 }
 
@@ -116,7 +120,11 @@ impl PersistentStorage {
 
     pub fn get(&self, key: &DataKey) -> Option<Bytes> {
         let state = self.env.state.borrow();
-        state.storage.iter().find(|e| &e.key == key).map(|e| e.value.clone())
+        state
+            .storage
+            .iter()
+            .find(|e| &e.key == key)
+            .map(|e| e.value.clone())
     }
 
     pub fn has(&self, key: &DataKey) -> bool {

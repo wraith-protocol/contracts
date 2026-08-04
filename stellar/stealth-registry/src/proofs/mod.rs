@@ -57,7 +57,7 @@ pub fn proof_no_duplicate_keys() {
     let size: usize = kani::any();
     kani::assume(size <= 3);
 
-    let mut storage = Vec::new();
+    let mut storage: Vec<StorageEntry> = Vec::new();
     for _ in 0..size {
         let reg_id: u32 = kani::any();
         let scheme_id: u32 = kani::any();
