@@ -6,7 +6,7 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[dependencies]
+[target.'cfg(not(kani))'.dependencies]
 soroban-sdk = { workspace = true }
 wraith-metrics = { path = "../wraith-metrics" }
 
