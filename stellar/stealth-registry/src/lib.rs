@@ -32,6 +32,7 @@ pub mod wraith_metrics {
 }
 
 #[cfg(kani)]
+#[allow(unused_imports)]
 use mock_sdk::{
     contract_ids, dimension_names, emit_metric, metric_names, Address, Bytes, DataKey, Env, IntoVal,
 };
