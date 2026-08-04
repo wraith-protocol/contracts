@@ -2,8 +2,6 @@
 
 #[cfg(kani)]
 extern crate alloc;
-#[cfg(kani)]
-extern crate std;
 
 #[cfg(not(kani))]
 use soroban_sdk::{

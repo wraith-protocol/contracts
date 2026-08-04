@@ -1,7 +1,5 @@
 #[cfg(kani)]
 extern crate alloc;
-#[cfg(kani)]
-extern crate std;
 
 use alloc::rc::Rc;
 use core::cell::RefCell;
@@ -142,8 +140,9 @@ impl PersistentStorage {
         let ledger_seq = state.ledger_sequence;
         if let Some(entry) = state.storage.iter_mut().find(|e| &e.key == key) {
             let current_expiry = entry.expiry_ledger;
-            if current_expiry < ledger_seq + threshold {
-                entry.expiry_ledger = ledger_seq + extend_to;
+            let threshold_expiry = ledger_seq.saturating_add(threshold);
+            if current_expiry < threshold_expiry {
+                entry.expiry_ledger = ledger_seq.saturating_add(extend_to);
             }
         }
     }

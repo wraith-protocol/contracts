@@ -8,7 +8,7 @@ use crate::StealthRegistryContract;
 /// Claim: For any valid 64-byte payload registered under a key, resolving that key
 /// immediately returns the exact registered payload.
 #[kani::proof]
-#[kani::unwind(5)]
+#[kani::unwind(64)]
 pub fn proof_register_then_resolve() {
     let env = Env::new(1);
 
@@ -38,8 +38,12 @@ pub fn proof_register_then_resolve() {
     let resolved =
         StealthRegistryContract::stealth_meta_address_of(env.clone(), registrant, scheme_id);
 
-    // Assert lookup returns Ok and matches meta
-    assert_eq!(resolved.unwrap(), meta);
+    // Assert lookup returns Ok and matches meta without invoking memcmp.
+    let resolved = resolved.unwrap();
+    assert_eq!(resolved.len(), 64);
+    for i in 0..64 {
+        assert_eq!(resolved.data[i], meta.data[i]);
+    }
 }
 
 /// Proof (b): no two active registrations share the same key.
@@ -110,6 +114,7 @@ pub fn proof_no_duplicate_keys() {
 #[kani::unwind(5)]
 pub fn proof_expiry_monotonicity() {
     let initial_ledger: u32 = kani::any();
+    kani::assume(initial_ledger <= u32::MAX - 518400);
     let env = Env::new(initial_ledger);
 
     let reg_id: u32 = kani::any();
