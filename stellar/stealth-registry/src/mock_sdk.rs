@@ -73,7 +73,7 @@ impl Env {
     }
 
     pub fn events(&self) -> Events {
-        Events { env: self.clone() }
+        Events { _env: self.clone() }
     }
 }
 
@@ -87,7 +87,7 @@ impl Storage {
     }
 
     pub fn instance(&self) -> InstanceStorage {
-        InstanceStorage { env: self.env.clone() }
+        InstanceStorage { _env: self.env.clone() }
     }
 }
 

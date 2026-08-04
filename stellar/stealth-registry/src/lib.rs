@@ -30,7 +30,7 @@ pub mod wraith_metrics {
 }
 
 #[cfg(kani)]
-use mock_sdk::{Address, Bytes, Env, RegistryError};
+use mock_sdk::{Address, Bytes, Env};
 
 #[cfg(kani)]
 mod proofs;
