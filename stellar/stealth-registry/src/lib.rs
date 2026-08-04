@@ -30,13 +30,14 @@ pub mod wraith_metrics {
 }
 
 #[cfg(kani)]
-use mock_sdk::{Address, Bytes, Env};
+use mock_sdk::{Address, Bytes, DataKey, Env};
 
 #[cfg(kani)]
 mod proofs;
 
 /// Storage keys.
-#[cfg_attr(not(kani), contracttype)]
+#[cfg(not(kani))]
+#[contracttype]
 #[derive(Clone, PartialEq, Eq)]
 pub enum DataKey {
     /// Maps (registrant, scheme_id) to their stealth meta-address (64 bytes:
