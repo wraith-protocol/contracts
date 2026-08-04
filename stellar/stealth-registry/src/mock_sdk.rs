@@ -111,7 +111,11 @@ impl PersistentStorage {
 
     pub fn get(&self, key: &DataKey) -> Option<Bytes> {
         let state = self.env.state.borrow();
-        state.storage.iter().find(|e| &e.key == key).map(|e| e.value.clone())
+        state
+            .storage
+            .iter()
+            .find(|e| &e.key == key)
+            .map(|e| e.value.clone())
     }
 
     pub fn has(&self, key: &DataKey) -> bool {

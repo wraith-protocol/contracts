@@ -30,7 +30,12 @@ pub mod wraith_metrics {
 }
 
 #[cfg(kani)]
-use mock_sdk::{Address, Bytes, DataKey, Env};
+use mock_sdk::{
+    contract_ids, dimension_names, emit_metric, metric_names, Address, Bytes, DataKey, Env,
+    IntoVal,
+};
+#[cfg(kani)]
+use soroban_sdk::symbol_short;
 
 #[cfg(kani)]
 mod proofs;
@@ -114,7 +119,11 @@ impl StealthRegistryContract {
     /// # Arguments
     /// * `registrant` - The address whose meta-address is being removed (must authorise).
     /// * `scheme_id`  - The stealth address scheme identifier.
-    pub fn remove_keys(env: Env, registrant: Address, scheme_id: u32) -> Result<(), RegistryError> {
+    pub fn remove_keys(
+        env: Env,
+        registrant: Address,
+        scheme_id: u32,
+    ) -> Result<(), RegistryError> {
         // Require authorisation from the registrant.
         registrant.require_auth();
 
