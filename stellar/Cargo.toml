@@ -32,3 +32,14 @@ debug = false
 debug-assertions = false
 overflow-checks = false
 incremental = false
+
+# Host-side benches (soroban-sdk testutils) cannot use the contract release
+# profile: panic="abort" + LTO splits/breaks sdk type identity across crates.
+[profile.bench]
+inherits = "release"
+lto = false
+panic = "unwind"
+codegen-units = 16
+strip = false
+debug = true
+debug-assertions = true

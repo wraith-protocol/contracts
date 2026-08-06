@@ -88,7 +88,8 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 let sender_contract_id = env.register(StealthSenderContract, ());
                 let announcer_id = env.register(StealthAnnouncerContract, ());
                 let client = StealthSenderContractClient::new(env, &sender_contract_id);
-                client.init(&announcer_id, &None, &None, &0);
+                let admin = Address::generate(env);
+                client.init(&announcer_id, &None, &None, &0, &admin);
                 let (token, sender) = funded_token(env, asset == "xlm");
                 client.send(
                     &sender,
@@ -113,7 +114,8 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 let sender_contract_id = env.register(StealthSenderContract, ());
                 let announcer_id = env.register(StealthAnnouncerContract, ());
                 let client = StealthSenderContractClient::new(env, &sender_contract_id);
-                client.init(&announcer_id, &None, &None, &0);
+                let admin = Address::generate(env);
+                client.init(&announcer_id, &None, &None, &0, &admin);
                 let (token, sender) = funded_token(env, true);
                 let mut addresses: SorobanVec<Address> = vec![env];
                 let mut keys: SorobanVec<BytesN<32>> = vec![env];

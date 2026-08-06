@@ -32,9 +32,11 @@ fn main() {
             }
             "--out" => {
                 i += 1;
-                out_path = Some(resolve_out_path(args.get(i).cloned().unwrap_or_else(|| {
-                    usage_exit("--out requires a path");
-                })));
+                out_path = Some(resolve_out_path(args.get(i).cloned().unwrap_or_else(
+                    || {
+                        usage_exit("--out requires a path");
+                    },
+                )));
             }
             // `cargo bench` appends `--bench` for harness=false targets.
             "--bench" => {}
