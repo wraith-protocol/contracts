@@ -210,11 +210,16 @@ fn test_bulk_register_emits_per_name_events() {
 
     client.bulk_register(&owner, &names, &metas);
 
-    // Should have 2 per-name register events + 1 BulkRegistered event
+    // Should have 2 per-name register events + 2 per-name register metrics
+    // + 1 BulkRegistered event
     let events = env.events().all();
     // Each event has 3 components: topics, data
     // We check total count
-    assert_eq!(events.len(), 3, "expected 2 register + 1 bulk_reg events");
+    assert_eq!(
+        events.len(),
+        5,
+        "expected 2 register + 2 register metrics + 1 bulk_reg events"
+    );
 }
 
 /// 8. Happy path: bulk_renew extends TTL for multiple names.
@@ -339,6 +344,10 @@ fn test_bulk_renew_emits_per_name_events() {
     client.bulk_renew(&names, &extend_to);
 
     let events = env.events().all();
-    // 2 per-name extend events + 1 bulk_renew event
-    assert_eq!(events.len(), 3, "expected 2 extend + 1 blk_renew events");
+    // 2 per-name extend events + 1 bulk_renew event + 1 batch renew metric
+    assert_eq!(
+        events.len(),
+        4,
+        "expected 2 extend + 1 blk_renew + 1 renew metric events"
+    );
 }

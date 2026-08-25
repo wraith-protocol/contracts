@@ -9,6 +9,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
     String, Vec,
 };
+use wraith_metrics::{contract_ids, emit_metric, metric_names};
 
 pub mod auction;
 mod multisig;
@@ -434,6 +435,15 @@ impl WraithNamesContract {
             (name_hashes, extend_to_ledger),
         );
 
+        // Emit metric event — one renewal per name in the batch.
+        emit_metric(
+            &env,
+            contract_ids::WRAITH_NAMES,
+            metric_names::RENEW_COUNT,
+            count as i128,
+            Vec::new(&env),
+        );
+
         Ok(())
     }
 
@@ -547,6 +557,15 @@ impl WraithNamesContract {
             (name, stealth_meta_address),
         );
 
+        // Emit metric event.
+        emit_metric(
+            env,
+            contract_ids::WRAITH_NAMES,
+            metric_names::REGISTER_COUNT,
+            1,
+            Vec::new(env),
+        );
+
         Ok(())
     }
 
@@ -629,6 +648,15 @@ impl WraithNamesContract {
         env.events()
             .publish((symbol_short!("release"), name_hash), name);
 
+        // Emit metric event.
+        emit_metric(
+            env,
+            contract_ids::WRAITH_NAMES,
+            metric_names::RELEASE_COUNT,
+            1,
+            Vec::new(env),
+        );
+
         Ok(())
     }
 
@@ -693,13 +721,32 @@ impl WraithNamesContract {
     pub fn resolve(env: Env, name: String) -> Result<Bytes, NamesError> {
         let name_hash = Self::hash_name(&env, &name);
         let name_key = DataKey::Name(name_hash);
-        let entry: NameEntry = env
-            .storage()
-            .persistent()
-            .get(&name_key)
-            .ok_or(NamesError::NameNotFound)?;
+        let entry: NameEntry = match env.storage().persistent().get(&name_key) {
+            Some(entry) => entry,
+            None => {
+                // Emit metric event. Published before the error is returned, so
+                // it is captured whenever the enclosing transaction is applied.
+                emit_metric(
+                    &env,
+                    contract_ids::WRAITH_NAMES,
+                    metric_names::RESOLVE_MISS_COUNT,
+                    1,
+                    Vec::new(&env),
+                );
+                return Err(NamesError::NameNotFound);
+            }
+        };
 
         Self::extend_ttls(&env, &name_key, None);
+
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::WRAITH_NAMES,
+            metric_names::RESOLVE_HIT_COUNT,
+            1,
+            Vec::new(&env),
+        );
 
         Ok(entry.stealth_meta_address)
     }
@@ -773,6 +820,15 @@ impl WraithNamesContract {
         // Emit extend event for observability
         env.events()
             .publish((symbol_short!("extend"), name_hash), extend_to_ledger);
+
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::WRAITH_NAMES,
+            metric_names::RENEW_COUNT,
+            1,
+            Vec::new(&env),
+        );
 
         Ok(())
     }

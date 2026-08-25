@@ -19,6 +19,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, token, Address, Bytes, Env,
     IntoVal, String, Symbol, Val,
 };
+use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
 // ---------------------------------------------------------------------------
 // TTL constants (matching the Wraith convention)
@@ -260,6 +261,15 @@ impl GovernanceContract {
         env.events()
             .publish((symbol_short!("propose"), id), (proposer, description));
 
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::GOVERNANCE,
+            metric_names::PROPOSAL_COUNT,
+            1,
+            soroban_sdk::vec![&env, (dimension_names::PROPOSAL_ID, id.into_val(&env))],
+        );
+
         Ok(id)
     }
 
@@ -345,6 +355,19 @@ impl GovernanceContract {
             (voter, support, balance),
         );
 
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::GOVERNANCE,
+            metric_names::VOTE_COUNT,
+            1,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::PROPOSAL_ID, proposal_id.into_val(&env)),
+                (dimension_names::SUPPORT, support.into_val(&env)),
+            ],
+        );
+
         Ok(())
     }
 
@@ -427,6 +450,18 @@ impl GovernanceContract {
         env.events()
             .publish((symbol_short!("execute"), proposal_id), ());
 
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::GOVERNANCE,
+            metric_names::EXECUTION_COUNT,
+            1,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::PROPOSAL_ID, proposal_id.into_val(&env))
+            ],
+        );
+
         Ok(())
     }
 
@@ -493,7 +528,7 @@ mod test {
     use super::*;
     use soroban_sdk::{
         contract, contractimpl, symbol_short,
-        testutils::{Address as _, Ledger},
+        testutils::{Address as _, Events, Ledger},
         Bytes, Env, String,
     };
 
@@ -819,5 +854,114 @@ mod test {
         gov.init(&admin, &token_id, &100, &50, &10);
         let second = gov.try_init(&admin, &token_id, &100, &50, &10);
         assert_eq!(second, Err(Ok(GovernanceError::AlreadyInitialized)));
+    }
+
+    // ---- metric event shape ------------------------------------------------
+
+    /// Return the single `("metric", "gov", name)` event in the buffer as
+    /// `(metric_name, value, dimensions)`.
+    fn only_metric_event(env: &Env) -> (Symbol, i128, soroban_sdk::Vec<(Symbol, Val)>) {
+        let metric_topic: Val = symbol_short!("metric").into_val(env);
+        let mut found = None;
+
+        for (_, topics, data) in env.events().all().iter() {
+            let first: Option<Val> = topics.first();
+            if first.map(|t| t.shallow_eq(&metric_topic)) != Some(true) {
+                continue;
+            }
+
+            assert!(found.is_none(), "expected exactly one metric event");
+            assert_eq!(
+                topics.len(),
+                3,
+                "metric topics are (metric, contract, name)"
+            );
+
+            let emitting: Symbol = topics.get(1).unwrap().into_val(env);
+            assert_eq!(emitting, contract_ids::GOVERNANCE);
+
+            let metric_name: Symbol = topics.get(2).unwrap().into_val(env);
+            let (value, dimensions): (i128, soroban_sdk::Vec<(Symbol, Val)>) = data.into_val(env);
+            found = Some((metric_name, value, dimensions));
+        }
+
+        found.expect("no metric event emitted")
+    }
+
+    #[test]
+    fn test_propose_emits_proposal_count_metric() {
+        let (env, gov, _token_id, target_id, _admin) = setup_env();
+
+        let pid = gov.propose(
+            &Address::generate(&env),
+            &target_id,
+            &symbol_short!("set_value"),
+            &Bytes::from_slice(&env, b"data"),
+            &String::from_str(&env, "Metric proposal"),
+        );
+
+        let (metric_name, value, dimensions) = only_metric_event(&env);
+        assert_eq!(metric_name, metric_names::PROPOSAL_COUNT);
+        assert_eq!(value, 1);
+        assert_eq!(dimensions.len(), 1);
+        assert_eq!(dimensions.get(0).unwrap().0, dimension_names::PROPOSAL_ID);
+        let emitted_id: u32 = dimensions.get(0).unwrap().1.into_val(&env);
+        assert_eq!(emitted_id, pid);
+    }
+
+    #[test]
+    fn test_vote_emits_vote_count_metric() {
+        let (env, gov, token_id, target_id, _admin) = setup_env();
+        let voter = Address::generate(&env);
+        soroban_sdk::token::StellarAssetClient::new(&env, &token_id).mint(&voter, &200);
+
+        let pid = gov.propose(
+            &Address::generate(&env),
+            &target_id,
+            &symbol_short!("set_value"),
+            &Bytes::from_slice(&env, b"data"),
+            &String::from_str(&env, "Metric proposal"),
+        );
+
+        gov.vote(&voter, &pid, &false);
+
+        let (metric_name, value, dimensions) = only_metric_event(&env);
+        assert_eq!(metric_name, metric_names::VOTE_COUNT);
+        assert_eq!(value, 1);
+        assert_eq!(dimensions.len(), 2);
+        assert_eq!(dimensions.get(0).unwrap().0, dimension_names::PROPOSAL_ID);
+        assert_eq!(dimensions.get(1).unwrap().0, dimension_names::SUPPORT);
+        let support: bool = dimensions.get(1).unwrap().1.into_val(&env);
+        assert!(!support);
+    }
+
+    #[test]
+    fn test_execute_emits_execution_count_metric() {
+        let (env, gov, token_id, target_id, _admin) = setup_env();
+
+        let voter = Address::generate(&env);
+        soroban_sdk::token::StellarAssetClient::new(&env, &token_id).mint(&voter, &200);
+
+        let pid = gov.propose(
+            &Address::generate(&env),
+            &target_id,
+            &symbol_short!("set_value"),
+            &Bytes::from_slice(&env, b"metric-exec"),
+            &String::from_str(&env, "Metric proposal"),
+        );
+        gov.vote(&voter, &pid, &true);
+
+        let proposal = gov.get_proposal(&pid);
+        env.ledger().with_mut(|li| {
+            li.sequence_number = proposal.end_ledger + 20;
+        });
+
+        gov.execute(&pid);
+
+        let (metric_name, value, dimensions) = only_metric_event(&env);
+        assert_eq!(metric_name, metric_names::EXECUTION_COUNT);
+        assert_eq!(value, 1);
+        assert_eq!(dimensions.len(), 1);
+        assert_eq!(dimensions.get(0).unwrap().0, dimension_names::PROPOSAL_ID);
     }
 }

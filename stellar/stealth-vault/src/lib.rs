@@ -2,7 +2,9 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
+    IntoVal,
 };
+use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
 const GRACE_PERIOD: u32 = 1000;
 const TTL_THRESHOLD: u32 = 17280;
@@ -159,7 +161,25 @@ impl StealthVaultContract {
         // Emit deposit event
         env.events().publish(
             (soroban_sdk::symbol_short!("deposit"), deposit_id.clone()),
-            (sender, amount, asset, unlock_ledger),
+            (sender, amount, asset.clone(), unlock_ledger),
+        );
+
+        // Emit metric events.
+        let dimensions =
+            soroban_sdk::vec![&env, (dimension_names::ASSET_ADDRESS, asset.into_val(&env))];
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_VAULT,
+            metric_names::DEPOSIT_COUNT,
+            1,
+            dimensions.clone(),
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_VAULT,
+            metric_names::DEPOSIT_VOLUME,
+            amount,
+            dimensions,
         );
 
         Ok(deposit_id)
@@ -197,6 +217,18 @@ impl StealthVaultContract {
             (recipient, entry.amount),
         );
 
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_VAULT,
+            metric_names::CLAIM_COUNT,
+            1,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::ASSET_ADDRESS, entry.asset.into_val(&env))
+            ],
+        );
+
         Ok(())
     }
 
@@ -228,6 +260,18 @@ impl StealthVaultContract {
             (entry.sender, entry.amount),
         );
 
+        // Emit metric event.
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_VAULT,
+            metric_names::REFUND_COUNT,
+            1,
+            soroban_sdk::vec![
+                &env,
+                (dimension_names::ASSET_ADDRESS, entry.asset.into_val(&env))
+            ],
+        );
+
         Ok(())
     }
 }
@@ -235,7 +279,7 @@ impl StealthVaultContract {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::testutils::{Address as _, Events, Ledger};
     use soroban_sdk::{Bytes, BytesN, Env};
 
     #[contract]
@@ -376,5 +420,91 @@ mod test {
         env.ledger().with_mut(|li| li.sequence_number = 4999);
         let res = client.try_refund(&deposit_id);
         assert_eq!(res, Err(Ok(VaultError::NotYetRefundable)));
+    }
+
+    // ============ METRIC EVENT SHAPE ============
+
+    /// Collect the `("metric", contract, name)` events currently in the buffer
+    /// as `(metric_name, value, asset_address_dimension)` triples.
+    fn metric_events(env: &Env) -> soroban_sdk::Vec<(soroban_sdk::Symbol, i128, Address)> {
+        let metric_topic: soroban_sdk::Val = soroban_sdk::symbol_short!("metric").into_val(env);
+        let mut collected = soroban_sdk::Vec::new(env);
+
+        for (_, topics, data) in env.events().all().iter() {
+            let first: Option<soroban_sdk::Val> = topics.first();
+            if first.map(|t| t.shallow_eq(&metric_topic)) != Some(true) {
+                continue;
+            }
+
+            assert_eq!(
+                topics.len(),
+                3,
+                "metric topics are (metric, contract, name)"
+            );
+            let emitting: soroban_sdk::Symbol = topics.get(1).unwrap().into_val(env);
+            assert_eq!(emitting, contract_ids::STEALTH_VAULT);
+
+            let metric_name: soroban_sdk::Symbol = topics.get(2).unwrap().into_val(env);
+            let (value, dimensions): (
+                i128,
+                soroban_sdk::Vec<(soroban_sdk::Symbol, soroban_sdk::Val)>,
+            ) = data.into_val(env);
+
+            assert_eq!(dimensions.len(), 1, "expected the asset_address dimension");
+            let (dimension_name, dimension_value) = dimensions.get(0).unwrap();
+            assert_eq!(dimension_name, dimension_names::ASSET_ADDRESS);
+            let asset: Address = dimension_value.into_val(env);
+
+            collected.push_back((metric_name, value, asset));
+        }
+
+        collected
+    }
+
+    #[test]
+    fn test_deposit_emits_metric_events() {
+        let (env, client, sender, recipient, token_id) = setup();
+        let epk = BytesN::from_array(&env, &[9u8; 32]);
+
+        client.deposit(&sender, &recipient, &1000, &token_id, &100, &2000, &epk);
+
+        assert_eq!(
+            metric_events(&env),
+            soroban_sdk::vec![
+                &env,
+                (metric_names::DEPOSIT_COUNT, 1i128, token_id.clone()),
+                (metric_names::DEPOSIT_VOLUME, 1000i128, token_id),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_claim_emits_metric_event() {
+        let (env, client, sender, recipient, token_id) = setup();
+        let epk = BytesN::from_array(&env, &[10u8; 32]);
+
+        let deposit_id = client.deposit(&sender, &recipient, &1000, &token_id, &100, &2000, &epk);
+        env.ledger().with_mut(|li| li.sequence_number = 100);
+        client.claim(&deposit_id, &recipient);
+
+        assert_eq!(
+            metric_events(&env),
+            soroban_sdk::vec![&env, (metric_names::CLAIM_COUNT, 1i128, token_id)]
+        );
+    }
+
+    #[test]
+    fn test_refund_emits_metric_event() {
+        let (env, client, sender, recipient, token_id) = setup();
+        let epk = BytesN::from_array(&env, &[11u8; 32]);
+
+        let deposit_id = client.deposit(&sender, &recipient, &800, &token_id, &100, &2000, &epk);
+        env.ledger().with_mut(|li| li.sequence_number = 2000);
+        client.refund(&deposit_id);
+
+        assert_eq!(
+            metric_events(&env),
+            soroban_sdk::vec![&env, (metric_names::REFUND_COUNT, 1i128, token_id)]
+        );
     }
 }

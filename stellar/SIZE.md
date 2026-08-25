@@ -48,6 +48,30 @@ source/toolchain mismatch is fixed.
 
 Historical contract	Previous optimized baseline (bytes)
 wraith_names	9,755
+
+Metric emission delta (wraith_metrics wiring)
+Wiring wraith_metrics::emit_metric into wraith-names, stealth-splitter,
+stealth-vault, and the governance PoC adds an event publish (and the constant
+Symbols it carries) to each write path, so each payload grows. Both columns
+below are the optimized payload for the same contract, measured before and
+after the metric calls were added; the only difference between them is the
+metric emission.
+
+Contract	Before metrics (bytes)	After metrics (bytes)	Delta	Growth
+stealth_splitter	9,774	10,720	+946	+9.68%
+stealth_vault	9,237	11,117	+1,880	+20.35%
+governance	16,589	18,506	+1,917	+11.56%
+wraith_names	not measurable	not measurable	—	—
+All three measurable payloads stay far below the 112,640-byte CI budget; the
+largest, governance, is 83.57% below it.
+
+wraith_names cannot be compiled for wasm32-unknown-unknown at all (see the
+note above), so its metric-emission delta cannot be measured on this toolchain.
+The failure reproduces identically on the parent commit, so it is unrelated to
+the metric wiring. Once the soroban-sdk bump lands and the contract builds,
+re-run the command below and fill the row in; the wiring adds five call sites,
+so it should land in the same +1 to +2 KB range as the other three.
+
 Reproducing the per-contract delta
 From this directory, run the same commands used by CI. Record the byte count of
 each unoptimized WASM before applying the profile/optimizer, then record the
@@ -64,3 +88,19 @@ find target/wasm32-unknown-unknown/release -name '*_optimized.wasm' \
 The optimizer is deliberately run on the release output, as the network deploys
 the optimized payload rather than the intermediate compiler artifact. CI rejects
 any optimized payload over 112,640 bytes.
+
+A workspace-wide wasm32 build fails because integration-tests pulls
+soroban-sdk with the testutils feature and Cargo unifies that feature across
+the whole build. To measure a single contract, name it explicitly so the
+testutils-enabled members stay out of the graph:
+
+Shell
+
+cargo build -p stealth-vault -p stealth-splitter -p governance \
+  --target wasm32-unknown-unknown --release
+for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
+  stellar contract optimize --wasm "$wasm"
+done
+
+Note that stellar-cli 27.x writes <name>.optimized.wasm where the 22.0.1 CLI
+pinned in CI writes <name>_optimized.wasm; match the glob to the CLI in use.
