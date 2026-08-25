@@ -247,3 +247,4 @@ fn write_chart_data(rows: &[CrossoverRow], crossover: Option<u32>) {
         chart_path.display()
     );
 }
+ 

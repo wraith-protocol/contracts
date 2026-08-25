@@ -387,3 +387,4 @@ fn test_announcer_client_matches_v2_schema() {
     assert_eq!(bucket, 7u32);
     assert_eq!(kind, METADATA_KIND_VIEW_TAG);
 }
+ 
