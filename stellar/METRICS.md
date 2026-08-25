@@ -167,6 +167,31 @@ transaction, is not written to the ledger.
 | `vote_count` | After a vote is recorded by `vote` | 1 (increment) | `proposal_id`, `support` |
 | `execution_count` | After a proposal is executed by `execute` | 1 (increment) | `proposal_id` |
 
+## Emission Cost
+
+A metric event is an ordinary contract event, so each `emit_metric` call costs
+one `env.events().publish()`. Measured with `cargo bench -p wraith-stellar-bench
+--bench gas`, one emission is **+4,164 instructions** and **+144 event bytes**
+(with an empty dimension vector); the instruction cost is flat and does not vary
+with the metric name or value.
+
+That is negligible on a write path but material on a cheap read path:
+
+| Op | Before | After | Delta |
+|----|-------:|------:|------:|
+| `wraith-names::register` (name_len=3) | 83,942 | 88,106 | +4.96% |
+| `wraith-names::register` (name_len=32) | 84,490 | 88,654 | +4.93% |
+| `wraith-names::resolve` (hit) | 34,962 | 39,126 | +11.91% |
+| `wraith-names::resolve` (miss) | 23,559 | 27,723 | +17.67% |
+
+`resolve` exceeds the CI bench gate's +5% per-op threshold, so
+`stellar/bench/baseline.json` was rotated alongside the wiring. No other benched
+op moved: the splitter, vault, and governance write paths are not in the gas
+bench, and every other measured op is byte-identical.
+
+Instrument cheap read paths deliberately — the fixed emission cost dominates
+them.
+
 ## Symbol Encoding
 
 Soroban `Symbol`s used in event topics are limited to 9 characters, so the
