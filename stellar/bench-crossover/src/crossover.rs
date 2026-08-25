@@ -111,14 +111,16 @@ fn measure_batch(n: u32) -> Measured {
     for i in 0..n {
         transfers.push_back(Transfer {
             stealth_address: Address::generate(&env),
-            ephemeral_pub_key: bytes(&env, 33, 0x02u8.wrapping_add(i as u8)),
+            ephemeral_pub_key: BytesN::from_array(&env, &[0x02u8.wrapping_add(i as u8); 32]),
             amount: 100,
+            metadata: bytes(&env, 1, (i as u8).wrapping_add(1)),
         });
     }
 
+    let announcer_id = env.register(StealthAnnouncerContract, ());
     env.cost_estimate().budget().reset_unlimited();
     let start = Instant::now();
-    client.batch_send(&sender, &transfers, &token);
+    client.batch_send(&sender, &transfers, &token, &announcer_id, &2u32);
     Measured {
         instructions: env.cost_estimate().resources().instructions,
         wall_ns: start.elapsed().as_nanos(),

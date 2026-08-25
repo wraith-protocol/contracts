@@ -831,8 +831,10 @@ version = "0.1.0"
 dependencies = [
  "soroban-sdk",
  "stealth-announcer",
+ "stealth-batch-sender",
  "stealth-registry",
  "stealth-sender",
+ "stealth-splitter",
  "wraith-names",
 ]
 
@@ -1615,6 +1617,7 @@ name = "stealth-batch-sender"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "stealth-announcer",
  "wraith-metrics",
 ]
 

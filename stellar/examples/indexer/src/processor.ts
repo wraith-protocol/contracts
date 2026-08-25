@@ -16,10 +16,33 @@ dotenv.config();
 const RPC_URL = process.env.RPC_URL || 'https://futurenet.sorobanrpc.com';
 const server = new Server(RPC_URL);
 
+/**
+ * Contract kinds the reference indexer understands.
+ *
+ * Announcement sources (announcer, sender, splitter, batch-sender) all share
+ * one processing path. Splitter and batch-sender route per-transfer
+ * announcements through the announcer contract, so the events appear on the
+ * announcer address with the v2 4-topic layout:
+ *
+ *   topics: ("announce", scheme_id, view_tag_bucket, metadata_kind)
+ *   data:   (stealth_address, ephemeral_pub_key, metadata)
+ *
+ * There is no batch-sender-specific single-topic ("ANNOUNCE",) handler —
+ * that emission was removed so a topic-3 view-tag filter works uniformly.
+ */
+type ContractType = 'announcer' | 'registry' | 'sender' | 'names' | 'splitter' | 'batch-sender';
+
 interface ContractConfig {
     address: string;
-    type: 'announcer' | 'registry' | 'sender' | 'names';
+    type: ContractType;
 }
+
+const ANNOUNCEMENT_SOURCES: ReadonlySet<ContractType> = new Set([
+    'announcer',
+    'sender',
+    'splitter',
+    'batch-sender',
+]);
 
 const CONTRACTS: Record<string, ContractConfig> = {
     stealthAnnouncer: {
@@ -33,6 +56,14 @@ const CONTRACTS: Record<string, ContractConfig> = {
     stealthSender: {
         address: process.env.STEALTH_SENDER_ADDRESS || '',
         type: 'sender',
+    },
+    stealthSplitter: {
+        address: process.env.STEALTH_SPLITTER_ADDRESS || '',
+        type: 'splitter',
+    },
+    stealthBatchSender: {
+        address: process.env.STEALTH_BATCH_SENDER_ADDRESS || '',
+        type: 'batch-sender',
     },
     wraithNames: {
         address: process.env.WRAITH_NAMES_ADDRESS || '',
@@ -108,24 +139,30 @@ async function processEvent(config: ContractConfig, event: any, client: any) {
         return;
     }
 
+    // Single code path for every announcement source (announcer, sender,
+    // splitter, batch-sender). All emit / forward the v2 4-topic "announce"
+    // layout; no per-source decoding remains.
+    if (ANNOUNCEMENT_SOURCES.has(config.type)) {
+        if (Array.isArray(event.topic) && event.topic[0] === 'announce') {
+            // topics: ("announce", scheme_id, view_tag_bucket, metadata_kind)
+            // data:   (stealth_address, ephemeral_pub_key, metadata)
+            const schemeId = event.topic[1];
+            const [stealthAddress, ephemeralPubKey, metadata] = event.value;
+            await insertAnnouncement(
+                ledger,
+                txHash,
+                config.address,
+                schemeId,
+                stealthAddress,
+                Buffer.from(ephemeralPubKey, 'base64'),
+                metadata ? Buffer.from(metadata, 'base64') : null,
+                client
+            );
+        }
+        return;
+    }
+
     switch (config.type) {
-        case 'announcer':
-        case 'sender':
-            // Both emit the same announcement event
-            if (Array.isArray(event.topic) && event.topic[0] === 'announce') {
-                const [schemeId, stealthAddress, ephemeralPubKey, metadata] = event.value;
-                await insertAnnouncement(
-                    ledger,
-                    txHash,
-                    config.address,
-                    schemeId,
-                    stealthAddress,
-                    Buffer.from(ephemeralPubKey, 'base64'),
-                    metadata ? Buffer.from(metadata, 'base64') : null,
-                    client
-                );
-            }
-            break;
         case 'registry':
             if (Array.isArray(event.topic) && event.topic[0] === 'register_keys') {
                 const [registrant, schemeId, stealthMetaAddress] = event.value;
