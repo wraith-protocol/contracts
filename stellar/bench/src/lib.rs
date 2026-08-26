@@ -1,4 +1,4 @@
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::token::StellarAssetClient;
 use soroban_sdk::{vec, Address, Bytes, BytesN, Env, String as SorobanString, Vec as SorobanVec};
 
@@ -7,6 +7,7 @@ use stealth_announcer::{
 };
 use stealth_registry::{StealthRegistryContract, StealthRegistryContractClient};
 use stealth_sender::{StealthSenderContract, StealthSenderContractClient};
+use stealth_vault::{StealthVaultContract, StealthVaultContractClient};
 use wraith_names::{WraithNamesContract, WraithNamesContractClient};
 
 #[derive(Clone, Debug)]
@@ -192,6 +193,94 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
         let _ = client.try_name_of(&bytes(env, 64, 8));
     }));
 
+    for asset in ["xlm", "issued"] {
+        rows.push(measure(
+            "stealth-vault",
+            "deposit",
+            format!("asset={asset}"),
+            |env| {
+                env.mock_all_auths();
+                let (client, token, sender, recipient) = vault_with_token(env, asset == "xlm");
+                client.deposit(
+                    &sender,
+                    &recipient,
+                    &1_000,
+                    &token,
+                    &VAULT_UNLOCK_LEDGER,
+                    &VAULT_REFUND_AFTER,
+                    &BytesN::from_array(env, &[11u8; 32]),
+                );
+            },
+        ));
+    }
+
+    rows.push(measure(
+        "stealth-vault",
+        "claim",
+        "unlocked".into(),
+        |env| {
+            env.mock_all_auths();
+            let (client, token, sender, recipient) = vault_with_token(env, true);
+            let deposit_id = client.deposit(
+                &sender,
+                &recipient,
+                &1_000,
+                &token,
+                &VAULT_UNLOCK_LEDGER,
+                &VAULT_REFUND_AFTER,
+                &BytesN::from_array(env, &[12u8; 32]),
+            );
+            env.ledger()
+                .with_mut(|li| li.sequence_number = VAULT_UNLOCK_LEDGER);
+            client.claim(&deposit_id, &recipient);
+        },
+    ));
+
+    rows.push(measure(
+        "stealth-vault",
+        "refund",
+        "depositor".into(),
+        |env| {
+            env.mock_all_auths();
+            let (client, token, sender, recipient) = vault_with_token(env, true);
+            let deposit_id = client.deposit(
+                &sender,
+                &recipient,
+                &1_000,
+                &token,
+                &VAULT_UNLOCK_LEDGER,
+                &VAULT_REFUND_AFTER,
+                &BytesN::from_array(env, &[13u8; 32]),
+            );
+            env.ledger()
+                .with_mut(|li| li.sequence_number = VAULT_REFUND_AFTER);
+            client.refund(&deposit_id);
+        },
+    ));
+
+    rows.push(measure(
+        "stealth-vault",
+        "refund_permissionless",
+        "keeper".into(),
+        |env| {
+            env.mock_all_auths();
+            let (client, token, sender, recipient) = vault_with_token(env, true);
+            let deposit_id = client.deposit(
+                &sender,
+                &recipient,
+                &1_000,
+                &token,
+                &VAULT_UNLOCK_LEDGER,
+                &VAULT_REFUND_AFTER,
+                &BytesN::from_array(env, &[14u8; 32]),
+            );
+            env.ledger().with_mut(|li| {
+                li.sequence_number = VAULT_REFUND_AFTER + stealth_vault::DEFAULT_GRACE_PERIOD
+            });
+            client.refund_permissionless(&Address::generate(env), &deposit_id);
+        },
+    ));
+
     rows
 }
 
@@ -358,6 +447,29 @@ where
         write_bytes: resources.write_bytes,
         events_bytes: resources.contract_events_size_bytes,
     }
+}
+
+/// Vault deposits must clear `unlock_ledger + grace_period`; these constants keep
+/// every vault row on the same window so the numbers stay comparable.
+const VAULT_UNLOCK_LEDGER: u32 = 100;
+const VAULT_REFUND_AFTER: u32 = 2_000;
+
+/// A registered, initialised vault plus a funded sender and a recipient.
+fn vault_with_token(
+    env: &Env,
+    native: bool,
+) -> (
+    StealthVaultContractClient<'static>,
+    Address,
+    Address,
+    Address,
+) {
+    let announcer_id = env.register(StealthAnnouncerContract, ());
+    let vault_id = env.register(StealthVaultContract, ());
+    let client = StealthVaultContractClient::new(env, &vault_id);
+    client.init(&Address::generate(env), &announcer_id);
+    let (token, sender) = funded_token(env, native);
+    (client, token, sender, Address::generate(env))
 }
 
 fn funded_token(env: &Env, native: bool) -> (Address, Address) {

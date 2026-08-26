@@ -36,6 +36,27 @@ To run tests for all contracts:
 cargo test
 ```
 
+## Audits & Formal Verification
+
+Per-contract audit write-ups for the contracts that custody user funds:
+
+- [stealth-sender/AUDIT_SUMMARY.md](./stealth-sender/AUDIT_SUMMARY.md) — atomic
+  transfer + announcement coupling, SAC compatibility, batch atomicity.
+- [stealth-vault/AUDIT_SUMMARY.md](./stealth-vault/AUDIT_SUMMARY.md) — deposit-id
+  derivation, the single-invocation Soroban model and why no reentrancy guard is
+  required, and the Kani time-lock proofs.
+
+Machine-checked invariants live alongside the contracts they cover and run in the
+`stellar-kani` CI job:
+
+```bash
+cargo kani --package stealth-registry
+cargo kani --package stealth-vault
+```
+
+Cross-cutting posture docs: [PAUSE.md](./PAUSE.md), [METRICS.md](./METRICS.md),
+[PERF.md](./PERF.md), [MULTISIG.md](./MULTISIG.md).
+
 ## Deployment
 
 A deployment script is provided to deploy all contracts in one go.

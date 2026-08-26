@@ -118,9 +118,13 @@ Cutting v1 contracts expands contract state to support persistent rent isolation
 ### 2.5 `stealth-vault`
 - **v0 Storage Layout:** N/A (New in v1).
 - **v1 Storage Layout:**
-  - Storage Type: `instance()` for `Announcer` address; `persistent()` for deposit records.
+  - Storage Type: `instance()` for `Announcer` address, admin, and pause state;
+    `persistent()` for deposit records.
   - DataKeys:
     - `DataKey::Announcer` -> `Address`
+    - `DataKey::Admin` -> `Address` (pause admin; set at `init`)
+    - `DataKey::Paused` -> `bool` (blocks new deposits; exits stay callable)
+    - `DataKey::GracePeriod` -> `u32` (ledgers; defaults to 1000, admin-retunable)
     - `DataKey::Deposit(BytesN<32>)` -> `DepositEntry`:
       - `sender`: `Address`
       - `recipient`: `Address`

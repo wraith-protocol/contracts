@@ -68,7 +68,7 @@ ownership checks.
 ## Current Numbers
 
 <!-- BENCH:CURRENT:START -->
-These are the harness results auto-updated from `develop` (measured 2026-08-26, commit `233c055dcee3`).
+These are the harness results auto-updated from `develop` (measured 2026-08-26, commit `28634256692c`).
 
 | Contract | Function | Parameters | Instructions | Mem bytes | Read entries | Write entries | Read bytes | Write bytes | Event bytes |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -91,6 +91,11 @@ These are the harness results auto-updated from `develop` (measured 2026-08-26, 
 | wraith-names | resolve | miss | 27723 | 2655 | 2 | 0 | 104 | 0 | 0 |
 | wraith-names | name_of | hit | 49222 | 4865 | 3 | 0 | 604 | 0 | 0 |
 | wraith-names | name_of | miss | 25374 | 2127 | 2 | 0 | 104 | 0 | 0 |
+| stealth-vault | deposit | asset=xlm | 262123 | 39207 | 6 | 4 | 1228 | 924 | 1084 |
+| stealth-vault | deposit | asset=issued | 261883 | 39207 | 6 | 4 | 1228 | 924 | 1084 |
+| stealth-vault | claim | unlocked | 201891 | 32853 | 4 | 4 | 1476 | 520 | 628 |
+| stealth-vault | refund | depositor | 197513 | 30286 | 3 | 4 | 1608 | 520 | 628 |
+| stealth-vault | refund_permissionless | keeper | 210287 | 32111 | 3 | 4 | 1608 | 520 | 628 |
 <!-- BENCH:CURRENT:END -->
 
 ## Gas Regression Gate

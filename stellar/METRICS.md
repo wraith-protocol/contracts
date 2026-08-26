@@ -186,8 +186,13 @@ That is negligible on a write path but material on a cheap read path:
 
 `resolve` exceeds the CI bench gate's +5% per-op threshold, so
 `stellar/bench/baseline.json` was rotated alongside the wiring. No other benched
-op moved: the splitter, vault, and governance write paths are not in the gas
-bench, and every other measured op is byte-identical.
+op moved: the splitter and governance write paths are not in the gas bench, and
+every other measured op is byte-identical.
+
+The vault's four metrics are benched — see the `stealth-vault` rows in
+[PERF.md](./PERF.md). All four sit on write paths, so at the ~4,164-instruction
+fixed cost above the emissions are roughly 2% of `claim` / `refund` and 3% of
+`deposit` (which emits two).
 
 Instrument cheap read paths deliberately — the fixed emission cost dominates
 them.

@@ -13,16 +13,25 @@ Time-locked stealth payments with a refund safety net. Enables scenarios like:
 
 | Function | Description | Authorization |
 |----------|-------------|----------------|
-| `init(env, announcer)` | Initialize the vault with an announcer address | None (one-time initialization) |
+| `init(env, admin, announcer)` | Initialize the vault with a pause admin and an announcer address | None (one-time initialization) |
 | `deposit(env, sender, recipient, amount, asset, unlock_ledger, refund_after, ephemeral_pub_key)` | Deposit tokens for a recipient with time-lock | `sender` must authorize |
 | `claim(env, deposit_id, recipient)` | Claim a deposit after unlock time | `recipient` must authorize |
 | `refund(env, deposit_id)` | Refund a deposit after refund window | `sender` must authorize |
+| `refund_permissionless(env, caller, deposit_id)` | Return a deposit to its depositor one grace period after `refund_after` | `caller` must authorize (any address) |
+| `get_deposit(env, deposit_id)` | Read a stored deposit | None |
+| `pause(env, caller)` / `unpause(env, caller)` | Block / unblock new deposits | `caller` must be the admin |
+| `is_paused(env)` | Whether new deposits are blocked | None |
+| `admin(env)` | The pause admin | None |
+| `grace_period(env)` | The configured grace period, in ledgers | None |
+| `set_grace_period(env, caller, grace_period)` | Retune the grace period | `caller` must be the admin |
 
 ### `init`
 
-Initialize the vault with an announcer address.
+Initialize the vault with a pause admin and an announcer address. Seeds the
+grace period to `DEFAULT_GRACE_PERIOD` (1000 ledgers).
 
 **Parameters:**
+- `admin: Address` — The pause admin (should be a multisig; see [MULTISIG.md](../MULTISIG.md))
 - `announcer: Address` — The stealth announcer contract address
 
 **Returns:** `Result<(), VaultError>`
@@ -40,22 +49,24 @@ Deposit tokens for a recipient with a time-lock window.
 - `amount: i128` — Token amount to deposit
 - `asset: Address` — Token contract address
 - `unlock_ledger: u32` — Ledger number when recipient can claim
-- `refund_after: u32` — Ledger number when sender can refund (must be > unlock_ledger + GRACE_PERIOD)
+- `refund_after: u32` — Ledger number when sender can refund (must be > unlock_ledger + grace_period)
 - `ephemeral_pub_key: BytesN<32>` — Ephemeral public key for recipient scanning
 
 **Returns:** `Result<BytesN<32>, VaultError>` — The deposit ID (SHA-256 hash of deposit parameters)
 
 **Validation:**
-- `refund_after > unlock_ledger + GRACE_PERIOD` (1000 ledgers minimum grace period)
+- Contract must not be paused
+- `refund_after > unlock_ledger + grace_period` (saturating; 1000 ledgers by default)
 - Contract must be initialized
 
 **Events emitted:**
 - `("deposit", deposit_id)` with `(sender, amount, asset, unlock_ledger)`
-- Announcement event via announcer contract (scheme_id=1, metadata=[view_tag])
+- Announcement event via announcer contract (scheme_id=2, metadata=[view_tag])
 
 **Errors:**
+- `Paused` — New deposits are blocked
 - `NotInitialized` — Contract not initialized
-- `InvalidWindow` — `refund_after` is not > `unlock_ledger + GRACE_PERIOD`
+- `InvalidWindow` — `refund_after` is not > `unlock_ledger + grace_period`
 
 ### `claim`
 
@@ -101,17 +112,46 @@ Refund a deposit after the refund window.
 - `DepositNotFound` — Deposit ID does not exist
 - `NotYetRefundable` — Current ledger < `refund_after`
 
+### `refund_permissionless`
+
+Return an unclaimed deposit to its depositor without the depositor's signature,
+one grace period after `refund_after`. Funds always go to the recorded
+depositor — `caller` only pays the fee and is authorized so the invocation is
+attributable. This keeps a depositor who has lost their key from stranding funds
+in the vault forever.
+
+**Parameters:**
+- `caller: Address` — Whoever triggers the refund (must authorize)
+- `deposit_id: BytesN<32>` — The deposit ID returned by `deposit`
+
+**Returns:** `Result<(), VaultError>`
+
+**Validation:**
+- Deposit must exist
+- Current ledger >= `refund_after + grace_period` (saturating)
+
+**Events emitted:**
+- `("refund", deposit_id)` with `(sender, amount)` — the same event the
+  depositor path emits, so indexers need no change
+
+**Errors:**
+- `DepositNotFound` — Deposit ID does not exist
+- `NotYetPermissionless` — Current ledger < `refund_after + grace_period`
+
 ## Error Variants
 
 | Error Code | Description |
 |------------|-------------|
 | `AlreadyInitialized = 1` | Contract already initialized |
 | `NotInitialized = 2` | Contract not initialized |
-| `InvalidWindow = 3` | Refund window is not > unlock_ledger + GRACE_PERIOD |
+| `InvalidWindow = 3` | Refund window is not > unlock_ledger + grace_period |
 | `DepositNotFound = 4` | Deposit ID does not exist |
 | `NotYetUnlocked = 5` | Current ledger < unlock_ledger |
 | `NotYetRefundable = 6` | Current ledger < refund_after |
 | `WrongRecipient = 7` | Caller is not the deposit recipient |
+| `Paused = 8` | New deposits are blocked; exits remain callable |
+| `NotYetPermissionless = 9` | Permissionless refund window has not opened |
+| `InvalidGracePeriod = 10` | `set_grace_period` was called with zero |
 
 ## Event Topics
 
@@ -119,12 +159,18 @@ Refund a deposit after the refund window.
 |-------|------|-------------|
 | `("deposit", deposit_id)` | `(sender, amount, asset, unlock_ledger)` | Deposit created |
 | `("claim", deposit_id)` | `(recipient, amount)` | Deposit claimed |
-| `("refund", deposit_id)` | `(sender, amount)` | Deposit refunded |
+| `("refund", deposit_id)` | `(sender, amount)` | Deposit refunded (either refund path) |
+| `("paused",)` | `(caller,)` | Deposits blocked by the admin |
+| `("unpaused",)` | `(caller,)` | Deposits re-enabled by the admin |
+| `("grace",)` | `(caller, grace_period)` | Grace period retuned by the admin |
 
 ## Storage Layout
 
 ### Instance Storage
 - `DataKey::Announcer: Address` — The stealth announcer contract address
+- `DataKey::Admin: Address` — The pause admin
+- `DataKey::Paused: bool` — Whether new deposits are blocked
+- `DataKey::GracePeriod: u32` — Configurable grace period, in ledgers
 
 ### Persistent Storage
 - `DataKey::Deposit(deposit_id): DepositEntry` — Individual deposit entries
@@ -149,19 +195,24 @@ pub struct DepositEntry {
 
 | Feature | Status |
 |---------|--------|
-| Pausable | No — no pause mechanism implemented |
-| Admin | No — no admin controls after initialization |
-| Metrics | No — no metric events emitted |
+| Pausable | Yes — `deposit` only; `claim`, `refund`, and `refund_permissionless` stay callable so users can always exit |
+| Admin | Yes — set at `init`; can pause, unpause, and retune the grace period |
+| Metrics | Yes — `deposit_count`, `deposit_volume`, `claim_count`, `refund_count` |
 
 ## Related Docs
 
+- [AUDIT_SUMMARY.md](./AUDIT_SUMMARY.md) — Security audit, deposit-id derivation,
+  the single-invocation model and why no reentrancy guard is required
 - [PAUSE.md](../PAUSE.md) — Pause posture documentation
 - [MULTISIG.md](../MULTISIG.md) — Multisig setup documentation
 - [METRICS.md](../METRICS.md) — Metrics standard documentation
+- [PERF.md](../PERF.md) — Gas bench numbers
 
 ## Constants
 
-- `GRACE_PERIOD: u32 = 1000` — Minimum ledgers between unlock and refund window
+- `DEFAULT_GRACE_PERIOD: u32 = 1000` — Grace period seeded at `init`; also the
+  fallback for vaults deployed before the key existed
+- `ANNOUNCE_SCHEME_ID: u32 = 2` — Must match `stealth_announcer::STELLAR_V2_SCHEME_ID`
 - `TTL_THRESHOLD: u32 = 17280` — ~1 day, TTL extension threshold
 - `TTL_EXTEND_TO: u32 = 518400` — ~30 days, TTL extension target
 
@@ -191,3 +242,22 @@ Tests cover:
 - Wrong recipient claim rejection
 - Refund window validation
 - Sender early refund rejection
+- Admin recorded at `init`, one-shot `init`, grace-period retuning and rejection of zero
+- Pause / unpause by the admin, rejection of non-admins, `deposit` blocked while
+  paused, `claim` / `refund` / `refund_permissionless` still callable while paused
+- Permissionless refund after the grace window, before it, and after a claim
+- Metric event shape for all four vault metrics
+- Integration against the real `stealth-announcer` (`tests/announcer.rs`)
+
+## Formal Verification
+
+Time-lock invariants are machine-checked with [Kani](https://model-checking.github.io/kani/):
+
+```bash
+cargo kani --package stealth-vault
+```
+
+The proofs live in `src/proofs/mod.rs` and run against the real `claim` /
+`refund` / `refund_permissionless` bodies, compiled against `src/mock_sdk.rs` in
+place of `soroban-sdk`. See [AUDIT_SUMMARY.md](./AUDIT_SUMMARY.md) for what the
+model assumes.

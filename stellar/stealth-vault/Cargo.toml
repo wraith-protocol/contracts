@@ -6,9 +6,20 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[dependencies]
+[features]
+testutils = ["soroban-sdk/testutils"]
+
+# soroban-sdk bottoms out in host calls Kani cannot model, so proof builds swap
+# it for src/mock_sdk.rs and drop the dependency entirely.
+[target.'cfg(not(kani))'.dependencies]
 soroban-sdk = { workspace = true }
 wraith-metrics = { path = "../wraith-metrics" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-announcer = { path = "../stealth-announcer", features = ["testutils"] }
+
+# `kani` is set by the model checker, not by Cargo; declare it so normal builds
+# do not warn on the `cfg(kani)` branches.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
