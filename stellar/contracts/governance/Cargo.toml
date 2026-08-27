@@ -7,6 +7,9 @@ description = "PoC on-chain governance for Wraith Protocol — NOT PRODUCTION RE
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 soroban-sdk = { workspace = true }
 wraith-metrics = { path = "../../wraith-metrics" }

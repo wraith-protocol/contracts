@@ -2164,10 +2164,12 @@ dependencies = [
 name = "wraith-stellar-bench"
 version = "0.1.0"
 dependencies = [
+ "governance",
  "soroban-sdk",
  "stealth-announcer",
  "stealth-registry",
  "stealth-sender",
+ "stealth-splitter",
  "stealth-vault",
  "wraith-names",
 ]

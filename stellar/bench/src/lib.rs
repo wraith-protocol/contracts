@@ -1,12 +1,17 @@
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::token::StellarAssetClient;
-use soroban_sdk::{vec, Address, Bytes, BytesN, Env, String as SorobanString, Vec as SorobanVec};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, vec, Address, Bytes, BytesN, Env,
+    String as SorobanString, Vec as SorobanVec,
+};
 
+use governance::{GovernanceContract, GovernanceContractClient};
 use stealth_announcer::{
     StealthAnnouncerContract, StealthAnnouncerContractClient, STELLAR_V2_SCHEME_ID,
 };
 use stealth_registry::{StealthRegistryContract, StealthRegistryContractClient};
-use stealth_sender::{StealthSenderContract, StealthSenderContractClient};
+use stealth_sender::{StealthSenderContract, StealthSenderContractClient, WithdrawalEntry};
+use stealth_splitter::{Beneficiary, StealthSplitterContract, StealthSplitterContractClient};
 use stealth_vault::{StealthVaultContract, StealthVaultContractClient};
 use wraith_names::{WraithNamesContract, WraithNamesContractClient};
 
@@ -141,6 +146,21 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
         ));
     }
 
+    for entries in [1u32, 10, 30] {
+        rows.push(measure(
+            "stealth-sender",
+            "withdraw_many",
+            format!("entries={entries}"),
+            |env| {
+                env.mock_all_auths();
+                let sender_contract_id = env.register(StealthSenderContract, ());
+                let client = StealthSenderContractClient::new(env, &sender_contract_id);
+                let (token, withdrawer) = funded_token(env, true);
+                client.withdraw_many(&withdrawer, &withdraw_entries(env, &token, entries));
+            },
+        ));
+    }
+
     for name_len in [3u32, 32] {
         rows.push(measure(
             "wraith-names",
@@ -192,6 +212,112 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
         let client = WraithNamesContractClient::new(env, &contract_id);
         let _ = client.try_name_of(&bytes(env, 64, 8));
     }));
+
+    for count in [5u32, 10, 20] {
+        rows.push(measure(
+            "wraith-names",
+            "bulk_register",
+            format!("count={count}"),
+            |env| {
+                env.mock_all_auths();
+                let contract_id = env.register(WraithNamesContract, ());
+                let client = WraithNamesContractClient::new(env, &contract_id);
+                client.bulk_register(
+                    &Address::generate(env),
+                    &numbered_names(env, count),
+                    &numbered_metas(env, count),
+                );
+            },
+        ));
+    }
+
+    for count in [5u32, 10, 20] {
+        rows.push(measure(
+            "wraith-names",
+            "bulk_renew",
+            format!("count={count}"),
+            |env| {
+                env.mock_all_auths();
+                let contract_id = env.register(WraithNamesContract, ());
+                let client = WraithNamesContractClient::new(env, &contract_id);
+                let owner = Address::generate(env);
+                let names = numbered_names(env, count);
+                let metas = numbered_metas(env, count);
+                for i in 0..count {
+                    client.register(&owner, &names.get(i).unwrap(), &metas.get(i).unwrap());
+                }
+                client.bulk_renew(&names, &(env.ledger().sequence() + 10_000));
+            },
+        ));
+    }
+
+    rows.push(measure(
+        "wraith-names",
+        "extend_name_ttl",
+        "existing".into(),
+        |env| {
+            env.mock_all_auths();
+            let contract_id = env.register(WraithNamesContract, ());
+            let client = WraithNamesContractClient::new(env, &contract_id);
+            let n = SorobanString::from_str(env, "alice");
+            client.register(&Address::generate(env), &n, &bytes(env, 64, 9));
+            client.extend_name_ttl(&n, &(env.ledger().sequence() + 10_000));
+        },
+    ));
+
+    for n in [5u32, 15, 25] {
+        rows.push(measure(
+            "stealth-splitter",
+            "create_split",
+            format!("beneficiaries={n}"),
+            |env| {
+                env.mock_all_auths();
+                let client = splitter_client(env);
+                client.create_split(
+                    &Address::generate(env),
+                    &split_beneficiaries(env, n),
+                    &Address::generate(env),
+                    &bytes(env, 8, 1),
+                );
+            },
+        ));
+    }
+
+    for n in [5u32, 15, 25] {
+        rows.push(measure(
+            "stealth-splitter",
+            "fund_split",
+            format!("beneficiaries={n}"),
+            |env| {
+                env.mock_all_auths();
+                let client = splitter_client(env);
+                let (token, funder) = funded_token(env, true);
+                let split_id = client.create_split(
+                    &Address::generate(env),
+                    &split_beneficiaries(env, n),
+                    &token,
+                    &bytes(env, 8, 2),
+                );
+                let mut addresses: SorobanVec<Address> = vec![env];
+                let mut keys: SorobanVec<BytesN<32>> = vec![env];
+                let mut metadatas: SorobanVec<Bytes> = vec![env];
+                for i in 0..n {
+                    addresses.push_back(Address::generate(env));
+                    keys.push_back(BytesN::from_array(env, &[i as u8; 32]));
+                    metadatas.push_back(bytes(env, 32, i as u8));
+                }
+                client.fund_split(
+                    &funder,
+                    &split_id,
+                    &1_000,
+                    &STELLAR_V2_SCHEME_ID,
+                    &addresses,
+                    &keys,
+                    &metadatas,
+                );
+            },
+        ));
+    }
 
     for asset in ["xlm", "issued"] {
         rows.push(measure(
@@ -281,6 +407,63 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
         },
     ));
 
+    rows.push(measure(
+        "governance",
+        "propose",
+        "happy_path".into(),
+        |env| {
+            env.mock_all_auths();
+            let (client, _token, target) = governance_client(env);
+            client.propose(
+                &Address::generate(env),
+                &target,
+                &symbol_short!("set_value"),
+                &bytes(env, 16, 1),
+                &SorobanString::from_str(env, "bench"),
+            );
+        },
+    ));
+
+    rows.push(measure("governance", "vote", "happy_path".into(), |env| {
+        env.mock_all_auths();
+        let (client, token, target) = governance_client(env);
+        let voter = Address::generate(env);
+        StellarAssetClient::new(env, &token).mint(&voter, &200);
+        let pid = client.propose(
+            &Address::generate(env),
+            &target,
+            &symbol_short!("set_value"),
+            &bytes(env, 16, 1),
+            &SorobanString::from_str(env, "bench"),
+        );
+        client.vote(&voter, &pid, &true);
+    }));
+
+    rows.push(measure(
+        "governance",
+        "execute",
+        "happy_path".into(),
+        |env| {
+            env.mock_all_auths();
+            let (client, token, target) = governance_client(env);
+            let voter = Address::generate(env);
+            StellarAssetClient::new(env, &token).mint(&voter, &200);
+            let pid = client.propose(
+                &Address::generate(env),
+                &target,
+                &symbol_short!("set_value"),
+                &bytes(env, 16, 1),
+                &SorobanString::from_str(env, "bench"),
+            );
+            client.vote(&voter, &pid, &true);
+            let proposal = client.get_proposal(&pid);
+            env.ledger().with_mut(|li| {
+                li.sequence_number = proposal.end_ledger + 20;
+            });
+            client.execute(&pid);
+        },
+    ));
+
     rows
 }
 
@@ -305,6 +488,10 @@ pub fn print_markdown(rows: &[Row]) {
 }
 
 /// Serialize bench rows to a stable JSON document used for CI baselines.
+///
+/// Every row uses the same object shape (`contract`, `function`, `params`,
+/// resource counters). New `collect_rows` cases are extra `results` entries;
+/// existing keys and field names stay unchanged.
 pub fn to_json(rows: &[Row], meta: &BenchMeta) -> std::string::String {
     let mut out = std::string::String::new();
     out.push_str("{\n");
@@ -353,6 +540,8 @@ pub fn to_json(rows: &[Row], meta: &BenchMeta) -> std::string::String {
     out
 }
 
+/// Markdown table for PERF.md. One data row per collected case; column set is
+/// fixed so new entrypoints do not change the existing table shape.
 pub fn markdown_table(rows: &[Row]) -> std::string::String {
     let mut out = std::string::String::new();
     out.push_str("| Contract | Function | Parameters | Instructions | Mem bytes | Read entries | Write entries | Read bytes | Write bytes | Event bytes |\n");
@@ -498,4 +687,74 @@ fn bytes(env: &Env, len: u32, fill: u8) -> Bytes {
 fn name(env: &Env, len: u32) -> SorobanString {
     let raw = "abcdefghijklmnopqrstuvwxyz012345";
     SorobanString::from_str(env, &raw[..len as usize])
+}
+
+fn numbered_names(env: &Env, n: u32) -> SorobanVec<SorobanString> {
+    let mut names = vec![env];
+    for i in 0..n {
+        names.push_back(SorobanString::from_str(env, &format!("n{i:02}")));
+    }
+    names
+}
+
+fn numbered_metas(env: &Env, n: u32) -> SorobanVec<Bytes> {
+    let mut metas = vec![env];
+    for i in 0..n {
+        metas.push_back(bytes(env, 64, i as u8));
+    }
+    metas
+}
+
+fn withdraw_entries(env: &Env, token: &Address, n: u32) -> SorobanVec<WithdrawalEntry> {
+    let mut entries = vec![env];
+    for _ in 0..n {
+        entries.push_back(WithdrawalEntry {
+            token: token.clone(),
+            to: Address::generate(env),
+            amount: 100,
+        });
+    }
+    entries
+}
+
+fn splitter_client(env: &Env) -> StealthSplitterContractClient<'static> {
+    let announcer_id = env.register(StealthAnnouncerContract, ());
+    let splitter_id = env.register(StealthSplitterContract, ());
+    let client = StealthSplitterContractClient::new(env, &splitter_id);
+    client.init(&announcer_id);
+    client
+}
+
+fn split_beneficiaries(env: &Env, n: u32) -> SorobanVec<Beneficiary> {
+    let mut beneficiaries = vec![env];
+    for i in 0..n {
+        beneficiaries.push_back(Beneficiary {
+            meta_address: bytes(env, 64, i as u8),
+            weight: 1,
+        });
+    }
+    beneficiaries
+}
+
+fn governance_client(env: &Env) -> (GovernanceContractClient<'static>, Address, Address) {
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(env))
+        .address();
+    let gov_id = env.register(GovernanceContract, ());
+    let client = GovernanceContractClient::new(env, &gov_id);
+    client.init(&Address::generate(env), &token, &100i128, &50u32, &10u32);
+    (client, token, env.register(BenchGovTarget, ()))
+}
+
+/// Minimal target so `governance::execute` has a real contract to invoke.
+#[contract]
+struct BenchGovTarget;
+
+#[contractimpl]
+impl BenchGovTarget {
+    pub fn set_value(env: Env, value: Bytes) {
+        env.storage()
+            .instance()
+            .set(&symbol_short!("value"), &value);
+    }
 }
