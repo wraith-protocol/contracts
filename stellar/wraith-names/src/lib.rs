@@ -15,7 +15,7 @@ pub mod auction;
 mod multisig;
 
 pub use auction::{Auction, AuctionConfig, AuctionError, SealedBid};
-pub use multisig::RotationProposal;
+pub use multisig::{AdminRotationProposal, RotationProposal};
 
 pub const WRAITH_NAMES_DOMAIN: &[u8] = b"wraith-names:v1";
 const MIN_LABEL_LEN: usize = 3;
@@ -47,6 +47,8 @@ pub enum DataKey {
     MultisigThreshold,
     /// Pending protocol-level signer-rotation proposal, if any.
     PendingRotation,
+    /// Pending auction-admin rotation proposal, if any.
+    PendingAuctionAdminRotation,
 }
 
 /// A registered name entry.
@@ -128,6 +130,12 @@ pub enum NamesError {
     /// The name is premium (<= 4 chars) and the auction window is active, so
     /// it can only be obtained through the sealed-bid auction.
     PremiumAuctionRequired = 31,
+    /// The auction subsystem has not been initialised, so there is no auction
+    /// admin to rotate.
+    AuctionsNotInitialized = 1600,
+    /// An auction has a revealed winner and has not settled yet, so the
+    /// auction admin cannot be rotated out from under it.
+    AuctionInProgress = 1601,
 }
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
@@ -959,6 +967,51 @@ impl WraithNamesContract {
     /// Cancel the pending rotation, clearing all of its state.
     pub fn cancel_rotate_signers(env: Env, caller: Address) -> Result<(), NamesError> {
         multisig::cancel_rotate_signers(&env, caller)
+    }
+
+    // ── auction-admin rotation ───────────────────────────────────────────────
+
+    /// The pending auction-admin rotation proposal, if any.
+    pub fn pending_auction_admin_rotation(env: Env) -> Option<AdminRotationProposal> {
+        multisig::pending_auction_admin_rotation(&env)
+    }
+
+    /// Propose a new premium-auction admin behind the 7-day rotation
+    /// timelock, gated by the same governance signer set as
+    /// `propose_rotate_signers`. `caller` must be a current signer; the
+    /// proposal is auto-approved by `caller`.
+    pub fn propose_rotate_auction_admin(
+        env: Env,
+        caller: Address,
+        new_admin: Address,
+    ) -> Result<(), NamesError> {
+        multisig::propose_rotate_auction_admin(&env, caller, new_admin)
+    }
+
+    /// Approve the pending auction-admin rotation proposal.
+    pub fn approve_rotate_auction_admin(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::approve_rotate_auction_admin(&env, caller)
+    }
+
+    /// Execute the pending auction-admin rotation once quorum is met and the
+    /// timelock has elapsed. Emits `AuctionAdminRotated(old, new)`.
+    ///
+    /// Fails with `AuctionInProgress` while any auction is in its reveal or
+    /// settle phase, leaving the proposal intact so it can be retried after
+    /// settlement.
+    pub fn execute_rotate_auction_admin(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::execute_rotate_auction_admin(&env, caller)
+    }
+
+    /// Cancel the pending auction-admin rotation, clearing all of its state.
+    pub fn cancel_rotate_auction_admin(env: Env, caller: Address) -> Result<(), NamesError> {
+        multisig::cancel_rotate_auction_admin(&env, caller)
+    }
+
+    /// Auctions with a revealed winner that have not settled yet. While this
+    /// is non-zero, `execute_rotate_auction_admin` is blocked.
+    pub fn auctions_pending_settlement(env: Env) -> u32 {
+        auction::pending_settlements(&env)
     }
 
     // ── premium name auctions ────────────────────────────────────────────────

@@ -16,7 +16,7 @@ Error codes are only unique within a contract enum at the Soroban ABI layer, but
 | `stealth-batch-sender` | `1300-1399` | Panic-only today; use this range when issue #1 converts panics to `#[contracterror]`. |
 | `stealth-vault` / `VaultError` | `1400-1499` | Existing codes are `1-7`; do not renumber them. |
 | `stealth-splitter` / `SplitterError` | `1500-1599` | Existing codes are `1-8`; do not renumber them. |
-| `wraith-names` / `NamesError` | `1600-1699` | Existing codes are `1-32`; do not renumber them. |
+| `wraith-names` / `NamesError` | `1600-1699` | Existing codes are `1-32`; do not renumber them. New variants use the reserved range, starting at `1600`. |
 | `wraith-names` / `AuctionError` | `1700-1799` | Existing codes are `100-123` and intentionally disjoint from `NamesError`; do not renumber them. |
 | `wraith-asset-policy` | `1800-1899` | Panic-only today; use this range if it gains `#[contracterror]`. |
 | `governance` / `GovernanceError` | `1900-1999` | Proof-of-concept governance contract; existing codes are `1-14`. |
@@ -131,6 +131,8 @@ No `#[contracterror]` enum is defined. This contract is currently panic-only; is
 | 30 | [`NamesError::BulkLimitExceeded`](wraith-names/src/lib.rs#L126) | Bulk operation exceeds the supported item cap. | pre-catalog |
 | 31 | [`NamesError::PremiumAuctionRequired`](wraith-names/src/lib.rs#L129) | Premium top-level name must be obtained through auction during the launch window. | pre-catalog |
 | 32 | [`NamesError::Paused`](wraith-names/src/lib.rs#L108) | Contract is paused. | pre-catalog |
+| 1600 | [`NamesError::AuctionsNotInitialized`](wraith-names/src/lib.rs#L135) | Auction subsystem is not initialized, so there is no auction admin to rotate. | [#165](https://github.com/wraith-protocol/contracts/issues/165) |
+| 1601 | [`NamesError::AuctionInProgress`](wraith-names/src/lib.rs#L138) | An auction has a revealed winner and has not settled, so the auction admin cannot be rotated. | [#165](https://github.com/wraith-protocol/contracts/issues/165) |
 
 ## wraith-names auctions
 

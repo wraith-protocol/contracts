@@ -18,6 +18,8 @@ Core features:
   entries alive.
 - **Premium name auctions** — sealed-bid auctions for names of 4 characters
   or fewer during the first 90 days after launch (see below).
+- **Governance rotation** — the protocol signer set and the auction admin both
+  rotate behind a quorum of governance signers and a 7-day timelock.
 
 Build and test:
 
@@ -52,8 +54,9 @@ transaction **simulation only** of `compute_commitment` (submitting it
 on-chain would leak the bid).
 
 Phase durations (`commit_secs`, `reveal_secs`), the reserve price, the
-payment token, the treasury, and the admin are fixed at `init_auctions`. The
-90-day window starts at that call's ledger timestamp.
+payment token, and the treasury are fixed at `init_auctions`; the admin is
+rotatable through governance (see below). The 90-day window starts at that
+call's ledger timestamp.
 
 ### Refund guarantees
 
@@ -109,6 +112,44 @@ deployed contract ID in `$CONTRACT`, and a network alias in `$NETWORK`.
 
 Settlement is deliberately permissionless: if the admin is unavailable,
 anyone can run step 2 and no funds are at risk.
+
+## Auction admin rotation
+
+The auction admin is the operator that runs the settlement runbook. It is set
+at `init_auctions` and rotates through the protocol governance multisig
+(`src/multisig.rs`) — the same signer set, quorum, and 7-day timelock used for
+signer rotation — so a lost or compromised operator key can be replaced
+without a contract upgrade.
+
+| Step | Function | Who |
+|---|---|---|
+| Propose | `propose_rotate_auction_admin(caller, new_admin)` | any current governance signer; auto-approves |
+| Approve | `approve_rotate_auction_admin(caller)` | remaining signers, until quorum |
+| Execute | `execute_rotate_auction_admin(caller)` | any signer, after the 7-day timelock |
+| Cancel | `cancel_rotate_auction_admin(caller)` | any signer, before execution |
+| Inspect | `pending_auction_admin_rotation()`, `auctions_pending_settlement()` | anyone |
+
+Execution emits `AuctionAdminRotated` with topics `("AuctionAdminRotated",)`
+and data `(old_admin, new_admin)`.
+
+**Phase guard.** Execution is rejected with `AuctionInProgress` while any
+auction has a revealed winner and has not settled — its reveal phase and the
+settle phase that follows — so the operator cannot be swapped out mid-auction.
+`auctions_pending_settlement()` reports how many auctions are in that state;
+auctions nobody revealed a bid on have nothing at stake and are not counted.
+A rejected execution leaves the proposal intact, so the timelock does not
+restart: settle the blocking auctions (settlement is permissionless) and
+re-run `execute_rotate_auction_admin`.
+
+Other errors: `NotSigner` (caller is not a governance signer),
+`MultisigNotInitialized`, `AuctionsNotInitialized` (no auction admin exists
+yet), `RotationAlreadyPending`, `NoPendingRotation`, `QuorumNotMet`,
+`TimelockNotElapsed`.
+
+Rotating the admin never gates user funds: settlement and refunds are
+permissionless, and the treasury and payment token are immutable. The full
+operator runbook, including the CLI invocations, is in
+[`../MULTISIG.md`](../MULTISIG.md#on-chain-auction-admin-rotation-wraith-names).
 
 ## Storage
 

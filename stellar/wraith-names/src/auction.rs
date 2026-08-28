@@ -21,8 +21,10 @@
 
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    contracterror, contracttype, symbol_short, token, Address, Bytes, BytesN, Env, String,
+    contracterror, contracttype, symbol_short, token, Address, Bytes, BytesN, Env, String, Symbol,
 };
+
+use crate::NamesError;
 
 /// Domain separator for bid commitments.
 pub const AUCTION_COMMITMENT_DOMAIN: &[u8] = b"wraith-names:auction:v1";
@@ -49,6 +51,9 @@ pub enum AuctionKey {
     Auction(BytesN<32>),
     /// Sealed bid per (name hash, bidder).
     Bid(BytesN<32>, Address),
+    /// Count of auctions with a revealed winner that have not settled yet
+    /// (instance storage). Guards auction-admin rotation.
+    PendingSettlements,
 }
 
 /// Auction configuration, set once at initialization.
@@ -325,9 +330,16 @@ pub fn reveal(
     env.storage().persistent().set(&bid_key, &bid);
 
     if amount > auction.highest_amount {
+        // The first reveal always wins the comparison (bids are >= the
+        // reserve price, which is > 0), so this is where an auction gains a
+        // winner and starts counting as pending settlement.
+        let first_winner = auction.highest_bidder.is_none();
         auction.highest_bidder = Some(bidder.clone());
         auction.highest_amount = amount;
         env.storage().persistent().set(&auction_key, &auction);
+        if first_winner {
+            set_pending_settlements(env, pending_settlements(env) + 1);
+        }
     }
 
     env.events().publish(
@@ -373,6 +385,7 @@ pub fn settle(env: &Env, name_hash: BytesN<32>) -> Result<(), AuctionError> {
             token_client.transfer(&env.current_contract_address(), winner, &excess);
         }
         env.storage().persistent().remove(&bid_key);
+        set_pending_settlements(env, pending_settlements(env).saturating_sub(1));
     }
 
     auction.settled = true;
@@ -424,6 +437,52 @@ pub fn withdraw(env: &Env, bidder: Address, name_hash: BytesN<32>) -> Result<(),
     env.events().publish(
         (symbol_short!("auction"), symbol_short!("refund"), name_hash),
         (bidder, bid.deposit),
+    );
+
+    Ok(())
+}
+
+/// Number of auctions that have a revealed winner but have not been settled
+/// yet — that is, auctions currently in their reveal or settle phase with
+/// value at stake.
+///
+/// Auctions that never received a reveal are not counted: nothing is owed to
+/// the treasury or a winner, so swapping the admin cannot affect them.
+pub fn pending_settlements(env: &Env) -> u32 {
+    env.storage()
+        .instance()
+        .get(&AuctionKey::PendingSettlements)
+        .unwrap_or(0)
+}
+
+fn set_pending_settlements(env: &Env, value: u32) {
+    env.storage()
+        .instance()
+        .set(&AuctionKey::PendingSettlements, &value);
+}
+
+/// Swap the auction admin for `new_admin`, emitting
+/// `AuctionAdminRotated(old_admin, new_admin)`.
+///
+/// Quorum and timelock are enforced by the caller in `multisig.rs`; the only
+/// check made here is the phase guard. Rotation is refused while any auction
+/// has a revealed winner and has not settled (its reveal and settle phases),
+/// so the operator running the settlement runbook cannot be swapped out from
+/// under a live auction. Settlement is permissionless, so governance can
+/// always clear the guard by settling the outstanding auctions.
+pub fn rotate_admin(env: &Env, new_admin: &Address) -> Result<(), NamesError> {
+    let mut cfg = config(env).ok_or(NamesError::AuctionsNotInitialized)?;
+    if pending_settlements(env) > 0 {
+        return Err(NamesError::AuctionInProgress);
+    }
+
+    let old_admin = cfg.admin.clone();
+    cfg.admin = new_admin.clone();
+    env.storage().instance().set(&AuctionKey::Config, &cfg);
+
+    env.events().publish(
+        (Symbol::new(env, "AuctionAdminRotated"),),
+        (old_admin, new_admin.clone()),
     );
 
     Ok(())
