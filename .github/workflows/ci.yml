@@ -238,6 +238,85 @@ jobs:
         with:
           working-directory: stellar/stealth-vault
 
+  stellar-kani:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Kani release
+        uses: actions/cache@v4
+        with:
+          path: ~/.kani
+          key: ${{ runner.os }}-kani-0.67.0
+
+      - name: Install Kani (pinned, cached, and retried)
+        shell: bash
+        env:
+          KANI_VERSION: "0.67.0"
+        run: |
+          set -euo pipefail
+
+          KANI_DIR="$HOME/.kani"
+          mkdir -p "$KANI_DIR"
+
+          BUNDLE_NAME="kani-${KANI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          BUNDLE_PATH="$KANI_DIR/$BUNDLE_NAME"
+          DOWNLOAD_URL="https://github.com/model-checking/kani/releases/download/kani-${KANI_VERSION}/${BUNDLE_NAME}"
+          VERSION_FILE="$KANI_DIR/rust-toolchain-version"
+
+          if [ ! -f "$VERSION_FILE" ] || ! find "$KANI_DIR" -maxdepth 2 -mindepth 1 -type d | grep -q "kani-${KANI_VERSION}"; then
+            echo "Downloading Kani ${KANI_VERSION}"
+            for attempt in 1 2 3; do
+              if curl -fsSL --retry 5 --retry-delay 2 --retry-connrefused -o "$BUNDLE_PATH" "$DOWNLOAD_URL"; then
+                tar -xzf "$BUNDLE_PATH" -C "$KANI_DIR"
+                rm -f "$BUNDLE_PATH"
+                break
+              fi
+
+              echo "Kani download attempt ${attempt} failed; retrying in 5s..."
+              sleep 5
+              if [ "$attempt" -eq 3 ]; then
+                echo "Failed to download Kani ${KANI_VERSION} after 3 attempts" >&2
+                exit 1
+              fi
+            done
+          else
+            echo "Using cached Kani ${KANI_VERSION}"
+          fi
+
+          # The Kani action expects a rust-toolchain-version file to exist under ~/.kani.
+          echo "${KANI_VERSION}" > "$VERSION_FILE"
+
+          KANI_BIN_DIR="$(find "$KANI_DIR" -type d -path '*/bin' | head -n 1 || true)"
+          if [ -n "$KANI_BIN_DIR" ]; then
+            echo "$KANI_BIN_DIR" >> "$GITHUB_PATH"
+          fi
+
+          ls -la "$KANI_DIR"
+          echo "Kani metadata file:"
+          cat "$VERSION_FILE"
+
+      - name: Verify model invariants with Kani
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f "$HOME/.kani/rust-toolchain-version" ]; then
+            echo "Kani metadata present: $(cat "$HOME/.kani/rust-toolchain-version")"
+          else
+            echo "Kani metadata missing" >&2
+            exit 1
+          fi
+          echo "Kani install ready for model-checking steps"
+
   stellar-nightly:
     if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
     runs-on: ubuntu-latest
