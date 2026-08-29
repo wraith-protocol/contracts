@@ -31,17 +31,34 @@ jobs:
         working-directory: stellar
         run: cargo tarpaulin -p stealth-sender --out Html --output-dir coverage/stealth-sender --fail-under 90
 
+      - name: Coverage — stealth-splitter (≥80%)
+        working-directory: stellar
+        run: cargo tarpaulin -p stealth-splitter --out Html --output-dir coverage/stealth-splitter --fail-under 80
+
+      - name: Coverage — stealth-batch-sender (≥80%)
+        working-directory: stellar
+        run: cargo tarpaulin -p stealth-batch-sender --out Html --output-dir coverage/stealth-batch-sender --fail-under 80
+
+      - name: Coverage — stealth-vault (≥80%)
+        working-directory: stellar
+        run: cargo tarpaulin -p stealth-vault --out Html --output-dir coverage/stealth-vault --fail-under 80
+
       - name: Coverage — wraith-names (≥80%)
         working-directory: stellar
         run: cargo tarpaulin -p wraith-names --out Html --output-dir coverage/wraith-names --fail-under 80
 
-      - name: Coverage — stealth-splitter (≥80%)
+      - name: Coverage — wraith-asset-policy (≥90%)
         working-directory: stellar
-        run: cargo tarpaulin -p stealth-splitter --out Html --output-dir coverage/stealth-splitter --fail-under 80
+        run: cargo tarpaulin -p wraith-asset-policy --out Html --output-dir coverage/wraith-asset-policy --fail-under 90
+
+      - name: Coverage — governance (≥80%)
+        working-directory: stellar
+        run: cargo tarpaulin -p governance --out Html --output-dir coverage/governance --fail-under 80
 
       - name: Upload HTML coverage reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-reports
+          name: stellar-coverage-html
           path: stellar/coverage/
+          if-no-files-found: error

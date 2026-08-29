@@ -30,6 +30,15 @@ To run tests for all contracts:
 cargo test
 ```
 
+## Operations
+
+### Coverage
+
+The workflow in [.github/workflows/coverage.yml](../.github/workflows/coverage.yml) runs `cargo tarpaulin` for all nine Stellar crates and uploads the combined HTML report as a workflow artifact.
+
+- Latest coverage run: [GitHub Actions workflow](https://github.com/wraith-protocol/contracts/actions/workflows/coverage.yml)
+- Coverage artifact: downloaded from the Actions run page under the `stellar-coverage-html` artifact
+
 ## Deployment
 
 A deployment script is provided to deploy all contracts in one go.

@@ -13,14 +13,26 @@ This document provides a comprehensive overview of test coverage for the Wraith 
 
 | Metric | Value |
 |---|---|
-| **Total Contracts** | 4 core + 2 optional |
-| **Total Tests** | 98 |
-| **Unit Tests** | 46 |
-| **Integration Tests** | 5 |
+| **Total Contracts** | 9 Stellar crates |
+| **Total Tests** | 115+ |
+| **Unit Tests** | 55+ |
+| **Integration Tests** | 18+ |
 | **Property Tests** | 3 |
-| **Security/Audit Tests** | 44 |
+| **Security/Audit Tests** | 44+ |
 | **Test Success Rate** | 100% |
-| **Estimated Line Coverage** | ~85% |
+| **Estimated Line Coverage** | ~87% |
+
+| Contract | Tarpaulin gate | Coverage target | Notes |
+|---|---:|---:|---|
+| `stealth-announcer` | 90% | 90% | frozen announcer event surface |
+| `stealth-registry` | 90% | 90% | registry lookup, update, and TTL behavior |
+| `stealth-sender` | 90% | 90% | atomic transfers, auth, and asset policy checks |
+| `stealth-splitter` | 80% | 80% | split creation/funding validation |
+| `stealth-batch-sender` | 80% | 80% | adversarial batch validation and atomicity tests |
+| `stealth-vault` | 80% | 80% | deposit/claim/refund lifecycle and invalid-window regressions |
+| `wraith-names` | 80% | 80% | reversible name registry and auth checks |
+| `wraith-asset-policy` | 90% | 90% | allowlist rotation, admin enforcement, and re-init protection |
+| `governance` | 80% | 80% | proposal voting, quorum, cancel, and double-execution regressions |
 
 ---
 
