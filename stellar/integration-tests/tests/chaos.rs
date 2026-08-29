@@ -710,8 +710,8 @@ fn batch_sender_batch_send_through_chaos() {
         // The production-hardening pass (issue #155) added a one-time init
         // flow — batch_send now returns NotInitialized until init() is called.
         let admin = Address::generate(&env);
-        let announcer = Address::generate(&env);
-        client.init(&admin, &announcer, &None);
+        let announcer_id = env.register(StealthAnnouncerContract, ());
+        client.init(&admin, &announcer_id, &None);
 
         let (token, from) = funded_token(&env);
 
@@ -724,16 +724,19 @@ fn batch_sender_batch_send_through_chaos() {
             stealth_address: stealth1.clone(),
             ephemeral_pub_key: bytes(&env, &[0x01u8; 32]),
             amount: 100,
+            metadata: bytes(&env, &[0x01]),
         });
         transfers.push_back(Transfer {
             stealth_address: stealth2.clone(),
             ephemeral_pub_key: bytes(&env, &[0x02u8; 32]),
             amount: 200,
+            metadata: bytes(&env, &[0x02]),
         });
         transfers.push_back(Transfer {
             stealth_address: stealth3.clone(),
             ephemeral_pub_key: bytes(&env, &[0x03u8; 32]),
             amount: 300,
+            metadata: bytes(&env, &[0x03]),
         });
 
         client.batch_send(&from, &transfers, &token);
