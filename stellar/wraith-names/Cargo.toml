@@ -6,8 +6,12 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 soroban-sdk = { workspace = true }
+wraith-metrics = { path = "../wraith-metrics" }
 
 [dev-dependencies]
 proptest = "1.6.0"

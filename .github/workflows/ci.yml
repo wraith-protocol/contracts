@@ -5,10 +5,14 @@ on:
   pull_request:
     branches: [main, develop]
   schedule:
+    # Nightly property tests
     - cron: '23 4 * * *'
+    # Weekly gas baseline rotation (Mondays 05:17 UTC)
+    - cron: '17 5 * * 1'
 
 jobs:
   changes:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: read
@@ -91,8 +95,60 @@ jobs:
           components: rustfmt
 
       - run: cargo fmt --all --check
-      - run: cargo test --workspace
-      - run: cargo fmt --all --check
+      - name: Check Stellar error catalog
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import sys
+
+          root = Path('.')
+          doc = Path('ERRORS.md').read_text(encoding='utf-8')
+          missing = []
+
+          for path in sorted(root.glob('**/*.rs')):
+              parts = set(path.parts)
+              if {'bench', 'bench-crossover', 'fuzz', 'integration-tests'} & parts:
+                  continue
+
+              lines = path.read_text(encoding='utf-8').splitlines()
+              i = 0
+              while i < len(lines):
+                  if 'contracterror' not in lines[i]:
+                      i += 1
+                      continue
+
+                  j = i + 1
+                  while j < len(lines) and 'pub enum ' not in lines[j]:
+                      j += 1
+                  if j == len(lines):
+                      i += 1
+                      continue
+
+                  match = re.search(r'pub enum\s+([A-Za-z0-9_]+)', lines[j])
+                  if not match:
+                      i = j + 1
+                      continue
+                  enum_name = match.group(1)
+
+                  brace_depth = lines[j].count('{') - lines[j].count('}')
+                  k = j + 1
+                  while k < len(lines) and brace_depth > 0:
+                      line = lines[k]
+                      variant = re.match(r'\s*([A-Za-z][A-Za-z0-9_]*)\s*=\s*\d+\s*,', line)
+                      if variant:
+                          token = f'{enum_name}::{variant.group(1)}'
+                          if token not in doc:
+                              missing.append(f'{path}:{k + 1}: {token}')
+                      brace_depth += line.count('{') - line.count('}')
+                      k += 1
+                  i = k
+
+          if missing:
+              print('ERRORS.md is missing contracterror variants:')
+              print('\n'.join(missing))
+              sys.exit(1)
+          PY
       - run: cargo test --workspace
       - name: Run stellar resource benches
         run: |
@@ -151,9 +207,39 @@ jobs:
         if: steps.bindings.outcome == 'success'
         run: git diff --exit-code
         working-directory: .
+      # ABI extraction depends on the same soroban-sdk 22 WASM build as above.
+      # When the SDK bump (23.x/27.x) lands, remove continue-on-error to
+      # enforce ABI snapshot freshness on every PR.
+      - name: Extract ABI snapshots
+        id: abi
+        continue-on-error: true
+        run: ./abi/update.sh
+      - name: Check ABI snapshots
+        if: steps.abi.outcome == 'success'
+        run: git diff --exit-code abi/
+
+  stellar-kani:
+    needs: changes
+    if: needs.changes.outputs.stellar == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify stealth-registry invariants with Kani
+        uses: model-checking/kani-github-action@v1
+        with:
+          working-directory: stellar/stealth-registry
+
+      - name: Verify stealth-vault invariants with Kani
+        uses: model-checking/kani-github-action@v1
+        with:
+          working-directory: stellar/stealth-vault
 
   stellar-nightly:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -168,7 +254,7 @@ jobs:
       - run: WRAITH_PROPTEST_CASES=16384 cargo test --workspace --test properties
 
   stellar-deploy-dryrun:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -223,6 +309,168 @@ jobs:
           path: |
             stellar/deploy-dryrun-output.txt
             stellar/contract-ids.txt
+
+  stellar-chaos-nightly:
+    if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    env:
+      WRAITHCHAOS_MODE: "1"
+      WRAITHCHAOS_FAILURE_RATE: "0.3"
+      WRAITHCHAOS_SEED: "42"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run chaos integration tests
+        # Covers: announcer, registry, sender, names (Wave 6)
+        #         vault, splitter, batch-sender, governance (Wave 7)
+        run: cargo test --package integration-tests -- --nocapture
+
+  # Run benches on develop, upload results artifact, auto-update PERF.md.
+  # Note: cargo bench runs with CWD = package dir (stellar/bench/), so --out
+  # paths are relative to stellar/bench/ (e.g. results.json -> stellar/bench/results.json).
+  stellar-bench-develop:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run gas bench
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cargo bench -p wraith-stellar-bench --bench gas -- \
+            --format json --out results.json
+          test -f bench/results.json
+
+      - name: Upload bench results artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-bench-results
+          path: stellar/bench/results.json
+          retention-days: 90
+
+      - name: Update PERF.md current numbers
+        run: python3 bench/update_perf_md.py PERF.md bench/results.json
+
+      - name: Commit PERF.md if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore(perf): auto-update Stellar PERF.md bench table'
+          file_pattern: stellar/PERF.md
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
+
+  # PR gate: fail when any per-op instructions exceed baseline + 5%.
+  stellar-bench-pr:
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.stellar == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Download weekly baseline artifact
+        id: download-baseline
+        uses: dawidd6/action-download-artifact@v6
+        continue-on-error: true
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: ci.yml
+          branch: develop
+          name: stellar-bench-baseline
+          path: stellar/bench/artifact-baseline
+          search_artifacts: true
+          if_no_artifact_found: warn
+
+      - name: Resolve baseline path
+        id: baseline
+        run: |
+          if [ -f bench/artifact-baseline/baseline.json ]; then
+            echo "path=bench/artifact-baseline/baseline.json" >> "$GITHUB_OUTPUT"
+            echo "Using weekly-rotated artifact baseline"
+          else
+            echo "path=bench/baseline.json" >> "$GITHUB_OUTPUT"
+            echo "Using committed bench/baseline.json fallback"
+          fi
+
+      - name: Run gas bench
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cargo bench -p wraith-stellar-bench --bench gas -- \
+            --format json --out results.json
+          test -f bench/results.json
+
+      - name: Compare vs baseline (+5% instructions gate)
+        run: |
+          python3 bench/compare.py \
+            "${{ steps.baseline.outputs.path }}" \
+            bench/results.json \
+            --threshold-pct 5
+
+      - name: Upload PR bench results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-bench-pr-${{ github.event.pull_request.number }}
+          path: stellar/bench/results.json
+          retention-days: 30
+
+  # Weekly baseline rotation to catch slow drift under the 5% PR gate.
+  stellar-bench-baseline-rotate:
+    if: github.event_name == 'schedule' && github.event.schedule == '17 5 * * 1'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: stellar
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run gas bench (rotate baseline)
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          cargo bench -p wraith-stellar-bench --bench gas -- \
+            --format json --out baseline.json
+          test -f bench/baseline.json
+
+      - name: Upload rotated baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stellar-bench-baseline
+          path: stellar/bench/baseline.json
+          retention-days: 90
+
+      - name: Commit rotated baseline.json
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'chore(perf): rotate Stellar gas bench baseline'
+          file_pattern: stellar/bench/baseline.json
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
 
   solana:
     needs: changes

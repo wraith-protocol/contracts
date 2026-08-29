@@ -11,6 +11,7 @@ members = [
   "bench-crossover",
   "wraith-asset-policy",
   "wraith-metrics",
+  "integration-tests",
   "contracts/governance",
 ]
 resolver = "2"
@@ -18,11 +19,27 @@ resolver = "2"
 [workspace.dependencies]
 soroban-sdk = "22.0.11"
 
-
+# Keep the release profile at the workspace root: Cargo ignores profiles declared
+# in member manifests. These settings apply to every contract cdylib, including
+# contracts added to the workspace later.
 [profile.release]
 opt-level = "z"
-strip = "debuginfo"
 lto = true
 codegen-units = 1
 panic = "abort"
+strip = "symbols"
+debug = false
+debug-assertions = false
+overflow-checks = false
+incremental = false
 
+# Host-side benches (soroban-sdk testutils) cannot use the contract release
+# profile: panic="abort" + LTO splits/breaks sdk type identity across crates.
+[profile.bench]
+inherits = "release"
+lto = false
+panic = "unwind"
+codegen-units = 16
+strip = false
+debug = true
+debug-assertions = true

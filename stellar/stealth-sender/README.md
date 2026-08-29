@@ -7,6 +7,8 @@ stealth address and emits one announcement; `batch_send` does the same for a
 variable-length batch of parallel vectors (`stealth_addresses`,
 `ephemeral_pub_keys`, `metadatas`, `amounts`), rejecting mismatched lengths.
 
+Error codes are tracked in the [Stellar error catalog](../ERRORS.md#stealth-sender).
+
 ```bash
 cargo test          # unit tests (from stellar/)
 ```

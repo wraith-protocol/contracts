@@ -139,13 +139,17 @@ Commit `multisig-setup.log` to your ops runbook repo (not this repository) after
 
 ---
 
-## On-Chain Signer Rotation (`stealth-sender`, `wraith-names`)
+## On-Chain Signer Rotation (`stealth-sender`, `stealth-batch-sender`, `wraith-names`)
 
 The account-level Stellar multisig above governs the *admin key* that submits
 transactions. Separately, `stealth-sender` and `wraith-names` — the two
 contracts GOVERNANCE.md marks **Timelock + Multisig Upgradable** — each keep
 their own on-chain governance signer set and quorum threshold, used to
 authorise a `rotate_signers` flow without a contract redeploy (issue #104).
+`stealth-batch-sender` reuses the identical `propose_/approve_/execute_/
+cancel_rotate_signers` shape and 7-day timelock as of issue #155, though
+GOVERNANCE.md itself has not yet been updated to classify it alongside
+`stealth-sender`/`wraith-names` — worth a follow-up issue.
 
 This is intentionally a second, independent layer: the Stellar account
 multisig above controls *who can submit transactions at all*; the contract's
@@ -234,6 +238,126 @@ stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDE
 > propose → approve → cancel → propose again, confirming the CLI commands
 > above match the deployed contract interface, then update this section with
 > the confirmed transcript.
+
+## On-Chain Auction Admin Rotation (`wraith-names`)
+
+The premium-name auction operator — `AuctionConfig::admin`, set once at
+`init_auctions` — runs the settlement runbook in
+[`wraith-names/README.md`](./wraith-names/README.md). It used to be fixed for
+the life of the deployment: a lost or compromised operator key had no on-chain
+remedy short of a WASM upgrade (issue #165).
+
+It now rotates through the same governance flow as a signer rotation above —
+the same signer set, the same quorum, the same 7-day timelock — under a
+separate proposal slot, so a signer rotation and an auction-admin rotation can
+be in flight at the same time without interfering.
+
+> Settlement itself stays permissionless. Rotating the admin never gates user
+> funds; the admin is an operator role, not a custodian.
+
+### Flow
+
+1. **Propose** — any current signer proposes the incoming admin. Their
+   approval is recorded automatically. Only one auction-admin rotation may be
+   pending at a time.
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- propose_rotate_auction_admin \
+     --caller <SIGNER_G...> \
+     --new_admin <NEW_ADMIN_G...>
+   ```
+   Fails with `MultisigNotInitialized` if the governance signer set was never
+   installed, `AuctionsNotInitialized` if `init_auctions` was never called,
+   and `NotSigner` if the caller is not a current signer.
+
+2. **Approve** — remaining signers approve until quorum (the *current*
+   threshold) is met:
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- approve_rotate_auction_admin \
+     --caller <SIGNER_G...>
+   ```
+
+3. **Wait out the timelock** — 7 days from the `propose` call
+   (`ROTATION_TIMELOCK_SECS`), the same constant the signer rotation uses.
+
+4. **Check the auction phase guard.** Rotation is refused while any auction
+   has a revealed winner and has not settled — its reveal phase and the settle
+   phase that follows — so the operator cannot be swapped mid-auction:
+   ```bash
+   stellar contract invoke --network futurenet --id <CONTRACT_ID> \
+     --source <ANY_IDENTITY> -- auctions_pending_settlement
+   ```
+   A non-zero result means step 5 will fail with `AuctionInProgress`. Settle
+   the outstanding auctions first (`settle_auction --name <NAME>`, which is
+   permissionless — see the settlement runbook), then continue. Auctions that
+   nobody revealed a bid on have no value at stake and are not counted. If an
+   auction's storage entry has been archived because nobody settled it for
+   ~30 days, restore it (`stellar contract restore`) before settling.
+
+5. **Execute** — once quorum is met, the timelock has elapsed, and no auction
+   is mid-flight, any current signer executes. This swaps in the new admin,
+   clears the proposal, and emits `AuctionAdminRotated(old_admin, new_admin)`:
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- execute_rotate_auction_admin \
+     --caller <SIGNER_G...>
+   ```
+   Fails with `QuorumNotMet`, `TimelockNotElapsed`, or `AuctionInProgress`. A
+   rejected execution leaves the proposal untouched, so the timelock does not
+   restart — settle the blocking auction and re-run this step.
+
+6. **Cancel (optional)** — any current signer aborts a pending rotation,
+   clearing its approvals so a fresh proposal can start immediately:
+   ```bash
+   stellar contract invoke \
+     --network futurenet \
+     --id <CONTRACT_ID> \
+     --source <SIGNER_IDENTITY> \
+     -- cancel_rotate_auction_admin \
+     --caller <SIGNER_G...>
+   ```
+
+### Inspecting state
+
+```bash
+stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDENTITY> -- auction_config
+stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDENTITY> -- pending_auction_admin_rotation
+stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDENTITY> -- auctions_pending_settlement
+```
+
+### Compromised-key response
+
+The 7-day timelock is deliberate, and it is the whole window during which a
+compromised admin key is still live. The admin cannot move user funds — it
+cannot mint, transfer bids, or redirect the treasury, all of which are fixed
+at `init_auctions` — so the exposure is operational: the compromised key can
+run settlements that anyone could run anyway. Rotate on discovery, monitor
+`("auction", "settle")` events for the duration, and do not cancel a proposal
+to "restart cleanly" — cancelling resets the 7 days.
+
+### Futurenet rehearsal
+
+> **Status: not yet rehearsed.** The flow above is covered by
+> `cargo test -p wraith-names --test auction` (happy path, quorum + timelock
+> enforcement, rejection during an active reveal and during the settle phase
+> that follows, and independence from a pending signer rotation), but has not
+> been exercised against a live futurenet deployment. Before relying on this
+> runbook for a mainnet rotation, a maintainer with futurenet deploy access
+> should walk through `init_auctions` → `init_multisig` → propose → approve →
+> advance past the 7-day timelock → execute, confirm the emitted
+> `AuctionAdminRotated` topics and data, and separately confirm that a
+> rotation blocked by an unsettled auction succeeds after `settle_auction`,
+> then update this section with the confirmed transcript and a run link.
 
 ## Script Reference
 

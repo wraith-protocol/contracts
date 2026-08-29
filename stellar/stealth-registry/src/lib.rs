@@ -1,14 +1,49 @@
 #![no_std]
 
+#[cfg(kani)]
+extern crate alloc;
+
+#[cfg(not(kani))]
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, Env,
     IntoVal, Vec,
 };
+#[cfg(not(kani))]
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
+#[cfg(kani)]
+pub mod mock_sdk;
+
+#[cfg(kani)]
+pub mod soroban_sdk {
+    pub use crate::mock_sdk::*;
+    pub use crate::mock_symbol_short as symbol_short;
+    pub use crate::mock_vec as vec;
+}
+
+#[cfg(kani)]
+pub mod wraith_metrics {
+    pub use crate::mock_sdk::contract_ids;
+    pub use crate::mock_sdk::dimension_names;
+    pub use crate::mock_sdk::emit_metric;
+    pub use crate::mock_sdk::metric_names;
+}
+
+#[cfg(kani)]
+#[allow(unused_imports)]
+use mock_sdk::{
+    contract_ids, dimension_names, emit_metric, metric_names, Address, Bytes, DataKey, Env, IntoVal,
+};
+#[cfg(kani)]
+use soroban_sdk::symbol_short;
+
+#[cfg(kani)]
+mod proofs;
+
 /// Storage keys.
+#[cfg(not(kani))]
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum DataKey {
     /// Maps (registrant, scheme_id) to their stealth meta-address (64 bytes:
     /// spending_pubkey || viewing_pubkey).
@@ -16,7 +51,7 @@ pub enum DataKey {
 }
 
 /// Errors that the registry can produce.
-#[contracterror]
+#[cfg_attr(not(kani), contracterror)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum RegistryError {
@@ -29,10 +64,10 @@ pub enum RegistryError {
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
 
-#[contract]
+#[cfg_attr(not(kani), contract)]
 pub struct StealthRegistryContract;
 
-#[contractimpl]
+#[cfg_attr(not(kani), contractimpl)]
 impl StealthRegistryContract {
     /// Register or update a stealth meta-address.
     ///

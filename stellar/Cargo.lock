@@ -826,6 +826,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e04e2fd2b8188ea827b32ef11de88377086d690286ab35747ef7f9bf3ccb590"
 
 [[package]]
+name = "integration-tests"
+version = "0.1.0"
+dependencies = [
+ "governance",
+ "soroban-sdk",
+ "stealth-announcer",
+ "stealth-batch-sender",
+ "stealth-registry",
+ "stealth-sender",
+ "stealth-splitter",
+ "stealth-vault",
+ "wraith-names",
+]
+
+[[package]]
 name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1631,6 +1646,7 @@ name = "stealth-splitter"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "wraith-metrics",
 ]
 
 [[package]]
@@ -1638,6 +1654,8 @@ name = "stealth-vault"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "stealth-announcer",
+ "wraith-metrics",
 ]
 
 [[package]]
@@ -2142,16 +2160,20 @@ dependencies = [
  "ed25519-dalek",
  "proptest",
  "soroban-sdk",
+ "wraith-metrics",
 ]
 
 [[package]]
 name = "wraith-stellar-bench"
 version = "0.1.0"
 dependencies = [
+ "governance",
  "soroban-sdk",
  "stealth-announcer",
  "stealth-registry",
  "stealth-sender",
+ "stealth-splitter",
+ "stealth-vault",
  "wraith-names",
 ]
 

@@ -63,6 +63,7 @@ struct Fixture {
     announcer: Address,
     sender: Address,
     token: Address,
+    admin: Address,
 }
 
 fn fixture(initial_balance: i128) -> Fixture {
@@ -85,6 +86,7 @@ fn fixture(initial_balance: i128) -> Fixture {
         announcer,
         sender,
         token,
+        admin,
     }
 }
 
@@ -94,9 +96,9 @@ proptest! {
     fn init_can_only_run_once(_seed in any::<[u8; 32]>()) {
         let f = fixture(1_000_000);
         let client = StealthSenderContractClient::new(&f.env, &f.contract_id);
-        client.init(&f.announcer, &None, &None, &0);
+        client.init(&f.announcer, &None, &None, &0, &f.admin);
 
-        let result = client.try_init(&f.announcer, &None, &None, &0);
+        let result = client.try_init(&f.announcer, &None, &None, &0, &f.admin);
 
         prop_assert_eq!(result, Err(Ok(SenderError::AlreadyInitialized)));
     }
@@ -127,7 +129,7 @@ proptest! {
         let token_client = token::TokenClient::new(&f.env, &f.token);
         let announcer_client = AnnouncerMockClient::new(&f.env, &f.announcer);
         let stealth_address = Address::generate(&f.env);
-        client.init(&f.announcer, &None, &None, &0);
+        client.init(&f.announcer, &None, &None, &0, &f.admin);
 
         client.send(
             &f.sender,
@@ -150,7 +152,7 @@ proptest! {
         let client = StealthSenderContractClient::new(&f.env, &f.contract_id);
         let announcer_client = AnnouncerMockClient::new(&f.env, &f.announcer);
         let stealth_address = Address::generate(&f.env);
-        client.init(&f.announcer, &None, &None, &0);
+        client.init(&f.announcer, &None, &None, &0, &f.admin);
 
         let mut addresses = Vec::new(&f.env);
         addresses.push_back(stealth_address);
@@ -182,7 +184,7 @@ proptest! {
         let client = StealthSenderContractClient::new(&f.env, &f.contract_id);
         let token_client = token::TokenClient::new(&f.env, &f.token);
         let announcer_client = AnnouncerMockClient::new(&f.env, &f.announcer);
-        client.init(&f.announcer, &None, &None, &0);
+        client.init(&f.announcer, &None, &None, &0, &f.admin);
 
         let mut addresses = Vec::new(&f.env);
         let mut keys = Vec::new(&f.env);

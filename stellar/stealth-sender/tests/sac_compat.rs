@@ -64,6 +64,7 @@ struct Harness {
     stealth: Address,
     epk: BytesN<32>,
     meta: Bytes,
+    admin: Address,
 }
 
 impl Harness {
@@ -73,8 +74,9 @@ impl Harness {
 
         let announcer_id = env.register(Announcer, ());
         let sender_id = env.register(stealth_sender::StealthSenderContract, ());
+        let admin = Address::generate(&env);
         let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
-        sender_client.init(&announcer_id, &None, &None, &0);
+        sender_client.init(&announcer_id, &None, &None, &0, &admin);
 
         let sender = Address::generate(&env);
         let stealth = Address::generate(&env);
@@ -89,6 +91,7 @@ impl Harness {
             stealth,
             epk,
             meta,
+            admin,
         }
     }
 
@@ -383,7 +386,8 @@ fn test_policy_allowlist_enforcement() {
     let announcer_id = env.register(Announcer, ());
     let sender_id = env.register(stealth_sender::StealthSenderContract, ());
     let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
-    sender_client.init(&announcer_id, &Some(policy_id.clone()), &None, &0);
+    let admin = Address::generate(&env);
+    sender_client.init(&announcer_id, &Some(policy_id.clone()), &None, &0, &admin);
 
     // 4. Try to send ClawbackToken (not on allowlist) - should fail with TokenNotAllowed
     let result =

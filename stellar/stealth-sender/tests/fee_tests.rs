@@ -56,6 +56,7 @@ struct Harness {
     fee_recipient: Address,
     epk: BytesN<32>,
     meta: Bytes,
+    admin: Address,
 }
 
 impl Harness {
@@ -66,8 +67,15 @@ impl Harness {
         let announcer_id = env.register(announcer::Announcer, ());
         let sender_id = env.register(stealth_sender::StealthSenderContract, ());
 
+        let admin = Address::generate(&env);
         let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
-        sender_client.init(&announcer_id, &None, &fee_recipient, &fee_basis_points);
+        sender_client.init(
+            &announcer_id,
+            &None,
+            &fee_recipient,
+            &fee_basis_points,
+            &admin,
+        );
 
         let sender = Address::generate(&env);
         let stealth = Address::generate(&env);
@@ -84,6 +92,7 @@ impl Harness {
             fee_recipient: fee_recipient_addr,
             epk,
             meta,
+            admin,
         }
     }
 
@@ -114,9 +123,10 @@ fn test_fee_exceeds_cap_fails_init() {
     let sender_id = env.register(stealth_sender::StealthSenderContract, ());
     let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
 
+    let admin = Address::generate(&env);
     let fee_recipient = Address::generate(&env);
     // 51 bps exceeds 50 bps cap, must fail
-    sender_client.init(&announcer_id, &None, &Some(fee_recipient), &51);
+    sender_client.init(&announcer_id, &None, &Some(fee_recipient), &51, &admin);
 }
 
 #[test]
@@ -129,8 +139,9 @@ fn test_fee_with_none_recipient_fails_init() {
     let sender_id = env.register(stealth_sender::StealthSenderContract, ());
     let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
 
+    let admin = Address::generate(&env);
     // fee basis points > 0 with None recipient must fail
-    sender_client.init(&announcer_id, &None, &None, &10);
+    sender_client.init(&announcer_id, &None, &None, &10, &admin);
 }
 
 // ── 2. Correctness/Calculation Tests ─────────────────────────────────────────

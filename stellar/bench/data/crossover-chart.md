@@ -7,6 +7,6 @@ xychart-beta
     title "Instructions: individual send vs batch send"
     x-axis [1, 2, 5, 10, 15, 20]
     y-axis "Instructions"
-    line "individual (N x send)" [216310, 432620, 1081550, 2163100, 3244650, 4326200]
-    line "batch (batch_send)" [182837, 320986, 743151, 1496019, 2292557, 3103832]
+    line "individual (N x send)" [223328, 446656, 1116640, 2233280, 3349920, 4466560]
+    line "batch (batch_send)" [198036, 336876, 761114, 1517437, 2317430, 3132160]
 ```

@@ -5,6 +5,8 @@
 **Issue #15: 1-to-N Stealth Payment Splitter on Stellar**
 **Tier: L (1–2 weeks)** | **Type: Feature** | **Status: ✅ COMPLETE**
 
+Error codes are tracked in the [Stellar error catalog](../ERRORS.md#stealth-splitter).
+
 ---
 
 ## 📦 What Was Delivered

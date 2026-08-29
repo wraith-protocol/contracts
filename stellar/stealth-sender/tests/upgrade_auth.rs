@@ -98,13 +98,13 @@ fn test_post_upgrade_state_preserved() {
     let announcer_id = env.register_contract(None, MockAnnouncer);
 
     // Initialize contract
-    client.init(&announcer_id, &None, &None, &0);
+    let admin = Address::generate(&env);
+    client.init(&announcer_id, &None, &None, &0, &admin);
 
     // Store the announcer in persistent storage
     // (this happens in init)
 
     // Perform upgrade with admin
-    let admin = Address::generate(&env);
     let new_wasm_hash = mock_wasm_hash(&env, 3);
 
     env.as_contract(&contract_id, || {

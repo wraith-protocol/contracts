@@ -4,10 +4,18 @@ This directory contains the Soroban smart contracts for the Wraith multichain st
 
 ## Contracts
 
-- `stealth-announcer`: Emits announcement events for stealth payments.
-- `stealth-registry`: Maps addresses to 64-byte stealth meta-addresses.
-- `stealth-sender`: Handles atomic transfers and announcements.
-- `wraith-names`: Privacy-preserving name registry for `.wraith` names.
+- `stealth-announcer`: Emits announcement events for stealth payments. [README](./stealth-announcer/README.md)
+- `stealth-batch-sender`: Atomically sends tokens to multiple stealth addresses in a single transaction. [README](./stealth-batch-sender/README.md)
+- `stealth-registry`: Maps addresses to 64-byte stealth meta-addresses. [README](./stealth-registry/README.md)
+- `stealth-sender`: Handles atomic transfers and announcements. [README](./stealth-sender/README.md)
+- `stealth-vault`: Time-locked vault for stealth payments with refund safety net. [README](./stealth-vault/README.md)
+- `stealth-splitter`: 1-to-N stealth payment splitter. [README](./stealth-splitter/README.md)
+- `wraith-asset-policy`: Admin-controlled asset allowlist for stealth payments. [README](./wraith-asset-policy/README.md)
+- `wraith-metrics`: Shared metrics library for standardized event emission. [README](./wraith-metrics/README.md)
+- `wraith-names`: Privacy-preserving name registry for `.wraith` names. [README](./wraith-names/README.md)
+- `contracts/governance`: Token-weighted governance (PoC, not production ready). [README](./contracts/governance/README.md)
+
+See [`ERRORS.md`](./ERRORS.md) for the Stellar contract error-code catalog and allocation policy.
 
 ## Prerequisites
 

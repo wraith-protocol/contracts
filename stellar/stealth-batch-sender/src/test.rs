@@ -19,6 +19,18 @@ fn dummy_pub_key(env: &Env) -> Bytes {
     Bytes::from_slice(env, &[0x02u8; 33]) // compressed secp256k1 pubkey
 }
 
+/// Registers the contract and initialises it with a fresh admin +
+/// announcer, no asset policy. Returns the client plus the admin address
+/// (tests that need to pause/unpause use it).
+fn setup(env: &Env) -> (StealthBatchSenderClient<'static>, Address) {
+    let contract_id = env.register(StealthBatchSender, ());
+    let client = StealthBatchSenderClient::new(env, &contract_id);
+    let admin = Address::generate(env);
+    let announcer = Address::generate(env);
+    client.init(&admin, &announcer, &None);
+    (client, admin)
+}
+
 #[test]
 fn test_batch_send_success() {
     let env = Env::default();
@@ -30,8 +42,7 @@ fn test_batch_send_success() {
 
     token_admin.mint(&sender, &1000);
 
-    let contract_id = env.register(StealthBatchSender, ());
-    let client = StealthBatchSenderClient::new(&env, &contract_id);
+    let (client, _) = setup(&env);
 
     let stealth1 = Address::generate(&env);
     let stealth2 = Address::generate(&env);
@@ -65,87 +76,7 @@ fn test_batch_send_success() {
 }
 
 #[test]
-#[should_panic(expected = "batch exceeds MAX_BATCH_SIZE")]
-fn test_batch_size_cap() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let sender = Address::generate(&env);
-    let (token, token_admin) = create_token(&env, &admin);
-    token_admin.mint(&sender, &100_000);
-
-    let contract_id = env.register(StealthBatchSender, ());
-    let client = StealthBatchSenderClient::new(&env, &contract_id);
-
-    let mut transfers = Vec::new(&env);
-    for _ in 0..=MAX_BATCH_SIZE {
-        transfers.push_back(Transfer {
-            stealth_address: Address::generate(&env),
-            ephemeral_pub_key: dummy_pub_key(&env),
-            amount: 1,
-        });
-    }
-
-    client.batch_send(&sender, &transfers, &token.address);
-}
-
-#[test]
-#[should_panic]
-fn test_atomicity_on_mid_batch_failure() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let sender = Address::generate(&env);
-    let (token, token_admin) = create_token(&env, &admin);
-
-    token_admin.mint(&sender, &150);
-
-    let contract_id = env.register(StealthBatchSender, ());
-    let client = StealthBatchSenderClient::new(&env, &contract_id);
-
-    let transfers = vec![
-        &env,
-        Transfer {
-            stealth_address: Address::generate(&env),
-            ephemeral_pub_key: dummy_pub_key(&env),
-            amount: 100,
-        },
-        Transfer {
-            stealth_address: Address::generate(&env),
-            ephemeral_pub_key: dummy_pub_key(&env),
-            amount: 100,
-        },
-        Transfer {
-            stealth_address: Address::generate(&env),
-            ephemeral_pub_key: dummy_pub_key(&env),
-            amount: 100,
-        },
-    ];
-
-    client.batch_send(&sender, &transfers, &token.address);
-}
-
-#[test]
-#[should_panic(expected = "batch must contain at least one transfer")]
-fn test_empty_batch_rejected() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let admin = Address::generate(&env);
-    let sender = Address::generate(&env);
-    let (token, _) = create_token(&env, &admin);
-
-    let contract_id = env.register(StealthBatchSender, ());
-    let client = StealthBatchSenderClient::new(&env, &contract_id);
-
-    client.batch_send(&sender, &Vec::new(&env), &token.address);
-}
-
-#[test]
-#[should_panic(expected = "transfer amount must be positive")]
-fn test_zero_amount_rejected() {
+fn test_batch_send_rejects_uninitialized() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -162,11 +93,154 @@ fn test_zero_amount_rejected() {
         Transfer {
             stealth_address: Address::generate(&env),
             ephemeral_pub_key: dummy_pub_key(&env),
+            amount: 100,
+        },
+    ];
+
+    let result = client.try_batch_send(&sender, &transfers, &token.address);
+    assert_eq!(result, Err(Ok(BatchSenderError::NotInitialized)));
+}
+
+#[test]
+fn test_init_rejects_second_call() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin) = setup(&env);
+    let announcer = Address::generate(&env);
+
+    let result = client.try_init(&admin, &announcer, &None);
+    assert_eq!(result, Err(Ok(BatchSenderError::AlreadyInitialized)));
+}
+
+#[test]
+fn test_batch_size_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let (token, token_admin) = create_token(&env, &admin);
+    token_admin.mint(&sender, &100_000);
+
+    let (client, _) = setup(&env);
+
+    let mut transfers = Vec::new(&env);
+    for _ in 0..=MAX_BATCH_SIZE {
+        transfers.push_back(Transfer {
+            stealth_address: Address::generate(&env),
+            ephemeral_pub_key: dummy_pub_key(&env),
+            amount: 1,
+        });
+    }
+
+    let result = client.try_batch_send(&sender, &transfers, &token.address);
+    assert_eq!(result, Err(Ok(BatchSenderError::BatchTooLarge)));
+}
+
+#[test]
+#[should_panic]
+fn test_atomicity_on_mid_batch_failure() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let (token, token_admin) = create_token(&env, &admin);
+
+    // Sender can afford the first transfer but not all three — the
+    // shortfall should roll back every transfer in the batch, not just
+    // the one that failed.
+    token_admin.mint(&sender, &150);
+
+    let (client, _) = setup(&env);
+
+    let transfers = vec![
+        &env,
+        Transfer {
+            stealth_address: Address::generate(&env),
+            ephemeral_pub_key: dummy_pub_key(&env),
+            amount: 100,
+        },
+        Transfer {
+            stealth_address: Address::generate(&env),
+            ephemeral_pub_key: dummy_pub_key(&env),
+            amount: 100,
+        },
+        Transfer {
+            stealth_address: Address::generate(&env),
+            ephemeral_pub_key: dummy_pub_key(&env),
+            amount: 100,
+        },
+    ];
+
+    // insufficient balance on the second transfer aborts the whole tx
+    client.batch_send(&sender, &transfers, &token.address);
+}
+
+#[test]
+fn test_empty_batch_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let (token, _) = create_token(&env, &admin);
+
+    let (client, _) = setup(&env);
+
+    let result = client.try_batch_send(&sender, &Vec::new(&env), &token.address);
+    assert_eq!(result, Err(Ok(BatchSenderError::EmptyBatch)));
+}
+
+#[test]
+fn test_zero_amount_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let (token, token_admin) = create_token(&env, &admin);
+    token_admin.mint(&sender, &100);
+
+    let (client, _) = setup(&env);
+
+    let transfers = vec![
+        &env,
+        Transfer {
+            stealth_address: Address::generate(&env),
+            ephemeral_pub_key: dummy_pub_key(&env),
             amount: 0,
         },
     ];
 
-    client.batch_send(&sender, &transfers, &token.address);
+    let result = client.try_batch_send(&sender, &transfers, &token.address);
+    assert_eq!(result, Err(Ok(BatchSenderError::NonPositiveAmount)));
+}
+
+#[test]
+fn test_empty_ephemeral_key_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let (token, token_admin) = create_token(&env, &admin);
+    token_admin.mint(&sender, &100);
+
+    let (client, _) = setup(&env);
+
+    let transfers = vec![
+        &env,
+        Transfer {
+            stealth_address: Address::generate(&env),
+            ephemeral_pub_key: Bytes::new(&env),
+            amount: 100,
+        },
+    ];
+
+    let result = client.try_batch_send(&sender, &transfers, &token.address);
+    assert_eq!(result, Err(Ok(BatchSenderError::EmptyEphemeralKey)));
 }
 
 #[test]

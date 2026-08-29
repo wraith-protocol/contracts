@@ -136,7 +136,7 @@ proptest! {
     }
 
     #[test]
-    fn successful_register_emits_one_event(name_value in valid_name_strategy(), meta in any::<[u8; 64]>()) {
+    fn successful_register_emits_domain_and_metric_events(name_value in valid_name_strategy(), meta in any::<[u8; 64]>()) {
         let env = env();
         env.mock_all_auths();
         let contract_id = env.register(WraithNamesContract, ());
@@ -147,7 +147,8 @@ proptest! {
 
         client.register(&owner, &name, &meta);
 
-        prop_assert_eq!(env.events().all().len(), 1);
+        // One `register` domain event followed by one wraith-metrics event.
+        prop_assert_eq!(env.events().all().len(), 2);
     }
 }
 

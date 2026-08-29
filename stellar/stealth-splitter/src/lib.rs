@@ -4,6 +4,7 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, token, Address, Bytes, BytesN, Env,
     IntoVal, Symbol, Vec,
 };
+use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
 /// Storage keys.
 #[contracttype]
@@ -196,6 +197,29 @@ impl StealthSplitterContract {
             beneficiaries.len(),
         );
 
+        // Emit metric events.
+        let dimensions = soroban_sdk::vec![
+            &env,
+            (
+                dimension_names::ASSET_ADDRESS,
+                definition.asset.into_val(&env)
+            )
+        ];
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SPLITTER,
+            metric_names::CREATE_COUNT,
+            1,
+            dimensions.clone(),
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SPLITTER,
+            metric_names::BENEFICIARIES_PER_SPLIT,
+            beneficiaries.len() as i128,
+            dimensions,
+        );
+
         Ok(split_id)
     }
 
@@ -309,6 +333,29 @@ impl StealthSplitterContract {
         // Emit event.
         env.events()
             .publish((Symbol::short("fund"), split_id), amount);
+
+        // Emit metric events.
+        let dimensions = soroban_sdk::vec![
+            &env,
+            (
+                dimension_names::ASSET_ADDRESS,
+                definition.asset.into_val(&env)
+            )
+        ];
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SPLITTER,
+            metric_names::FUND_COUNT,
+            1,
+            dimensions.clone(),
+        );
+        emit_metric(
+            &env,
+            contract_ids::STEALTH_SPLITTER,
+            metric_names::FUND_VOLUME,
+            amount,
+            dimensions,
+        );
 
         Ok(())
     }
@@ -855,4 +902,144 @@ mod test {
     // - Savings: Reduced tx overhead, atomic batching
     // - For N=25: ~25x reduction in transaction count
     // - Resource cost: ~2-3 KB storage per split definition (retained)
+
+    // ============ METRIC EVENT SHAPE ============
+
+    #[contract]
+    pub struct MockAnnouncer;
+
+    #[contractimpl]
+    impl MockAnnouncer {
+        pub fn announce(
+            _env: Env,
+            _scheme_id: u32,
+            _stealth_address: Address,
+            _ephemeral_pub_key: BytesN<32>,
+            _metadata: Bytes,
+        ) {
+        }
+    }
+
+    /// Collect the `("metric", contract, name)` events currently in the buffer
+    /// as `(metric_name, value, asset_address_dimension)` triples.
+    fn metric_events(env: &Env) -> soroban_sdk::Vec<(Symbol, i128, Address)> {
+        let metric_topic: soroban_sdk::Val = symbol_short!("metric").into_val(env);
+        let mut collected = soroban_sdk::Vec::new(env);
+
+        for (_, topics, data) in env.events().all().iter() {
+            let first: Option<soroban_sdk::Val> = topics.first();
+            if first.map(|t| t.shallow_eq(&metric_topic)) != Some(true) {
+                continue;
+            }
+
+            assert_eq!(
+                topics.len(),
+                3,
+                "metric topics are (metric, contract, name)"
+            );
+            let emitting: Symbol = topics.get(1).unwrap().into_val(env);
+            assert_eq!(emitting, contract_ids::STEALTH_SPLITTER);
+
+            let metric_name: Symbol = topics.get(2).unwrap().into_val(env);
+            let (value, dimensions): (i128, soroban_sdk::Vec<(Symbol, soroban_sdk::Val)>) =
+                data.into_val(env);
+
+            assert_eq!(dimensions.len(), 1, "expected the asset_address dimension");
+            let (dimension_name, dimension_value) = dimensions.get(0).unwrap();
+            assert_eq!(dimension_name, dimension_names::ASSET_ADDRESS);
+            let asset: Address = dimension_value.into_val(env);
+
+            collected.push_back((metric_name, value, asset));
+        }
+
+        collected
+    }
+
+    #[test]
+    fn test_create_split_emits_metric_events() {
+        let (env, contract_id, _announcer) = setup_env();
+        let client = StealthSplitterContractClient::new(&env, &contract_id);
+
+        let creator = Address::generate(&env);
+        let asset = Address::generate(&env);
+        let salt = Bytes::from_slice(&env, b"metric-salt");
+
+        let mut beneficiaries = vec![&env];
+        beneficiaries.push_back(create_test_beneficiary(&env, 1));
+        beneficiaries.push_back(create_test_beneficiary(&env, 2));
+        beneficiaries.push_back(create_test_beneficiary(&env, 3));
+
+        client.create_split(&creator, &beneficiaries, &asset, &salt);
+
+        let metrics = metric_events(&env);
+        assert_eq!(
+            metrics,
+            vec![
+                &env,
+                (metric_names::CREATE_COUNT, 1i128, asset.clone()),
+                (metric_names::BENEFICIARIES_PER_SPLIT, 3i128, asset),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_fund_split_emits_metric_events() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let contract_id = env.register(StealthSplitterContract, ());
+        let client = StealthSplitterContractClient::new(&env, &contract_id);
+        client.init(&announcer_id);
+
+        let token_admin = Address::generate(&env);
+        let asset = env
+            .register_stellar_asset_contract_v2(token_admin)
+            .address();
+        let funder = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &asset).mint(&funder, &10_000);
+
+        let mut beneficiaries = vec![&env];
+        beneficiaries.push_back(create_test_beneficiary(&env, 1));
+        beneficiaries.push_back(create_test_beneficiary(&env, 2));
+
+        let split_id = client.create_split(
+            &funder,
+            &beneficiaries,
+            &asset,
+            &Bytes::from_slice(&env, b"fund-metric-salt"),
+        );
+
+        let stealth_addresses = vec![&env, Address::generate(&env), Address::generate(&env)];
+        let ephemeral_pub_keys = vec![
+            &env,
+            BytesN::from_array(&env, &[1u8; 32]),
+            BytesN::from_array(&env, &[2u8; 32]),
+        ];
+        let metadatas = vec![
+            &env,
+            Bytes::from_slice(&env, &[1u8]),
+            Bytes::from_slice(&env, &[2u8]),
+        ];
+
+        client.fund_split(
+            &funder,
+            &split_id,
+            &6_000,
+            &1u32,
+            &stealth_addresses,
+            &ephemeral_pub_keys,
+            &metadatas,
+        );
+
+        let metrics = metric_events(&env);
+        assert_eq!(
+            metrics,
+            vec![
+                &env,
+                (metric_names::FUND_COUNT, 1i128, asset.clone()),
+                (metric_names::FUND_VOLUME, 6_000i128, asset),
+            ]
+        );
+    }
 }

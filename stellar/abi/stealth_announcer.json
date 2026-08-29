@@ -1,0 +1,35 @@
+[
+  {
+    "function_v0": {
+      "doc": "Emits a stealth address announcement event.\\n\\nThis is a pure event-emission function with no access control and no\\nstorage. Indexers watch for these events to let recipients detect\\nincoming payments.\\n\\n# Arguments\\n* `scheme_id` - Identifier for the stealth address scheme (e.g. 1 for the default DKSAP scheme).\\n* `stealth_address` - The one-time stealth address that received funds.\\n* `ephemeral_pub_key` - The ephemeral public key used to derive the stealth address.\\n* `metadata` - Arbitrary metadata (e.g. view tag) to speed up scanning.",
+      "name": "announce",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "scheme_id",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "stealth_address",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "ephemeral_pub_key",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "metadata",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": []
+    }
+  }
+]
