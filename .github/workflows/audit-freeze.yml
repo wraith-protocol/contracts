@@ -47,11 +47,26 @@ jobs:
           corepack enable
           corepack prepare pnpm@10.28.2 --activate
 
+      - name: Check whether audit-freeze exists on the base branch yet
+        id: gate_exists
+        run: |
+          if [ -f scripts/audit-freeze/check.ts ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install root dependencies (for tsx)
+        if: steps.gate_exists.outputs.exists == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Run audit-freeze check
+        if: steps.gate_exists.outputs.exists == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: npx tsx scripts/audit-freeze/check.ts
+
+      - name: No audit-freeze system on base branch yet
+        if: steps.gate_exists.outputs.exists == 'false'
+        run: echo "scripts/audit-freeze/check.ts does not exist on the base branch yet -- nothing to enforce. Expected for the PR that first introduces the audit-freeze system."
