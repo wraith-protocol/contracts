@@ -4,7 +4,7 @@ freeze_paths:
   - 'stellar/stealth-registry/**'
   - 'stellar/stealth-sender/**'
   - 'stellar/wraith-names/**'
-freeze_until: "2099-01-01T00:00:00Z"
+freeze_until: 'TBD'
 ---
 
 # Audit Engagement
