@@ -1,0 +1,62 @@
+name: Audit Freeze Gate
+
+# Blocks PRs that touch an audit-frozen path (per audit-prep/ENGAGEMENT.md's
+# freeze_paths / freeze_until front matter) unless they carry the
+# "audit-approved" label.
+#
+# SECURITY, two layers:
+#
+# 1. This job checks out the PR's BASE ref (github.event.pull_request.base.sha),
+#    not the default `pull_request` merge ref. That means the audit-freeze
+#    script that actually runs is always the trusted, already-merged version
+#    -- a PR cannot modify scripts/audit-freeze/*.ts to weaken or disable its
+#    own gate.
+# 2. check.ts itself additionally fetches ENGAGEMENT.md's content from that
+#    same base SHA via the GitHub API (rather than trusting whatever is on
+#    disk), and treats ENGAGEMENT.md as an always-frozen path in its own
+#    right while any freeze is active. See scripts/audit-freeze/check.ts and
+#    decide.ts for the full rationale.
+#
+# Net effect: nothing this job does depends on any file content contributed
+# by the PR under test. Every input is either the base-ref checkout, or a
+# read-only GitHub API call pinned to the base SHA.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  audit-freeze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Base ref, not the PR merge ref -- see security note above.
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: |
+            package.json
+            pnpm-lock.yaml
+            scripts/audit-freeze
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (pins pnpm from packageManager field)
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+
+      - name: Install root dependencies (for tsx)
+        run: pnpm install --frozen-lockfile
+
+      - name: Run audit-freeze check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: npx tsx scripts/audit-freeze/check.ts
