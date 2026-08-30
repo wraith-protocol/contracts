@@ -37,11 +37,6 @@ jobs:
         with:
           # Base ref, not the PR merge ref -- see security note above.
           ref: ${{ github.event.pull_request.base.sha }}
-          sparse-checkout: |
-            package.json
-            pnpm-lock.yaml
-            scripts/audit-freeze
-          sparse-checkout-cone-mode: false
 
       - uses: actions/setup-node@v4
         with:
