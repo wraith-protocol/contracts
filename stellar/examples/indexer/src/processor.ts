@@ -16,10 +16,31 @@ dotenv.config();
 const RPC_URL = process.env.RPC_URL || 'https://futurenet.sorobanrpc.com';
 const server = new Server(RPC_URL);
 
+/**
+ * Contract roles the indexer watches.
+ *
+ * Announcements from `announcer`, `splitter`, and `batch-sender` share one
+ * code path (`processAnnouncement`). Splitter and batch-sender route each
+ * transfer through the announcer contract, so they emit the same v2 4-topic
+ * layout:
+ *
+ *   topics: ("announce", scheme_id, view_tag_bucket, metadata_kind)
+ *   data:   (stealth_address, ephemeral_pub_key, metadata)
+ *
+ * There is no batch-sender-specific decoder for the legacy single-topic
+ * `("ANNOUNCE",)` emission — that path is gone.
+ */
 interface ContractConfig {
     address: string;
-    type: 'announcer' | 'registry' | 'sender' | 'names';
+    type: 'announcer' | 'registry' | 'sender' | 'names' | 'splitter' | 'batch-sender';
 }
+
+const ANNOUNCEMENT_SOURCES: ReadonlySet<ContractConfig['type']> = new Set([
+    'announcer',
+    'splitter',
+    'batch-sender',
+    'sender',
+]);
 
 const CONTRACTS: Record<string, ContractConfig> = {
     stealthAnnouncer: {
@@ -33,6 +54,14 @@ const CONTRACTS: Record<string, ContractConfig> = {
     stealthSender: {
         address: process.env.STEALTH_SENDER_ADDRESS || '',
         type: 'sender',
+    },
+    stealthSplitter: {
+        address: process.env.STEALTH_SPLITTER_ADDRESS || '',
+        type: 'splitter',
+    },
+    stealthBatchSender: {
+        address: process.env.STEALTH_BATCH_SENDER_ADDRESS || '',
+        type: 'batch-sender',
     },
     wraithNames: {
         address: process.env.WRAITH_NAMES_ADDRESS || '',
@@ -108,24 +137,12 @@ async function processEvent(config: ContractConfig, event: any, client: any) {
         return;
     }
 
+    if (ANNOUNCEMENT_SOURCES.has(config.type)) {
+        await processAnnouncement(config, event, client, ledger, txHash);
+        return;
+    }
+
     switch (config.type) {
-        case 'announcer':
-        case 'sender':
-            // Both emit the same announcement event
-            if (Array.isArray(event.topic) && event.topic[0] === 'announce') {
-                const [schemeId, stealthAddress, ephemeralPubKey, metadata] = event.value;
-                await insertAnnouncement(
-                    ledger,
-                    txHash,
-                    config.address,
-                    schemeId,
-                    stealthAddress,
-                    Buffer.from(ephemeralPubKey, 'base64'),
-                    metadata ? Buffer.from(metadata, 'base64') : null,
-                    client
-                );
-            }
-            break;
         case 'registry':
             if (Array.isArray(event.topic) && event.topic[0] === 'register_keys') {
                 const [registrant, schemeId, stealthMetaAddress] = event.value;
@@ -171,6 +188,45 @@ async function processEvent(config: ContractConfig, event: any, client: any) {
             }
             break;
     }
+}
+
+/**
+ * Single decoder for v2 announcements from announcer, splitter, and
+ * batch-sender (and sender, which also routes through the announcer).
+ *
+ * v2 topics: ("announce", scheme_id, view_tag_bucket, metadata_kind)
+ * v2 data:   (stealth_address, ephemeral_pub_key, metadata)
+ *
+ * Splitter/batch-sender `create`/`fund`/`BATCH` events are ignored here;
+ * they are not announcement-shaped.
+ */
+async function processAnnouncement(
+    config: ContractConfig,
+    event: any,
+    client: any,
+    ledger: number,
+    txHash: string
+) {
+    if (!Array.isArray(event.topic) || event.topic[0] !== 'announce') {
+        return;
+    }
+
+    const schemeId = event.topic.length >= 2 ? event.topic[1] : event.value[0];
+    const [stealthAddress, ephemeralPubKey, metadata] =
+        event.topic.length >= 4
+            ? event.value
+            : event.value.slice(1);
+
+    await insertAnnouncement(
+        ledger,
+        txHash,
+        config.address,
+        schemeId,
+        stealthAddress,
+        Buffer.from(ephemeralPubKey, 'base64'),
+        metadata ? Buffer.from(metadata, 'base64') : null,
+        client
+    );
 }
 
 export async function startProcessing() {

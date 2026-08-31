@@ -9,12 +9,21 @@ use soroban_sdk::{
     token::StellarAssetClient,
     vec, Address, Bytes, Env,
 };
+use stealth_announcer::StealthAnnouncerContract;
 use stealth_batch_sender::{
     BatchSenderError, StealthBatchSender, StealthBatchSenderClient, Transfer, MAX_BATCH_SIZE,
 };
 
 fn dummy_pub_key(env: &Env) -> Bytes {
-    Bytes::from_slice(env, &[0x02u8; 33])
+    Bytes::from_slice(env, &[0x02u8; 32])
+}
+
+fn dummy_metadata(env: &Env) -> Bytes {
+    Bytes::from_slice(env, &[0x2Au8])
+}
+
+fn real_announcer(env: &Env) -> Address {
+    env.register(StealthAnnouncerContract, ())
 }
 
 fn create_token(env: &Env, admin: &Address) -> (Address, StellarAssetClient<'static>) {
@@ -99,6 +108,7 @@ fn batch_send_requires_init() {
             stealth_address: Address::generate(&env),
             ephemeral_pub_key: dummy_pub_key(&env),
             amount: 100,
+            metadata: dummy_metadata(&env),
         },
     ];
 
@@ -160,6 +170,7 @@ fn batch_send_rejected_when_paused() {
             stealth_address: Address::generate(&env),
             ephemeral_pub_key: dummy_pub_key(&env),
             amount: 100,
+            metadata: dummy_metadata(&env),
         },
     ];
 
@@ -179,7 +190,7 @@ fn batch_send_allowed_after_unpause() {
 
     let client = deploy(&env);
     let admin = Address::generate(&env);
-    let announcer = Address::generate(&env);
+    let announcer = real_announcer(&env);
     client.init(&admin, &announcer, &None);
 
     let sender = Address::generate(&env);
@@ -193,6 +204,7 @@ fn batch_send_allowed_after_unpause() {
             stealth_address: stealth.clone(),
             ephemeral_pub_key: dummy_pub_key(&env),
             amount: 100,
+            metadata: dummy_metadata(&env),
         },
     ];
 
@@ -245,6 +257,7 @@ fn oversized_batch_returns_typed_error() {
             stealth_address: Address::generate(&env),
             ephemeral_pub_key: dummy_pub_key(&env),
             amount: 1,
+            metadata: dummy_metadata(&env),
         });
     }
 
@@ -272,6 +285,7 @@ fn non_positive_amount_returns_typed_error() {
             stealth_address: Address::generate(&env),
             ephemeral_pub_key: dummy_pub_key(&env),
             amount: 0,
+            metadata: dummy_metadata(&env),
         },
     ];
 
@@ -299,6 +313,7 @@ fn empty_ephemeral_key_returns_typed_error() {
             stealth_address: Address::generate(&env),
             ephemeral_pub_key: Bytes::new(&env),
             amount: 100,
+            metadata: dummy_metadata(&env),
         },
     ];
 
@@ -327,6 +342,7 @@ fn asset_not_allowed_by_policy_returns_typed_error() {
             stealth_address: Address::generate(&env),
             ephemeral_pub_key: dummy_pub_key(&env),
             amount: 100,
+            metadata: dummy_metadata(&env),
         },
     ];
 
@@ -341,7 +357,7 @@ fn asset_allowed_by_policy_succeeds() {
 
     let client = deploy(&env);
     let admin = Address::generate(&env);
-    let announcer = Address::generate(&env);
+    let announcer = real_announcer(&env);
     let policy_id = env.register(AllowAllPolicy, ());
     client.init(&admin, &announcer, &Some(policy_id));
 
@@ -356,6 +372,7 @@ fn asset_allowed_by_policy_succeeds() {
             stealth_address: stealth.clone(),
             ephemeral_pub_key: dummy_pub_key(&env),
             amount: 100,
+            metadata: dummy_metadata(&env),
         },
     ];
 

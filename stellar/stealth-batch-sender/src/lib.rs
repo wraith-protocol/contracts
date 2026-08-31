@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short,
-    token::Client as TokenClient, Address, Env, IntoVal, Vec,
+    token::Client as TokenClient, Address, Bytes, BytesN, Env, IntoVal, Vec,
 };
 use wraith_metrics::{contract_ids, dimension_names, emit_metric, metric_names};
 
@@ -17,6 +17,10 @@ mod test;
 /// 100 transfers = ~50M instructions, leaving headroom for overhead.
 pub const MAX_BATCH_SIZE: u32 = 100;
 
+/// Stellar v2 stealth scheme id. Per-transfer announcements are routed through
+/// the announcer contract, which only accepts this scheme.
+pub const STELLAR_V2_SCHEME_ID: u32 = 2;
+
 /// Storage keys.
 #[contracttype]
 #[derive(Clone)]
@@ -24,7 +28,8 @@ pub enum DataKey {
     /// Pause admin address.
     Admin,
     /// Address of the deployed StealthAnnouncer contract, recorded at init
-    /// time. Not yet invoked by `batch_send` — see IMPLEMENTATION_NOTES.md.
+    /// time. Invoked by `batch_send` for each transfer so announcements use
+    /// the v2 4-topic layout (`announce`, scheme_id, view_tag_bucket, metadata_kind).
     Announcer,
     /// Optional address of the asset policy contract.
     AssetPolicy,
@@ -56,7 +61,7 @@ pub enum BatchSenderError {
     BatchTooLarge = 1303,
     /// A transfer amount was zero or negative.
     NonPositiveAmount = 1304,
-    /// A transfer's ephemeral public key was empty.
+    /// A transfer's ephemeral public key was empty or not 32 bytes.
     EmptyEphemeralKey = 1305,
     /// The contract is paused.
     Paused = 1306,
@@ -89,10 +94,52 @@ pub enum BatchSenderError {
 pub struct Transfer {
     /// Pre-computed stealth address (recipient)
     pub stealth_address: Address,
-    /// Ephemeral public key for the recipient to scan with
-    pub ephemeral_pub_key: soroban_sdk::Bytes,
+    /// Ephemeral public key for the recipient to scan with.
+    /// Must be exactly 32 bytes so it can be forwarded to the announcer.
+    pub ephemeral_pub_key: Bytes,
     /// Token amount (in the asset's base unit)
     pub amount: i128,
+    /// Announcement metadata whose first byte is the view tag
+    /// (`view_tag_bucket = metadata[0] as u32` under metadata_kind = 1).
+    pub metadata: Bytes,
+}
+
+/// Lightweight client wrapper that invokes the StealthAnnouncer contract via
+/// `env.invoke_contract`. Same pattern as `stealth-splitter` / `stealth-sender`.
+mod announcer_client {
+    use soroban_sdk::{Address, Bytes, BytesN, Env, IntoVal};
+
+    pub fn announce(
+        env: &Env,
+        announcer: &Address,
+        scheme_id: u32,
+        stealth_address: &Address,
+        ephemeral_pub_key: &BytesN<32>,
+        metadata: &Bytes,
+    ) {
+        let _: () = env.invoke_contract(
+            announcer,
+            &soroban_sdk::symbol_short!("announce"),
+            soroban_sdk::vec![
+                env,
+                scheme_id.into_val(env),
+                stealth_address.into_val(env),
+                ephemeral_pub_key.into_val(env),
+                metadata.into_val(env),
+            ],
+        );
+    }
+}
+
+/// Convert a 32-byte `Bytes` ephemeral key into the `BytesN<32>` the announcer
+/// expects. Empty or wrong-length keys map to `EmptyEphemeralKey`.
+fn ephemeral_key_to_bytesn(env: &Env, key: &Bytes) -> Result<BytesN<32>, BatchSenderError> {
+    if key.is_empty() || key.len() != 32 {
+        return Err(BatchSenderError::EmptyEphemeralKey);
+    }
+    let mut buf = [0u8; 32];
+    key.copy_into_slice(&mut buf);
+    Ok(BytesN::from_array(env, &buf))
 }
 
 /// Wrapper for calling check_asset on the optional asset policy contract.
@@ -241,12 +288,18 @@ impl StealthBatchSender {
             return Err(BatchSenderError::BatchTooLarge);
         }
 
+        let announcer: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Announcer)
+            .ok_or(BatchSenderError::NotInitialized)?;
+
         // Validate every entry before executing any transfer.
         for transfer in transfers.iter() {
             if transfer.amount <= 0 {
                 return Err(BatchSenderError::NonPositiveAmount);
             }
-            if transfer.ephemeral_pub_key.is_empty() {
+            if transfer.ephemeral_pub_key.is_empty() || transfer.ephemeral_pub_key.len() != 32 {
                 return Err(BatchSenderError::EmptyEphemeralKey);
             }
         }
@@ -261,15 +314,17 @@ impl StealthBatchSender {
             // Execute transfer — any failure here aborts the whole tx (atomicity)
             token.transfer(&from, &transfer.stealth_address, &transfer.amount);
 
-            // Per-transfer announcement (mirrors stealth-sender pattern)
-            env.events().publish(
-                (symbol_short!("ANNOUNCE"),),
-                (
-                    transfer.stealth_address.clone(),
-                    transfer.ephemeral_pub_key.clone(),
-                    transfer.amount,
-                    asset.clone(),
-                ),
+            // Per-transfer announcement via the announcer contract so indexers
+            // see the v2 4-topic layout (`announce`, scheme_id, view_tag_bucket,
+            // metadata_kind) and can filter on topic-3 (view_tag_bucket).
+            let ephemeral_pub_key = ephemeral_key_to_bytesn(&env, &transfer.ephemeral_pub_key)?;
+            announcer_client::announce(
+                &env,
+                &announcer,
+                STELLAR_V2_SCHEME_ID,
+                &transfer.stealth_address,
+                &ephemeral_pub_key,
+                &transfer.metadata,
             );
         }
 

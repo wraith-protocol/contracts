@@ -105,9 +105,10 @@ fn measure_batch(n: u32) -> Measured {
 
     let contract_id = env.register(StealthBatchSender, ());
     let client = StealthBatchSenderClient::new(&env, &contract_id);
-    // batch_send now requires init(admin, announcer, asset_policy) (issue #155).
+    // batch_send now requires init(admin, announcer, asset_policy) (issue #155)
+    // and routes announcements through the real announcer (issue #63).
     let admin = Address::generate(&env);
-    let announcer = Address::generate(&env);
+    let announcer = env.register(StealthAnnouncerContract, ());
     client.init(&admin, &announcer, &None);
     let (token, sender) = funded_token(&env);
 
@@ -115,8 +116,9 @@ fn measure_batch(n: u32) -> Measured {
     for i in 0..n {
         transfers.push_back(Transfer {
             stealth_address: Address::generate(&env),
-            ephemeral_pub_key: bytes(&env, 33, 0x02u8.wrapping_add(i as u8)),
+            ephemeral_pub_key: bytes(&env, 32, 0x02u8.wrapping_add(i as u8)),
             amount: 100,
+            metadata: bytes(&env, 1, (i as u8).wrapping_add(1)),
         });
     }
 
