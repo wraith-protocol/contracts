@@ -1,0 +1,130 @@
+specVersion: 1.0.0
+description: Wraith Protocol stealth address indexer
+repository: https://github.com/wraith-protocol/contracts
+schema:
+  file: ./schema.graphql
+
+dataSources:
+  - kind: ethereum
+    name: ERC5564Announcer
+    network: horizen-testnet
+    source:
+      address: '0x8AE65c05E7eb48B9bA652781Bc0a3DBA09A484F3'
+      abi: ERC5564Announcer
+      startBlock: 14202900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Announcement
+      abis:
+        - name: ERC5564Announcer
+          file: ./abis/ERC5564Announcer.json
+      eventHandlers:
+        - event: Announcement(indexed uint256,indexed address,indexed address,bytes,bytes)
+          handler: handleAnnouncement
+      file: ./mappings/announcer.ts
+
+  - kind: ethereum
+    name: ERC6538Registry
+    network: horizen-testnet
+    source:
+      address: '0x953E6cEdcdfAe321796e7637d33653F6Ce05c527'
+      abi: ERC6538Registry
+      startBlock: 14202900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - StealthMetaAddress
+      abis:
+        - name: ERC6538Registry
+          file: ./abis/ERC6538Registry.json
+      eventHandlers:
+        - event: StealthMetaAddressSet(indexed address,indexed uint256,bytes)
+          handler: handleStealthMetaAddressSet
+        - event: NonceIncremented(indexed address,uint256)
+          handler: handleNonceIncremented
+      file: ./mappings/registry.ts
+
+  - kind: ethereum
+    name: WraithNames
+    network: horizen-testnet
+    source:
+      # TODO: fill in after deployment — matches scripts/deploy.ts output.
+      address: '0x000000000000000000000000000000000000dead'
+      abi: WraithNames
+      startBlock: 14202900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Name
+      abis:
+        - name: WraithNames
+          file: ./abis/WraithNames.json
+      eventHandlers:
+        - event: NameRegistered(indexed bytes32,string,bytes)
+          handler: handleNameRegistered
+        - event: NameReleased(indexed bytes32,string)
+          handler: handleNameReleased
+      file: ./mappings/names.ts
+
+  - kind: ethereum
+    name: WraithSender
+    network: horizen-testnet
+    source:
+      # TODO: fill in after deployment — matches scripts/deploy.ts output.
+      address: '0x000000000000000000000000000000000000dead'
+      abi: WraithSender
+      startBlock: 14202900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Send
+      abis:
+        - name: WraithSender
+          file: ./abis/WraithSender.json
+      callHandlers:
+        - function: sendETH(uint256,address,bytes,bytes)
+          handler: handleSendETH
+        - function: sendERC20(address,uint256,uint256,address,bytes,bytes)
+          handler: handleSendERC20
+        - function: batchSendETH(uint256,address[],bytes[],bytes[],uint256[])
+          handler: handleBatchSendETH
+        - function: batchSendERC20(address,uint256,address[],bytes[],bytes[],uint256[])
+          handler: handleBatchSendERC20
+      file: ./mappings/sender.ts
+
+  - kind: ethereum
+    name: WraithWithdrawer
+    network: horizen-testnet
+    source:
+      # TODO: fill in after deployment — matches scripts/deploy.ts output.
+      address: '0x000000000000000000000000000000000000dead'
+      abi: WraithWithdrawer
+      startBlock: 14202900
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.7
+      language: wasm/assemblyscript
+      entities:
+        - Withdrawal
+      abis:
+        - name: WraithWithdrawer
+          file: ./abis/WraithWithdrawer.json
+      callHandlers:
+        - function: withdrawETH(address,uint256)
+          handler: handleWithdrawETH
+        - function: withdrawERC20(address,address,uint256)
+          handler: handleWithdrawERC20
+        - function: withdrawETHDirect(address)
+          handler: handleWithdrawETHDirect
+        - function: withdrawERC20Direct(address,address)
+          handler: handleWithdrawERC20Direct
+      file: ./mappings/withdrawer.ts

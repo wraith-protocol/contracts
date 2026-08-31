@@ -29,6 +29,9 @@ contract WraithWithdrawer is ReentrancyGuard {
         uint256 sponsorFee
     ) external nonReentrant {
         uint256 balance = address(this).balance;
+        // Exact zero-balance guard: a sponsor-fee withdrawal of a zero balance
+        // is a no-op, and the strict check distinguishes it from FeeTooHigh.
+        // slither-disable-next-line incorrect-equality
         if (balance == 0) revert InsufficientBalance();
         if (sponsorFee >= balance) revert FeeTooHigh();
 
@@ -54,6 +57,9 @@ contract WraithWithdrawer is ReentrancyGuard {
         uint256 sponsorFee
     ) external nonReentrant {
         uint256 balance = IERC20(token).balanceOf(address(this));
+        // Exact zero-balance guard: a sponsor-fee withdrawal of a zero balance
+        // is a no-op, and the strict check distinguishes it from FeeTooHigh.
+        // slither-disable-next-line incorrect-equality
         if (balance == 0) revert InsufficientBalance();
         if (sponsorFee >= balance) revert FeeTooHigh();
 
@@ -70,6 +76,9 @@ contract WraithWithdrawer is ReentrancyGuard {
     /// @param destination The address to receive the withdrawal.
     function withdrawETHDirect(address destination) external nonReentrant {
         uint256 balance = address(this).balance;
+        // Exact zero-balance guard: withdrawing from an empty stealth address is
+        // a no-op, so the strict equality is intentional.
+        // slither-disable-next-line incorrect-equality
         if (balance == 0) revert InsufficientBalance();
 
         (bool sent, ) = destination.call{value: balance}("");
@@ -84,6 +93,9 @@ contract WraithWithdrawer is ReentrancyGuard {
         address destination
     ) external nonReentrant {
         uint256 balance = IERC20(token).balanceOf(address(this));
+        // Exact zero-balance guard: withdrawing from an empty stealth address is
+        // a no-op, so the strict equality is intentional.
+        // slither-disable-next-line incorrect-equality
         if (balance == 0) revert InsufficientBalance();
 
         IERC20(token).safeTransfer(destination, balance);

@@ -1,0 +1,61 @@
+type Announcement @entity {
+  id: ID!
+  schemeId: BigInt!
+  stealthAddress: Bytes!
+  caller: Bytes!
+  ephemeralPubKey: Bytes!
+  metadata: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+  logIndex: BigInt!
+}
+
+type StealthMetaAddress @entity {
+  id: ID! # registrant + schemeId
+  registrant: Bytes!
+  schemeId: BigInt!
+  stealthMetaAddress: Bytes!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type Name @entity {
+  id: ID! # nameHash
+  name: String!
+  nameHash: Bytes!
+  stealthMetaAddress: Bytes!
+  registeredAt: BigInt!
+  updatedAt: BigInt
+  releasedAt: BigInt
+  active: Boolean!
+  blockNumber: BigInt!
+  transactionHash: Bytes!
+}
+
+type Send @entity {
+  id: ID!
+  sender: Bytes!
+  token: Bytes!
+  schemeId: BigInt!
+  stealthAddresses: [Bytes!]!
+  amounts: [BigInt!]!
+  metadatas: [Bytes!]!
+  totalAmount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}
+
+type Withdrawal @entity {
+  id: ID!
+  token: Bytes!
+  destination: Bytes!
+  sponsor: Bytes!
+  sponsorFee: BigInt!
+  amount: BigInt!
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  transactionHash: Bytes!
+}

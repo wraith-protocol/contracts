@@ -125,7 +125,9 @@ contract ERC6538Registry is IERC6538Registry {
         bytes32 digest,
         bytes memory signature
     ) private view {
-        // Try ecrecover first
+        // Try ecrecover first. The tuple is deliberately destructured: `err` is
+        // inspected below and `recovered` is compared against `signer`.
+        // slither-disable-next-line unused-return
         (address recovered, ECDSA.RecoverError err, ) = ECDSA.tryRecover(digest, signature);
 
         if (err == ECDSA.RecoverError.NoError && recovered == signer) {

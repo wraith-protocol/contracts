@@ -45,6 +45,10 @@ jobs:
         working-directory: evm
     steps:
       - uses: actions/checkout@v4
+        with:
+          # forge-std is a pinned submodule (v1.16.2); openzeppelin and
+          # wraith-contracts are symlinks into evm/node_modules and evm/contracts.
+          submodules: recursive
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -52,6 +56,47 @@ jobs:
       - run: npx prettier --check --ignore-path ../.prettierignore .
       - run: npx hardhat compile
       - run: npx hardhat test
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Run Foundry invariant tests
+        working-directory: evm/foundry
+        run: |
+          forge test --match-path 'test/invariant/*'
+
+      - name: Check gas snapshot (diff gate, +5% tolerance)
+        working-directory: evm/foundry
+        run: |
+          # Invariant suites carry run-to-run `reverts:` counters, so gate only
+          # the deterministic gas tests. Any regression >5% fails the PR.
+          forge snapshot --no-match-path 'test/invariant/*' --check --tolerance 5
+
+      - name: Run Slither
+        uses: crytic/slither-action@v0.4.0
+        continue-on-error: false
+        with:
+          target: evm
+          slither-config: evm/slither.config.json
+          fail-on: medium
+          solc-version: 0.8.28
+          sarif: evm/results.sarif
+
+      - name: Upload Slither SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: evm/results.sarif
+          category: slither
+
+      - name: Build subgraph
+        working-directory: evm/subgraph
+        run: |
+          npm ci
+          npm run codegen
+          npm run build
 
   stellar:
     needs: changes
