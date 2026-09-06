@@ -38,26 +38,14 @@ To run tests for all contracts:
 cargo test
 ```
 
-## Audits & Formal Verification
+## Operations
 
-Per-contract audit write-ups for the contracts that custody user funds:
+### Coverage
 
-- [stealth-sender/AUDIT_SUMMARY.md](./stealth-sender/AUDIT_SUMMARY.md) — atomic
-  transfer + announcement coupling, SAC compatibility, batch atomicity.
-- [stealth-vault/AUDIT_SUMMARY.md](./stealth-vault/AUDIT_SUMMARY.md) — deposit-id
-  derivation, the single-invocation Soroban model and why no reentrancy guard is
-  required, and the Kani time-lock proofs.
+The workflow in [.github/workflows/coverage.yml](../.github/workflows/coverage.yml) runs `cargo tarpaulin` for all nine Stellar crates and uploads the combined HTML report as a workflow artifact.
 
-Machine-checked invariants live alongside the contracts they cover and run in the
-`stellar-kani` CI job:
-
-```bash
-cargo kani --package stealth-registry
-cargo kani --package stealth-vault
-```
-
-Cross-cutting posture docs: [PAUSE.md](./PAUSE.md), [METRICS.md](./METRICS.md),
-[PERF.md](./PERF.md), [MULTISIG.md](./MULTISIG.md).
+- Latest coverage run: [GitHub Actions workflow](https://github.com/wraith-protocol/contracts/actions/workflows/coverage.yml)
+- Coverage artifact: downloaded from the Actions run page under the `stellar-coverage-html` artifact
 
 ## Deployment
 
