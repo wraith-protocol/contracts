@@ -76,7 +76,7 @@ ownership checks.
 ## Current Numbers
 
 <!-- BENCH:CURRENT:START -->
-These are the harness results auto-updated from `develop` (measured 2026-09-06, commit `95ebf067ee59`).
+These are the harness results auto-updated from `develop` (measured 2026-09-25, commit `33aea4534e25`).
 
 | Contract | Function | Parameters | Instructions | Mem bytes | Read entries | Write entries | Read bytes | Write bytes | Event bytes |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -93,6 +93,7 @@ These are the harness results auto-updated from `develop` (measured 2026-09-06, 
 | stealth-sender | batch_send | batch_size=5 | 853185 | 125400 | 6 | 7 | 1232 | 1416 | 3056 |
 | stealth-sender | batch_send | batch_size=10 | 1674743 | 250790 | 6 | 12 | 1232 | 2536 | 5356 |
 | stealth-sender | batch_send | batch_size=25 | 4352799 | 695660 | 6 | 27 | 1232 | 5896 | 12256 |
+| stealth-sender | batch_send | batch_size=100 | 21847884 | 4465760 | 6 | 102 | 1232 | 22696 | 46756 |
 | stealth-sender | withdraw_many | entries=1 | 166455 | 24918 | 4 | 3 | 888 | 520 | 616 |
 | stealth-sender | withdraw_many | entries=10 | 1478512 | 218040 | 4 | 12 | 888 | 2536 | 4756 |
 | stealth-sender | withdraw_many | entries=30 | 4826570 | 760300 | 4 | 32 | 888 | 7016 | 13956 |
@@ -123,6 +124,10 @@ These are the harness results auto-updated from `develop` (measured 2026-09-06, 
 | governance | propose | happy_path | 116975 | 18098 | 2 | 2 | 464 | 964 | 320 |
 | governance | vote | happy_path | 236214 | 43742 | 4 | 3 | 1636 | 1164 | 364 |
 | governance | execute | happy_path | 164625 | 29805 | 1 | 2 | 1048 | 1040 | 256 |
+| stealth-batch-sender | batch_send | count=1 | 216163 | 31186 | 5 | 3 | 1136 | 520 | 1276 |
+| stealth-batch-sender | batch_send | count=10 | 1677336 | 249202 | 5 | 12 | 1136 | 2536 | 5416 |
+| stealth-batch-sender | batch_send | count=50 | 9540694 | 1667002 | 5 | 52 | 1136 | 11496 | 23816 |
+| stealth-batch-sender | batch_send | count=100 | 22037036 | 4469752 | 5 | 102 | 1136 | 22696 | 46816 |
 <!-- BENCH:CURRENT:END -->
 
 ## Gas Regression Gate
