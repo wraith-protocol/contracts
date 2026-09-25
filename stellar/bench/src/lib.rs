@@ -9,6 +9,7 @@ use governance::{GovernanceContract, GovernanceContractClient};
 use stealth_announcer::{
     StealthAnnouncerContract, StealthAnnouncerContractClient, STELLAR_V2_SCHEME_ID,
 };
+use stealth_batch_sender::{StealthBatchSender, StealthBatchSenderClient, Transfer};
 use stealth_registry::{StealthRegistryContract, StealthRegistryContractClient};
 use stealth_sender::{StealthSenderContract, StealthSenderContractClient, WithdrawalEntry};
 use stealth_splitter::{Beneficiary, StealthSplitterContract, StealthSplitterContractClient};
@@ -110,7 +111,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
         ));
     }
 
-    for batch_size in [1u32, 5, 10, 25] {
+    for batch_size in [1u32, 5, 10, 25, 100] {
         rows.push(measure(
             "stealth-sender",
             "batch_send",
@@ -463,6 +464,33 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
             client.execute(&pid);
         },
     ));
+
+    for count in [1u32, 10, 50, 100] {
+        rows.push(measure(
+            "stealth-batch-sender",
+            "batch_send",
+            format!("count={count}"),
+            |env| {
+                env.mock_all_auths();
+                let sender_contract_id = env.register(StealthBatchSender, ());
+                let announcer_id = env.register(StealthAnnouncerContract, ());
+                let client = StealthBatchSenderClient::new(env, &sender_contract_id);
+                let admin = Address::generate(env);
+                client.init(&admin, &announcer_id, &None);
+                let (token, sender) = funded_token(env, true);
+                let mut transfers = soroban_sdk::vec![env];
+                for i in 0..count {
+                    transfers.push_back(Transfer {
+                        stealth_address: Address::generate(env),
+                        ephemeral_pub_key: bytes(env, 32, i as u8),
+                        amount: 100,
+                        metadata: bytes(env, 32, i as u8),
+                    });
+                }
+                client.batch_send(&sender, &transfers, &token);
+            },
+        ));
+    }
 
     rows
 }

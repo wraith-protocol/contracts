@@ -8,6 +8,14 @@ cargo bench -p wraith-stellar-bench --bench gas
 # or: cargo run -p wraith-stellar-bench
 ```
 
+## Deliberate Limit Increases
+
+When adding features that deliberately increase instruction or resource usage past the CI threshold, the PR author must:
+1. Prove the feature cannot be further optimized.
+2. Gain approval from two core maintainers.
+3. Re-run `cargo bench -p wraith-stellar-bench --bench gas -- --format json --out results.json`.
+4. Commit the new `stellar/bench/baseline.json` and updated `stellar/PERF.md`.
+
 ## How to Read the Units
 
 Soroban metering separates execution and ledger access. `instructions` are modeled
