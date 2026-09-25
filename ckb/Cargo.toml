@@ -1,3 +1,11 @@
 [workspace]
-members = ["contracts/wraith-stealth-lock", "contracts/wraith-names-type"]
+members = [
+    "contracts/wraith-stealth-lock",
+    "contracts/wraith-names-type",
+    # Transaction-level tests for the CKB scripts (issue #195). Kept as a
+    # separate package because the scripts are `no_main` RISC-V binaries that
+    # cannot be linked for the host; the tests execute the already-compiled
+    # artifact inside ckb-testtool's in-process simulator.
+    "integration-tests",
+]
 resolver = "2"

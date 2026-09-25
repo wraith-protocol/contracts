@@ -1,0 +1,27 @@
+[package]
+name = "wraith-stealth-lock-integration"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Transaction-level integration tests for the wraith-stealth-lock CKB script (issue #195)"
+
+# This crate intentionally contains no `src/` target.
+#
+# The lock script itself is a `no_std` + `no_main` RISC-V binary: it cannot be
+# linked for the host, so `cargo test` inside its own package always fails to
+# link. Keeping the tests in a dedicated, library-free package means the host
+# test harness never has to build that binary - it only reads the *already
+# compiled* RISC-V artifact that CI produces, and executes it inside
+# `ckb-testtool`'s in-process simulator.
+#
+# See `tests/common/mod.rs` for how the binary is located.
+
+[dependencies]
+# In-process CKB simulator. Provides the real script VM, syscalls, cell
+# resolution and the `mock transaction` (CKB debugger) fixture format.
+ckb-testtool = "1.1.1"
+# Serialising dumped fixtures to JSON.
+serde_json = "1.0"
+
+[lib]
+path = "src/lib.rs"
