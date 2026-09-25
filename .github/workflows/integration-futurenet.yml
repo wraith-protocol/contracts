@@ -1,4 +1,4 @@
-name: Stellar Futurenet Integration Tests
+name: Stellar Futurenet Smoke Tests
 
 on:
   schedule:
@@ -6,10 +6,9 @@ on:
   workflow_dispatch:       # Manual trigger
 
 jobs:
-  integration:
-    name: Futurenet smoke tests
+  smoke-test:
+    name: Futurenet smoke test
     runs-on: ubuntu-latest
-    continue-on-error: true   # allow-flaky
 
     steps:
       - uses: actions/checkout@v4
@@ -22,15 +21,14 @@ jobs:
       - name: Install Stellar CLI
         run: cargo install stellar-cli --locked
 
-      - name: Run integration tests
-        working-directory: stellar/integration-tests
+      - name: Run deployed-network smoke test
         env:
-          FUTURENET_SECRET: ${{ secrets.FUTURENET_TEST_SECRET }}
-        run: cargo test -- --nocapture 2>&1 | tee test-results.txt
+          STELLAR_ADMIN_SECRET: ${{ secrets.FUTURENET_TEST_SECRET }}
+        run: ./stellar/scripts/deploy-dryrun.sh 2>&1 | tee test-results.txt
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: futurenet-test-results
-          path: stellar/integration-tests/test-results.txt
+          path: test-results.txt

@@ -322,8 +322,8 @@ fi
 
 header "Smoke Tests"
 
-# 1. Register a name in wraith-names
-info "1/5  Registering name '$TEST_NAME' in wraith-names..."
+# 1. Register a name in wraith-names (Happy path)
+info "1/7  Registering name '$TEST_NAME' in wraith-names..."
 if $CLI contract invoke \
     --id "$NAMES_ID" \
     --source "$IDENTITY_NAME" \
@@ -338,8 +338,24 @@ else
     warn "name registration failed (may already exist on re-run)"
 fi
 
-# 2. Resolve the name (prove wraith-names works)
-info "2/5  Resolving name '$TEST_NAME'..."
+# 1b. Register an already registered name (Rejected path)
+info "1b/7 Registering already registered name in wraith-names..."
+if $CLI contract invoke \
+    --id "$NAMES_ID" \
+    --source "$IDENTITY_NAME" \
+    --network "$NETWORK" \
+    -- \
+    register \
+    --owner "$ADMIN_ADDRESS" \
+    --name "$TEST_NAME" \
+    --stealth-meta-address "$TEST_META_ADDRESS" 2>&1 | grep -qi "AlreadyRegistered"; then
+    ok "duplicate name registration rejected (AlreadyRegistered)"
+else
+    warn "duplicate name registration not rejected with AlreadyRegistered"
+fi
+
+# 2. Resolve the name (Happy path)
+info "2/7  Resolving name '$TEST_NAME'..."
 RESOLVED=$($CLI contract invoke \
     --id "$NAMES_ID" \
     --source "$IDENTITY_NAME" \
@@ -353,13 +369,26 @@ RESOLVED=$($CLI contract invoke \
 if [ -n "$RESOLVED" ]; then
     ok "name resolved (64-byte meta-address)"
 else
-    # Only warn if resolve didn't outright fail (already handled above)
     [ -z "$RESOLVED" ] && [ "$SMOKE_FAILED" -eq 0 ] && \
         warn "resolve returned empty result"
 fi
 
-# 3. Announce an event (prove stealth-announcer works)
-info "3/5  Announcing event via stealth-announcer..."
+# 2b. Resolve non-existent name (Rejected path)
+info "2b/7 Resolving non-existent name..."
+if $CLI contract invoke \
+    --id "$NAMES_ID" \
+    --source "$IDENTITY_NAME" \
+    --network "$NETWORK" \
+    -- \
+    resolve \
+    --name "doesnotexist123" 2>&1 | grep -qi "NotFound"; then
+    ok "non-existent name resolution rejected (NotFound)"
+else
+    warn "non-existent name resolution not rejected with NotFound"
+fi
+
+# 3. Announce an event (Happy path)
+info "3/7  Announcing event via stealth-announcer..."
 if $CLI contract invoke \
     --id "$ANNOUNCER_ID" \
     --source "$IDENTITY_NAME" \
@@ -375,8 +404,25 @@ else
     smoke_fail "announce failed"
 fi
 
-# 4. Query the registry (prove stealth-registry works)
-info "4/5  Querying stealth-registry..."
+# 3b. Announce with invalid scheme ID (Rejected path)
+info "3b/7 Announcing with invalid scheme ID..."
+if $CLI contract invoke \
+    --id "$ANNOUNCER_ID" \
+    --source "$IDENTITY_NAME" \
+    --network "$NETWORK" \
+    -- \
+    announce \
+    --scheme-id 999 \
+    --stealth-address "$ADMIN_ADDRESS" \
+    --ephemeral-pub-key "$TEST_EPHEMERAL_KEY" \
+    --metadata "$TEST_METADATA" 2>&1 | grep -qi "InvalidSchemeId"; then
+    ok "invalid scheme ID rejected (InvalidSchemeId)"
+else
+    warn "invalid scheme ID not rejected with InvalidSchemeId"
+fi
+
+# 4. Query the registry (Rejected / Happy path depending on state)
+info "4/7  Querying stealth-registry..."
 REG_RESULT=$($CLI contract invoke \
     --id "$REGISTRY_ID" \
     --source "$IDENTITY_NAME" \
@@ -389,8 +435,8 @@ REG_RESULT=$($CLI contract invoke \
     ok "registry is responsive (NotRegistered is expected)"
 }
 
-# 5. Verify sender is initialized
-info "5/5  Verifying stealth-sender initialization..."
+# 5. Verify sender is initialized (Rejected path: AlreadyInitialized)
+info "5/7  Verifying stealth-sender initialization (rejected path)..."
 if $CLI contract invoke \
     --id "$SENDER_ID" \
     --source "$IDENTITY_NAME" \
@@ -400,9 +446,9 @@ if $CLI contract invoke \
     init \
     --announcer "$ANNOUNCER_ID" \
     --fee-basis-points 0 2>&1 | grep -qi "AlreadyInitialized\|already initialized"; then
-    ok "stealth-sender correctly initialized (AlreadyInitialized)"
+    ok "stealth-sender correctly rejected re-initialization (AlreadyInitialized)"
 else
-    smoke_fail "Could not confirm sender initialization"
+    smoke_fail "Could not confirm sender initialization rejection"
 fi
 
 # ──────────────────────────────────────────────────────────────────────────────
