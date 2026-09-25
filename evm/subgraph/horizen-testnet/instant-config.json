@@ -7,6 +7,15 @@
     },
     "ERC6538Registry": {
       "path": "./abis/ERC6538Registry.json"
+    },
+    "WraithNames": {
+      "path": "./abis/WraithNames.json"
+    },
+    "WraithSender": {
+      "path": "./abis/WraithSender.json"
+    },
+    "WraithWithdrawer": {
+      "path": "./abis/WraithWithdrawer.json"
     }
   },
   "instances": [
@@ -21,6 +30,24 @@
       "address": "0x953E6cEdcdfAe321796e7637d33653F6Ce05c527",
       "chain": "horizen-testnet",
       "startBlock": 14202900
+    },
+    {
+      "abi": "WraithNames",
+      "address": "0x000000000000000000000000000000000000dead",
+      "chain": "horizen-testnet",
+      "startBlock": 0
+    },
+    {
+      "abi": "WraithSender",
+      "address": "0x000000000000000000000000000000000000dead",
+      "chain": "horizen-testnet",
+      "startBlock": 0
+    },
+    {
+      "abi": "WraithWithdrawer",
+      "address": "0x000000000000000000000000000000000000dead",
+      "chain": "horizen-testnet",
+      "startBlock": 0
     }
   ]
 }

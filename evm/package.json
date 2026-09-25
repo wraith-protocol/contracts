@@ -7,9 +7,11 @@
     "test": "hardhat test",
     "clean": "hardhat clean",
     "deploy:local": "hardhat run scripts/deploy.ts --network localhost",
+    "deploy:horizen-testnet": "hardhat run scripts/deploy.ts --network horizen_testnet",
     "node": "hardhat node",
     "format": "prettier --write --ignore-path ../.prettierignore .",
-    "format:check": "prettier --check --ignore-path ../.prettierignore ."
+    "format:check": "prettier --check --ignore-path ../.prettierignore .",
+    "validate-subgraph": "node subgraph/validate-config.js"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",

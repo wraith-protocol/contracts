@@ -16,6 +16,11 @@ const config: HardhatUserConfig = {
     hardhat: {
       chainId: 31337,
     },
+    horizen_testnet: {
+      url: process.env.HORIZEN_TESTNET_RPC_URL || 'https://testnet.horizen.io/api',
+      chainId: 1662,
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+    },
   },
   paths: {
     sources: './contracts',
