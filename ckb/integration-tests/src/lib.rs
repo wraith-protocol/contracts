@@ -705,8 +705,13 @@ fn is_vm_internal_error(error: &CKBError) -> bool {
         || text.contains("OutOfBound")
 }
 
-/// Skip the remainder of a test when the compiled artifact cannot be executed
-/// by the CKB VM, printing an explicit, actionable reason.
+/// Fail the test when the compiled artifact cannot be executed by the CKB VM.
+///
+/// #195 review: this used to print a warning and `return`, which made Rust
+/// report the assertion as *passed* while it had never run. The suite would go
+/// green while every transaction-level assertion was inactive, which is exactly
+/// the false signal this guard exists to prevent. The build is now red instead,
+/// so an unusable artifact can never be mistaken for a passing script.
 ///
 /// This deliberately does **not** mask script-level failures: if the script runs
 /// and rejects a transaction, `verify()` still fails the test as usual.
@@ -717,14 +722,22 @@ macro_rules! require_executable_vm {
             $crate::VmCompatibility::Executable => {}
             $crate::VmCompatibility::Incompatible { detail } => {
                 $crate::record_skip();
-                eprintln!(
-                    "SKIPPED: the compiled lock script cannot be executed by the CKB VM.\n\
+                panic!(
+                    "the compiled lock script cannot be executed by the CKB VM, so this \
+                     transaction-level assertion did not run.\n\
                      cause: {detail}\n\
-                     The transaction-level assertions in this test require a VM-loadable \
-                     ELF. This is a toolchain/VM compatibility issue, not a script logic \
-                     failure: a bundled Nervos cell executes through the same harness."
+                     The transaction-level assertions require a VM-loadable ELF, so the \
+                     CKB job is failing rather than reporting a false pass.\n\
+                     Known cause: the `riscv64imac` target enables the RISC-V `A` \
+                     (atomic) extension, but ckb-vm implements RV64IMC. The compiled \
+                     binary contains LR.D and other atomic instructions that the VM \
+                     rejects with `InvalidInstruction`. Making the artifact compatible \
+                     means rebuilding without atomics, which changes the script's code \
+                     hash and therefore requires a maintainer decision about the \
+                     deployed testnet contract.\n\
+                     A bundled Nervos cell still executes through this same harness, so \
+                     the harness itself is sound."
                 );
-                return;
             }
         }
     };

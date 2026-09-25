@@ -689,10 +689,13 @@ fn control_the_simulator_can_execute_a_bundled_ckb_cell() {
 
 #[test]
 fn report_skip_accounting() {
-    // Rust treats an early `return` as a pass, so a 30/30 summary can hide
-    // inactive assertions. Print the real situation on every run. The exact
-    // skipped count is order-dependent because tests run in parallel, so it is
-    // reported rather than asserted.
+    // Rust treats an early `return` as a pass, so a summary line can hide
+    // inactive assertions. `require_executable_vm!` now panics instead, but this
+    // test stays as the single, explicit statement of that policy: an artifact
+    // the VM cannot execute fails the run, it does not warn.
+    //
+    // The exact skip count is order-dependent because tests run in parallel, so
+    // only the zero/non-zero distinction is asserted.
     let skipped = skipped_assertion_count();
     match vm_compatibility() {
         VmCompatibility::Executable => {
@@ -703,12 +706,13 @@ fn report_skip_accounting() {
             println!("all {VM_DEPENDENT_ASSERTION_COUNT} transaction-level assertions active");
         }
         VmCompatibility::Incompatible { detail } => {
-            eprintln!(
-                "WARNING: the compiled artifact is NOT executable by the CKB VM, so the \
+            panic!(
+                "the compiled artifact is NOT executable by the CKB VM, so the \
                  {VM_DEPENDENT_ASSERTION_COUNT} transaction-level assertions are inactive \
                  (observed {skipped} skips at the time this test ran; the figure is \
-                 order-dependent because tests run in parallel).
-cause: {detail}"
+                 order-dependent because tests run in parallel).\n\
+                 Failing on purpose: a green run with inactive assertions is a false signal.\n\
+                 cause: {detail}"
             );
         }
     }
