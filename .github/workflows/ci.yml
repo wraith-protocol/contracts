@@ -593,6 +593,20 @@ jobs:
           targets: riscv64imac-unknown-none-elf
       - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
       - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock
+      # Transaction-level tests (#195): run the compiled RISC-V artifact inside
+      # ckb-testtool's in-process simulator. Covers signature/argument validation,
+      # malformed cells, amount checks, the produced code hash, and writes a
+      # CKB-debugger-replayable fixture for every failing transaction.
+      - name: Run CKB lock-script integration tests
+        run: make test-ci
+      - name: Upload CKB transaction fixtures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ckb-transaction-fixtures
+          path: ckb/target/ckb-fixtures/
+          if-no-files-found: ignore
+          retention-days: 14
 
   fuzz:
     # Nightly cargo-fuzz run against stealth-sender's batch payload surface.
