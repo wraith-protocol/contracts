@@ -23,7 +23,12 @@ if ! command -v stellar &> /dev/null; then
 fi
 
 RUST_VERSION=$(rustc --version | awk '{print $2}')
+CARGO_VERSION=$(cargo --version | awk '{print $2}')
+RUSTUP_VERSION=$(rustup --version 2>/dev/null | awk '{print $2}')
 STELLAR_CLI_VERSION=$(stellar --version | grep "stellar-cli" | awk '{print $2}')
+SOROBAN_SDK_VERSION=$(awk '/^name = "soroban-sdk"$/ { getline; gsub(/"/, "", $3); print $3; exit }' Cargo.lock)
+CARGO_LOCK_SHA256=$(sha256sum Cargo.lock | awk '{print $1}')
+BASE_IMAGE=$(awk 'toupper($1) == "FROM" { print $2; exit }' build/Dockerfile)
 COMMIT_HASH=${COMMIT_HASH:-"unknown"}
 BUILD_DATE=$(date -u +%Y-%m-%d)
 
@@ -32,7 +37,16 @@ ATTESTATION_FILE="build/attestation.json"
 echo "{" > $ATTESTATION_FILE
 echo "  \"commit\": \"$COMMIT_HASH\"," >> $ATTESTATION_FILE
 echo "  \"build_date\": \"$BUILD_DATE\"," >> $ATTESTATION_FILE
-echo "  \"toolchain\": { \"rust\": \"$RUST_VERSION\", \"stellar-cli\": \"$STELLAR_CLI_VERSION\" }," >> $ATTESTATION_FILE
+echo "  \"toolchain\": {" >> $ATTESTATION_FILE
+echo "    \"rust\": \"$RUST_VERSION\"," >> $ATTESTATION_FILE
+echo "    \"cargo\": \"$CARGO_VERSION\"," >> $ATTESTATION_FILE
+echo "    \"rustup\": \"$RUSTUP_VERSION\"," >> $ATTESTATION_FILE
+echo "    \"stellar-cli\": \"$STELLAR_CLI_VERSION\"," >> $ATTESTATION_FILE
+echo "    \"soroban-sdk\": \"$SOROBAN_SDK_VERSION\"," >> $ATTESTATION_FILE
+echo "    \"target\": \"wasm32-unknown-unknown\"," >> $ATTESTATION_FILE
+echo "    \"base_image\": \"$BASE_IMAGE\"," >> $ATTESTATION_FILE
+echo "    \"cargo_lock_sha256\": \"$CARGO_LOCK_SHA256\"" >> $ATTESTATION_FILE
+echo "  }," >> $ATTESTATION_FILE
 echo "  \"contracts\": [" >> $ATTESTATION_FILE
 
 FIRST=true

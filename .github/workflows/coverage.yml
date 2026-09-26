@@ -6,18 +6,25 @@ on:
   pull_request:
     branches: [main, dev]
 
+# Reviewed toolchain pins. Bump them only through the process in SUPPLY_CHAIN.md.
+env:
+  RUST_TOOLCHAIN: '1.98.1'
+  CARGO_TARPAULIN_VERSION: '0.37.4'
+
 jobs:
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin --version "=${CARGO_TARPAULIN_VERSION}" --locked
 
       - name: Coverage — stealth-announcer (≥90%)
         working-directory: stellar
@@ -41,7 +48,7 @@ jobs:
 
       - name: Upload HTML coverage reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-reports
           path: stellar/coverage/

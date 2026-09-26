@@ -1,6 +1,6 @@
 {
-  "generated_at": "1788176179",
-  "commit": "d1a9a2afdce5f42db9a9dc10dac5f5c3c5925836",
+  "generated_at": "1790307361",
+  "commit": "543de9c8cfa492d2df5c875cf11fb88d50986ee8",
   "threshold_pct": 5,
   "results": [
     {
@@ -158,6 +158,18 @@
       "read_bytes": 1232,
       "write_bytes": 5896,
       "events_bytes": 12256
+    },
+    {
+      "contract": "stealth-sender",
+      "function": "batch_send",
+      "params": "batch_size=100",
+      "instructions": 21847884,
+      "mem_bytes": 4465760,
+      "read_entries": 6,
+      "write_entries": 102,
+      "read_bytes": 1232,
+      "write_bytes": 22696,
+      "events_bytes": 46756
     },
     {
       "contract": "stealth-sender",
@@ -518,6 +530,54 @@
       "read_bytes": 1048,
       "write_bytes": 1040,
       "events_bytes": 256
+    },
+    {
+      "contract": "stealth-batch-sender",
+      "function": "batch_send",
+      "params": "count=1",
+      "instructions": 216163,
+      "mem_bytes": 31186,
+      "read_entries": 5,
+      "write_entries": 3,
+      "read_bytes": 1136,
+      "write_bytes": 520,
+      "events_bytes": 1276
+    },
+    {
+      "contract": "stealth-batch-sender",
+      "function": "batch_send",
+      "params": "count=10",
+      "instructions": 1677336,
+      "mem_bytes": 249202,
+      "read_entries": 5,
+      "write_entries": 12,
+      "read_bytes": 1136,
+      "write_bytes": 2536,
+      "events_bytes": 5416
+    },
+    {
+      "contract": "stealth-batch-sender",
+      "function": "batch_send",
+      "params": "count=50",
+      "instructions": 9540694,
+      "mem_bytes": 1667002,
+      "read_entries": 5,
+      "write_entries": 52,
+      "read_bytes": 1136,
+      "write_bytes": 11496,
+      "events_bytes": 23816
+    },
+    {
+      "contract": "stealth-batch-sender",
+      "function": "batch_send",
+      "params": "count=100",
+      "instructions": 22037036,
+      "mem_bytes": 4469752,
+      "read_entries": 5,
+      "write_entries": 102,
+      "read_bytes": 1136,
+      "write_bytes": 22696,
+      "events_bytes": 46816
     }
   ]
 }

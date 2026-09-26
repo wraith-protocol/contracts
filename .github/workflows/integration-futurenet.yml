@@ -5,22 +5,28 @@ on:
     - cron: "0 3 * * 0"   # Weekly, Sunday 3am UTC
   workflow_dispatch:       # Manual trigger
 
+# Reviewed toolchain pins. Bump them only through the process in SUPPLY_CHAIN.md.
+env:
+  RUST_TOOLCHAIN: '1.98.1'
+  STELLAR_CLI_VERSION: '28.0.0'
+
 jobs:
   integration:
     name: Futurenet smoke tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     continue-on-error: true   # allow-flaky
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
 
       - name: Install Stellar CLI
-        run: cargo install stellar-cli --locked
+        run: cargo install stellar-cli --version "=${STELLAR_CLI_VERSION}" --locked
 
       - name: Run integration tests
         working-directory: stellar/integration-tests
@@ -29,7 +35,7 @@ jobs:
         run: cargo test -- --nocapture 2>&1 | tee test-results.txt
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: futurenet-test-results

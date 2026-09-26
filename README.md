@@ -181,6 +181,10 @@ ckb/
   testnet.toml            # Deployed code hash and cell deps
 ```
 
+## Supply Chain
+
+CI actions, toolchains, base images and lockfile sources are pinned and checked on every PR. See [SUPPLY_CHAIN.md](./SUPPLY_CHAIN.md) for the inventory and the update and re-audit process.
+
 ## Deployed Addresses
 
 ### Horizen Testnet

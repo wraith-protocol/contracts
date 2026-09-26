@@ -14,7 +14,7 @@ jobs:
   retarget:
     # Skip release PRs (develop -> main); catch everything else that targets main.
     if: github.event.pull_request.head.ref != 'develop'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Retarget to develop and comment
         env:

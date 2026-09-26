@@ -33,6 +33,11 @@ const CONTRACTS: ContractMetadata[] = [
     envVar: 'STEALTH_SENDER_CONTRACT_ID',
   },
   {
+    crateName: 'stealth-batch-sender',
+    wasmName: 'stealth_batch_sender.wasm',
+    envVar: 'STEALTH_BATCH_SENDER_CONTRACT_ID',
+  },
+  {
     crateName: 'wraith-names',
     wasmName: 'wraith_names.wasm',
     envVar: 'WRAITH_NAMES_CONTRACT_ID',
@@ -239,6 +244,7 @@ async function main() {
 export * as StealthAnnouncer from './stealth-announcer/src/index';
 export * as StealthRegistry from './stealth-registry/src/index';
 export * as StealthSender from './stealth-sender/src/index';
+export * as StealthBatchSender from './stealth-batch-sender/src/index';
 export * as WraithNames from './wraith-names/src/index';
 `;
 

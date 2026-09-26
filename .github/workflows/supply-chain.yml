@@ -1,0 +1,79 @@
+name: Supply Chain
+
+# Enforces the policy in SUPPLY_CHAIN.md:
+#   pins          every action, runner, tool install and base image is pinned,
+#                 and every lockfile resolves only from crates.io / npmjs.org
+#   dependency-review
+#                 npm and Cargo packages a PR introduces are listed and checked
+#                 against the OSV advisory database
+#   lockfiles     lockfiles are in sync with their manifests, and installed npm
+#                 packages carry valid registry signatures
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+# Reviewed toolchain pins. Bump them only through the process in SUPPLY_CHAIN.md.
+env:
+  NODE_VERSION: '22.23.2'
+  PNPM_VERSION: '10.28.2'
+
+jobs:
+  pins:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check pinned actions, tools, images and lockfile sources
+        run: python3 .github/scripts/check_supply_chain_pins.py
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Review npm and Cargo dependency changes
+        run: |
+          python3 .github/scripts/dependency_review.py \
+            "${{ github.event.pull_request.base.sha }}" "${{ github.sha }}"
+
+  lockfiles:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable corepack
+        run: |
+          corepack enable
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
+
+      - name: pnpm lockfiles match their manifests
+        run: |
+          pnpm install --frozen-lockfile --lockfile-only --ignore-scripts
+          (cd stellar && pnpm install --frozen-lockfile --lockfile-only --ignore-scripts)
+
+      - name: npm lockfiles install cleanly with verified registry signatures
+        run: |
+          for dir in evm evm/subgraph; do
+            echo "::group::$dir"
+            (cd "$dir" && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures)
+            echo "::endgroup::"
+          done
+
+      - name: Cargo lockfiles match their manifests
+        run: |
+          for dir in stellar solana ckb; do
+            echo "::group::$dir"
+            (cd "$dir" && cargo metadata --locked --format-version 1 > /dev/null)
+            echo "::endgroup::"
+          done

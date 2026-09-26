@@ -10,10 +10,23 @@ on:
     # Weekly gas baseline rotation (Mondays 05:17 UTC)
     - cron: '17 5 * * 1'
 
+# Reviewed toolchain pins. Bump them only through the process in SUPPLY_CHAIN.md.
+env:
+  RUST_TOOLCHAIN: '1.98.1'
+  RUST_NIGHTLY_TOOLCHAIN: 'nightly-2026-09-01'
+  NODE_VERSION: '22.23.2'
+  PNPM_VERSION: '10.28.2'
+  STELLAR_CLI_VERSION: '22.0.1'
+  # sha256 of stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz
+  STELLAR_CLI_SHA256: '02cb00cf57ce8f432e0cc1653a1b603353a97079c22a8370dac60c21eca18fe3'
+  FOUNDRY_VERSION: 'v1.8.3'
+  SLITHER_VERSION: '0.11.4'
+  KANI_VERSION: '0.68.0'
+
 jobs:
   changes:
     if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       pull-requests: read
     outputs:
@@ -22,8 +35,8 @@ jobs:
       solana: ${{ steps.filter.outputs.solana }}
       ckb: ${{ steps.filter.outputs.ckb }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -39,28 +52,28 @@ jobs:
   evm:
     needs: changes
     if: needs.changes.outputs.evm == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: evm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # forge-std is a pinned submodule (v1.16.2); openzeppelin and
           # wraith-contracts are symlinks into evm/node_modules and evm/contracts.
           submodules: recursive
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
       - run: npm ci
       - run: npx prettier --check --ignore-path ../.prettierignore .
       - run: npx hardhat compile
       - run: npx hardhat test
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
-          version: stable
+          version: ${{ env.FOUNDRY_VERSION }}
 
       - name: Run Foundry invariant tests
         working-directory: evm/foundry
@@ -75,18 +88,19 @@ jobs:
           forge snapshot --no-match-path 'test/invariant/*' --check --tolerance 5
 
       - name: Run Slither
-        uses: crytic/slither-action@v0.4.0
+        uses: crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f # v0.4.2
         continue-on-error: false
         with:
           target: evm
           slither-config: evm/slither.config.json
           fail-on: medium
           solc-version: 0.8.28
+          slither-version: ${{ env.SLITHER_VERSION }}
           sarif: evm/results.sarif
 
       - name: Upload Slither SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@1c5b675653bb5c22dbe9b12b556ec555138e09fd # v4.38.1
         with:
           sarif_file: evm/results.sarif
           category: slither
@@ -101,41 +115,46 @@ jobs:
   stellar:
     needs: changes
     if: needs.changes.outputs.stellar == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: stellar
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Enable corepack (pins pnpm from packageManager field)
         run: |
           corepack enable
-          corepack prepare pnpm@10.28.2 --activate
+          corepack prepare "pnpm@${PNPM_VERSION}" --activate
           pnpm --version
 
       - name: Install Node dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+        working-directory: .
+
+      - name: Smoke test generated Stellar bindings
+        run: pnpm test:stellar-bindings
         working-directory: .
 
       - name: Setup Stellar CLI
-        env:
-          STELLAR_CLI_VERSION: 22.0.1
         run: |
-          curl -sSL \
-            "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
-            | tar xz
+          curl -sSfL -o stellar-cli.tar.gz \
+            "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          tar xzf stellar-cli.tar.gz stellar
+          rm stellar-cli.tar.gz
           sudo mv stellar /usr/local/bin/stellar
           sudo ln -sf /usr/local/bin/stellar /usr/local/bin/soroban
           stellar --version
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
           components: rustfmt
 
@@ -203,7 +222,7 @@ jobs:
           echo "---- crossover.csv ----"
           cat bench/data/crossover.csv
       - name: Upload crossover bench data
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: crossover-bench-data
           path: |
@@ -266,33 +285,38 @@ jobs:
   stellar-kani:
     needs: changes
     if: needs.changes.outputs.stellar == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Verify stealth-registry invariants with Kani
-        uses: model-checking/kani-github-action@v1
+        uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
+          kani-version: ${{ env.KANI_VERSION }}
           working-directory: stellar/stealth-registry
 
       - name: Verify stealth-vault invariants with Kani
-        uses: model-checking/kani-github-action@v1
+        uses: model-checking/kani-github-action@69d357bade1eb7b32bc3fc3d5c3d173c5bfa5237 # v1
         with:
+          kani-version: ${{ env.KANI_VERSION }}
           working-directory: stellar/stealth-vault
 
   stellar-nightly:
     if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: stellar
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
           components: rustfmt
       - run: cargo fmt --all --check
@@ -300,26 +324,33 @@ jobs:
 
   stellar-deploy-dryrun:
     if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: stellar
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
 
       - name: Setup Stellar CLI
-        uses: stellar/setup-soroban@v1
-        with:
-          version: "22.0.1"
+        run: |
+          curl -sSfL -o stellar-cli.tar.gz \
+            "https://github.com/stellar/stellar-cli/releases/download/v${STELLAR_CLI_VERSION}/stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${STELLAR_CLI_SHA256}  stellar-cli.tar.gz" | sha256sum -c -
+          tar xzf stellar-cli.tar.gz stellar
+          rm stellar-cli.tar.gz
+          sudo mv stellar /usr/local/bin/stellar
+          sudo ln -sf /usr/local/bin/stellar /usr/local/bin/soroban
+          stellar --version
 
       - name: Cache Cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             stellar/target
@@ -347,7 +378,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload dry-run output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: deploy-dryrun-results
@@ -357,7 +388,7 @@ jobs:
 
   stellar-chaos-nightly:
     if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: stellar
@@ -366,8 +397,10 @@ jobs:
       WRAITHCHAOS_FAILURE_RATE: "0.3"
       WRAITHCHAOS_SEED: "42"
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Run chaos integration tests
         # Covers: announcer, registry, sender, names (Wave 6)
         #         vault, splitter, batch-sender, governance (Wave 7)
@@ -378,18 +411,20 @@ jobs:
   # paths are relative to stellar/bench/ (e.g. results.json -> stellar/bench/results.json).
   stellar-bench-develop:
     if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     defaults:
       run:
         working-directory: stellar
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Run gas bench
         env:
@@ -400,7 +435,7 @@ jobs:
           test -f bench/results.json
 
       - name: Upload bench results artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stellar-bench-results
           path: stellar/bench/results.json
@@ -410,29 +445,34 @@ jobs:
         run: python3 bench/update_perf_md.py PERF.md bench/results.json
 
       - name: Commit PERF.md if changed
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
         with:
           commit_message: 'chore(perf): auto-update Stellar PERF.md bench table'
           file_pattern: stellar/PERF.md
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
 
-  # PR gate: fail when any per-op instructions exceed baseline + 5%.
+  # PR gate: fail when required operations or resource dimensions regress.
   stellar-bench-pr:
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.stellar == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: stellar
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Test Stellar benchmark comparator
+        run: python3 bench/test_compare.py
 
       - name: Download weekly baseline artifact
         id: download-baseline
-        uses: dawidd6/action-download-artifact@v6
+        uses: dawidd6/action-download-artifact@d63b86af1b34672e53c440b1b83979861906bad7 # v24
         continue-on-error: true
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -462,7 +502,7 @@ jobs:
             --format json --out results.json
           test -f bench/results.json
 
-      - name: Compare vs baseline (+5% instructions gate)
+      - name: Compare vs baseline (+5% resource gate)
         run: |
           python3 bench/compare.py \
             "${{ steps.baseline.outputs.path }}" \
@@ -471,7 +511,7 @@ jobs:
 
       - name: Upload PR bench results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stellar-bench-pr-${{ github.event.pull_request.number }}
           path: stellar/bench/results.json
@@ -480,19 +520,21 @@ jobs:
   # Weekly baseline rotation to catch slow drift under the 5% PR gate.
   stellar-bench-baseline-rotate:
     if: github.event_name == 'schedule' && github.event.schedule == '17 5 * * 1'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     defaults:
       run:
         working-directory: stellar
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: develop
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
 
       - name: Run gas bench (rotate baseline)
         env:
@@ -503,14 +545,14 @@ jobs:
           test -f bench/baseline.json
 
       - name: Upload rotated baseline artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: stellar-bench-baseline
           path: stellar/bench/baseline.json
           retention-days: 90
 
       - name: Commit rotated baseline.json
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
         with:
           commit_message: 'chore(perf): rotate Stellar gas bench baseline'
           file_pattern: stellar/bench/baseline.json
@@ -520,29 +562,34 @@ jobs:
   solana:
     needs: changes
     if: needs.changes.outputs.solana == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: solana
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.91.0
-      - uses: heyAyushh/setup-anchor@v4.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: '1.91.0'
+      - uses: heyAyushh/setup-anchor@0dfcdd252cd9716ef398947d2b765369c9f3a6de # v4.999
         with:
           anchor-version: 0.30.1
+          solana-cli-version: 1.18.17
+          node-version: 20.15.0
       - run: anchor build
 
   ckb:
     needs: changes
     if: needs.changes.outputs.ckb == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: ckb
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
         with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: riscv64imac-unknown-none-elf
       - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
       - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock
@@ -565,15 +612,17 @@ jobs:
     # Nightly cargo-fuzz run against stealth-sender's batch payload surface.
     # Scheduled/manual only — a 30-minute budget is too heavy for every PR.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: stellar/stealth-sender/fuzz
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@nightly
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # master
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --version "^0.12" --locked
+        run: cargo install cargo-fuzz --version "=0.12.0" --locked
       # 30-minute total budget, split evenly across the two targets (900s each).
       - name: Fuzz batch_decode
         run: cargo fuzz run batch_decode -- -max_total_time=900
@@ -581,7 +630,7 @@ jobs:
         run: cargo fuzz run batch_execute -- -max_total_time=900
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: fuzz-artifacts
           path: stellar/stealth-sender/fuzz/artifacts/

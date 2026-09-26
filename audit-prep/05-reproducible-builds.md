@@ -10,7 +10,8 @@ Auditors and users should be able to prove that deployed Stellar Wasm artifacts 
 | --- | --- |
 | `stellar/build/Dockerfile` | Deterministic build container. |
 | `stellar/build/build.sh` | Build and attestation generation script used in the container. |
-| `stellar/build/rust-toolchain.toml` | Pins Rust `1.81.0`, `wasm32-unknown-unknown`, and minimal profile. |
+| `stellar/build/rust-toolchain.toml` | Pins Rust `1.88.0`, `wasm32-unknown-unknown`, and minimal profile. |
+| `SUPPLY_CHAIN.md` | Pinned base image, rustup, stellar-cli and CI tool versions, and the update and re-audit process. |
 | `stellar/build/verify.js` | Compares attestation data with deployed contract information. |
 | `.github/workflows/stellar-verification.yml` | Scheduled and manual CI verification workflow. |
 | `stellar/build/THREAT_MODEL.md` | Existing threat model for the attestation pipeline. |
@@ -28,11 +29,11 @@ docker build \
 
 docker create --name builder stellar-attestation-builder
 docker start -a builder
-docker cp builder:/workspace/contracts/stellar/build/attestation.json ./attestation.json
+docker cp builder:/workspace/stellar/build/attestation.json ./attestation.json
 docker rm builder
 ```
 
-The resulting `attestation.json` should list the built Wasm outputs and their hashes for the selected commit.
+The resulting `attestation.json` should list the built Wasm outputs and their hashes for the selected commit, plus a `toolchain` object recording rustc, cargo, rustup, stellar-cli, soroban-sdk, the base image digest and the `Cargo.lock` hash.
 
 ## Deployment verification
 
@@ -67,6 +68,7 @@ The workflow checks out the repository, builds the deterministic Docker image, g
 ## Auditor checklist
 
 - Record the exact reviewed commit hash.
+- Confirm the attestation `toolchain` object matches the pins in `SUPPLY_CHAIN.md`.
 - Rebuild the in-scope contracts from a clean checkout.
 - Compare local Wasm hashes to CI attestation output.
 - After deployment, compare deployed Wasm hashes to the reviewed commit attestation.

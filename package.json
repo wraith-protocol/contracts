@@ -5,7 +5,8 @@
   "packageManager": "pnpm@10.28.2",
   "scripts": {
     "bindings:stellar": "tsx stellar/scripts/generate-bindings.ts",
-    "build:stellar": "pnpm bindings:stellar && cd stellar && cargo build --target wasm32-unknown-unknown --release"
+    "build:stellar": "pnpm bindings:stellar && cd stellar && cargo build --target wasm32-unknown-unknown --release",
+    "test:stellar-bindings": "vitest run stellar/scripts/stealth-batch-sender-bindings.test.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]
@@ -14,7 +15,8 @@
     "@stellar/stellar-sdk": "^15.1.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.9"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]
