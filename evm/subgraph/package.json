@@ -5,12 +5,15 @@
   "scripts": {
     "codegen": "graph codegen",
     "build": "graph build",
+    "test": "graph test --version 0.6.0",
+    "test:coverage": "graph test --coverage --version 0.6.0",
     "deploy": "graph deploy",
     "create-local": "graph create --node http://localhost:8020 wraith-protocol/wraith",
     "deploy-local": "graph deploy --node http://localhost:8020 --ipfs http://localhost:5001 wraith-protocol/wraith"
   },
   "devDependencies": {
     "@graphprotocol/graph-cli": "^0.96.0",
-    "@graphprotocol/graph-ts": "^0.37.0"
+    "@graphprotocol/graph-ts": "^0.37.0",
+    "matchstick-as": "^0.6.0"
   }
 }
