@@ -6,6 +6,11 @@ edition = "2021"
 [dependencies]
 ckb-std = "0.16"
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
+# ckb-std pulls in molecule, whose default Bytes type is the external `bytes`
+# crate and emits atomic (lr.d/sc.d) instructions the CKB VM cannot run.
+# bytes_vec swaps in molecule's Vec-backed Bytes, removing atomics from the
+# built script (unified into the whole RISC-V build by feature unification).
+molecule = { version = "0.8", default-features = false, features = ["bytes_vec"] }
 
 [features]
 default = []
