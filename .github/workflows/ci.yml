@@ -576,7 +576,42 @@ jobs:
           anchor-version: 0.30.1
           solana-cli-version: 1.18.17
           node-version: 20.15.0
-      - run: anchor build
+      - name: Run Anchor build
+        run: anchor build
+      - name: Run Anchor test suite with local validator
+        run: anchor test
+        env:
+          ANCHOR_PROVIDER_URL: http://127.0.0.1:8899
+      - name: Check IDL and program drift
+        run: |
+          anchor idl generate
+          anchor build
+          anchor deploy --provider.cluster http://127.0.0.1:8899 --skip-fetch
+      - name: Upload test logs and artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: solana-ci-artifacts
+          path: |
+            solana/target
+            solana/anchor.log
+            solana/*.json
+      - name: Run Anchor test suite with local validator
+        run: anchor test
+        env:
+          ANCHOR_PROVIDER_URL: http://127.0.0.1:8899
+      - name: Check IDL and program drift
+        run: |
+          anchor idl generate
+          anchor build
+          anchor deploy --provider.cluster http://127.0.0.1:8899 --skip-fetch
+      - name: Upload test logs and artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: solana-ci-artifacts
+          path: |
+            solana/target
+            solana/anchor.log
+            solana/*.json
 
   ckb:
     needs: changes
