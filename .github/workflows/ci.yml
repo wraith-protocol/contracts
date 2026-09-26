@@ -105,12 +105,16 @@ jobs:
           sarif_file: evm/results.sarif
           category: slither
 
-      - name: Build subgraph
+      - name: Build and test subgraph
         working-directory: evm/subgraph
         run: |
           npm ci
           npm run codegen
           npm run build
+          # Fixture tests for every mapping and call handler. The Matchstick
+          # rust binary version is pinned in the package.json test script so
+          # CI does not track LimeChain/matchstick's `latest` release.
+          npm test
 
   stellar:
     needs: changes
