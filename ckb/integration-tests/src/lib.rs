@@ -47,6 +47,7 @@ use ckb_testtool::ckb_crypto::secp::{Privkey, Pubkey, Signature};
 use ckb_testtool::ckb_error::Error as CKBError;
 use ckb_testtool::ckb_hash::{blake2b_256, new_blake2b};
 use ckb_testtool::ckb_script::ScriptError;
+use ckb_testtool::ckb_script::TransactionScriptError;
 use ckb_testtool::ckb_types::bytes::Bytes;
 use ckb_testtool::ckb_types::core::{DepType, ScriptHashType, TransactionBuilder, TransactionView};
 use ckb_testtool::ckb_types::packed::{
@@ -60,12 +61,22 @@ use ckb_testtool::context::Context;
 /// returns these as its `i8` result, which the simulator surfaces as a script
 /// validation failure.
 pub mod exit_code {
-    /// `Error::ItemMissing`, from `SysError::ItemMissing` - the input carried
-    /// no witness args at all.
+    /// `Error::IndexOutOfBound`, from `SysError::IndexOutOfBound` - the input
+    /// group carried no witness at all, so `load_witness` had nothing to read.
+    pub const INDEX_OUT_OF_BOUND: i8 = 1;
+    /// `Error::ItemMissing` - a required cell dep was absent. Not reachable via
+    /// the witness path: `load_witness_args` reports a missing witness as
+    /// `IndexOutOfBound`, and a present-but-empty one as a signature-length
+    /// failure. Kept for completeness of the script's error enum.
     pub const ITEM_MISSING: i8 = 2;
+    /// `Error::Encoding` (4), from `SysError::Encoding` - the witness bytes
+    /// were present but not decodable as `WitnessArgs`.
+    pub const ENCODING: i8 = 4;
     /// `Error::ArgsLengthNotEnough` - script args were not exactly 53 bytes.
     pub const ARGS_LENGTH: i8 = 5;
     /// `Error::SignatureLengthNotEnough` - witness lock was not exactly 65 bytes.
+    /// This is also what an *absent* `lock` field produces, because the script
+    /// reads a missing lock as an empty signature.
     pub const SIGNATURE_LENGTH: i8 = 6;
     /// `Error::AuthError` - the script's own validation passed, but the
     /// `ckb-auth` cell could not be reached (no such cell dep offline).
@@ -194,20 +205,16 @@ impl std::fmt::Display for VerifyFailure {
 /// Extract the numeric exit code the lock script returned, if the failure
 /// carries one.
 ///
-/// `ckb_error::Error` is an opaque wrapper, so walk its `source()` chain and
-/// downcast to the underlying `ScriptError`. The lock script returns its
-/// `Error` discriminant as the `i8` program result, which the VM reports as
-/// `ScriptError::ValidationFailure` (or `ScriptExecutionError` on newer VMs).
+/// `ckb_error::Error` is an opaque wrapper, so resolve its root cause and
+/// downcast to the underlying `TransactionScriptError`; the script's exit code
+/// lives in its `ScriptError`, which `TransactionScriptError::source()` does
+/// not expose (ckb-script deliberately returns `None` there).
 pub fn script_exit_code(err: &CKBError) -> Option<i8> {
-    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
-    while let Some(source) = current {
-        if let Some(script_err) = source.downcast_ref::<ScriptError>() {
-            return match script_err {
-                ScriptError::ValidationFailure(_, code) => Some(*code),
-                _ => None,
-            };
-        }
-        current = source.source();
+    if let Some(tx_err) = err.root_cause().downcast_ref::<TransactionScriptError>() {
+        return match tx_err.script_error() {
+            ScriptError::ValidationFailure(_, code) => Some(*code),
+            _ => None,
+        };
     }
     None
 }
@@ -314,8 +321,11 @@ impl LockHarness {
     ///   the signature-validation path.
     /// * `output_capacity` - capacity of the single output cell. Use a value
     ///   other than the input capacity to exercise the amount checks.
-    /// * `omit_witness_args` - emit an empty witness slot, which makes
-    ///   `load_witness_args` fail with `ItemMissing`.
+    /// * `omit_witness_args` - add no witness at all, so the input group has no
+    ///   witness to read and `load_witness_args` fails. Note this is *not* the
+    ///   same as a witness whose `lock` field is absent or empty: those still
+    ///   decode to an empty signature and are rejected by the script's
+    ///   signature-length check.
     pub fn build_unlock(
         &mut self,
         locked_cell: OutPoint,
@@ -323,30 +333,28 @@ impl LockHarness {
         output_capacity: u64,
         omit_witness_args: bool,
     ) -> TransactionView {
-        let lock = if omit_witness_args {
-            None
-        } else {
-            Some(signature.to_vec().pack())
-        };
-        let witness_args = WitnessArgs::new_builder().lock(lock).build();
-
         let output = CellOutput::new_builder()
             .capacity(output_capacity)
             .lock(self.recipient_lock())
             .build();
 
-        let tx = TransactionBuilder::default()
+        let mut builder = TransactionBuilder::default()
             .input(
                 CellInput::new_builder()
                     .previous_output(locked_cell)
                     .build(),
             )
             .output(output)
-            .outputs_data(vec![Bytes::new()].pack())
-            .witness(witness_args.as_bytes())
-            .build();
+            .outputs_data(vec![Bytes::new()].pack());
 
-        self.context.complete_tx(tx)
+        if !omit_witness_args {
+            let witness_args = WitnessArgs::new_builder()
+                .lock(Some(signature.to_vec().pack()))
+                .build();
+            builder = builder.witness(witness_args.as_bytes());
+        }
+
+        self.context.complete_tx(builder.build())
     }
 
     /// Build an unlock whose output also declares a type script, proving the

@@ -8,7 +8,8 @@
 //! Coverage required by the issue:
 //! - valid signatures - see `valid_signature_*` and `signature_*`
 //! - wrong arguments - see `rejects_wrong_*`
-//! - malformed cells - see `rejects_malformed_*` / `rejects_spend_of_*`
+//! - malformed cells - see `rejects_unlock_when_*`, `rejects_empty_signature`
+//!   and `spend_of_a_cell_locked_by_a_different_script_*`
 //! - amount checks - see `amount_*`
 //! - produced lock script and code hash - see `lock_script_*` / `code_hash_*`
 
@@ -305,14 +306,23 @@ fn rejects_unlock_transaction_with_no_witness_args() {
     let mut harness = LockHarness::new();
     let cell = harness.create_locked_cell(LOCKED_CAPACITY);
     let tx = harness.build_unlock(cell, &[], LOCKED_CAPACITY, true);
+    assert_eq!(
+        tx.witnesses().len(),
+        0,
+        "the fixture must carry no witness at all, otherwise this test is not exercising the missing-witness path"
+    );
 
     let failure = harness
         .verify(&tx, MAX_CYCLES, "witness-args-omitted")
         .expect_err("a spend with no witness args must be rejected");
+    // With no witness at all, `load_witness_args` cannot read index 0 and the
+    // syscall reports `IndexOutOfBound`. This is distinct from the
+    // empty-signature case above, where a witness *is* present and its absent
+    // `lock` field decodes to a 0-byte signature.
     assert_eq!(
         script_exit_code(&failure.error),
-        Some(exit_code::ITEM_MISSING),
-        "expected ItemMissing, got: {failure}"
+        Some(exit_code::INDEX_OUT_OF_BOUND),
+        "expected IndexOutOfBound, got: {failure}"
     );
 }
 
@@ -333,12 +343,14 @@ fn valid_signature_passes_every_gate_the_lock_script_owns() {
     // Sign the real transaction the way ckb-auth reconstructs the message.
     let signed = harness.sign_unlock_like_ckb_auth(unsigned);
 
-    // A genuine 65-byte signature is in the witness.
-    let witness = signed.witnesses().get(0).unwrap();
+    // A genuine 65-byte signature is in the witness. Assert on the decoded
+    // `lock` field, not the raw witness length: `raw_data()` is the whole
+    // molecule-encoded `WitnessArgs` table (header + field offsets + payload),
+    // so its size is not the signature size.
     assert_eq!(
-        witness.raw_data().len(),
-        SIGNATURE_LEN + 3,
-        "65-byte lock plus field overhead"
+        witness_lock(&signed).len(),
+        SIGNATURE_LEN,
+        "the witness lock field must be exactly a 65-byte signature"
     );
 
     // The script's own checks pass and it reaches the auth delegation. It can
@@ -444,33 +456,53 @@ fn signature_must_be_exactly_65_bytes_to_be_considered_valid() {
 // ── Malformed cells ───────────────────────────────────────────────────────────
 
 #[test]
-fn rejects_spend_of_a_cell_that_is_not_locked_by_this_script() {
+fn spend_of_a_cell_locked_by_a_different_script_is_governed_by_that_script() {
     require_executable_vm!();
     let mut harness = LockHarness::new();
-    // A cell locked by the always-success script carries no stealth lock, so
-    // the stealth rules must never authorise a spend of it.
+    // This cell is locked by the always-success script, so it carries no
+    // stealth lock and the stealth rules are not what authorises its spend.
     let foreign_lock = harness.recipient_lock();
     let cell_output = ckb_testtool::ckb_types::packed::CellOutput::new_builder()
         .capacity(LOCKED_CAPACITY)
         .lock(foreign_lock)
         .build();
-    let cell = harness.context.create_cell(cell_output, Default::default());
+    let foreign_cell = harness.context.create_cell(cell_output, Default::default());
 
-    let tx = harness.build_unlock(
-        cell,
+    // Identical transaction shape, but spent against a cell the stealth script
+    // actually locks. Here the lock script *does* run, clears its own gates on
+    // the 65-byte signature, and then fails at the ckb-auth delegation.
+    let stealth_cell = harness.create_locked_cell(LOCKED_CAPACITY);
+
+    let foreign_tx = harness.build_unlock(
+        foreign_cell,
+        &LockHarness::well_formed_signature(),
+        LOCKED_CAPACITY,
+        false,
+    );
+    let stealth_tx = harness.build_unlock(
+        stealth_cell,
         &LockHarness::well_formed_signature(),
         LOCKED_CAPACITY,
         false,
     );
 
-    let failure = harness
-        .verify(&tx, MAX_CYCLES, "foreign-lock-cell")
-        .expect_err("a cell not locked by the stealth script must not spend via its rules");
-    // The stealth lock never runs, so there is no stealth exit code to assert.
-    assert_ne!(
-        script_exit_code(&failure.error),
+    // The foreign cell's spend is governed entirely by its own lock, so the
+    // stealth script never executes and the transaction is valid. That success
+    // is itself the proof the stealth lock was not consulted: the identical
+    // transaction shape below, spent against a stealth-locked cell, does run
+    // this script and fails at `ckb-auth`.
+    harness
+        .verify(&foreign_tx, MAX_CYCLES, "foreign-lock-cell")
+        .expect("a cell locked by another script spends under that script's rules");
+
+    let stealth_failure = harness
+        .verify(&stealth_tx, MAX_CYCLES, "stealth-lock-cell-control")
+        .expect_err("the stealth-locked cell must reach the ckb-auth delegation");
+    assert_eq!(
+        script_exit_code(&stealth_failure.error),
         Some(exit_code::AUTH),
-        "the stealth lock must not be reached for a foreign lock, got: {failure}"
+        "the same transaction shape against a stealth-locked cell must fail at ckb-auth, \
+         which is what proves the foreign-locked cell never reached this script: {stealth_failure}"
     );
 }
 
