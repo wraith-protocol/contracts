@@ -1,0 +1,9 @@
+{
+  "filter_paths": "(node_modules|contracts/test)",
+  "solc_remaps": ["@openzeppelin/=node_modules/@openzeppelin/"],
+  "detectors_to_run": "assembly,arbitrary-send-erc20,array-by-reference,constant-function-asm,controlled-delegatecall,delegatecall-loop,divide-before-multiply,erc20-interface,erc721-interface,external-function,incorrect-equality,locked-ether,low-level-calls,missing-zero-check,reentrancy-benign,reentrancy-events,reentrancy-no-eth,reentrancy-unlimited-gas,reused-constructor,shadowing-abstract,shadowing-builtin,shadowing-local,shadowing-state,suicidal,uninitialized-local,uninitialized-state,uninitialized-storage,unprotected-upgrade,unused-return,unused-state,weak-prng,tx-origin,unchecked-send,unchecked-lowlevel,timestamp",
+  "exclude_informational": false,
+  "exclude_low": true,
+  "exclude_medium": false,
+  "exclude_high": false
+}

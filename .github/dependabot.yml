@@ -1,0 +1,26 @@
+# Proposes bumps for the pinned CI and container inputs. Every proposal goes
+# through the re-audit checklist in SUPPLY_CHAIN.md before merge.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ['*']
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: docker
+    directories:
+      - /stellar/build
+      - /stellar/examples/indexer
+    target-branch: develop
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope

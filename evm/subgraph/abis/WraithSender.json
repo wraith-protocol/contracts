@@ -1,0 +1,194 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_announcer",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "nonpayable",
+    "type": "constructor"
+  },
+  {
+    "inputs": [],
+    "name": "InsufficientValue",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "LengthMismatch",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "ReentrancyGuardReentrantCall",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "SafeERC20FailedOperation",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "TipTransferFailed",
+    "type": "error"
+  },
+  {
+    "inputs": [],
+    "name": "announcer",
+    "outputs": [
+      {
+        "internalType": "contract IERC5564Announcer",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "schemeId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address[]",
+        "name": "stealthAddresses",
+        "type": "address[]"
+      },
+      {
+        "internalType": "bytes[]",
+        "name": "ephemeralPubKeys",
+        "type": "bytes[]"
+      },
+      {
+        "internalType": "bytes[]",
+        "name": "metadatas",
+        "type": "bytes[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "amounts",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "batchSendERC20",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "schemeId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address[]",
+        "name": "stealthAddresses",
+        "type": "address[]"
+      },
+      {
+        "internalType": "bytes[]",
+        "name": "ephemeralPubKeys",
+        "type": "bytes[]"
+      },
+      {
+        "internalType": "bytes[]",
+        "name": "metadatas",
+        "type": "bytes[]"
+      },
+      {
+        "internalType": "uint256[]",
+        "name": "amounts",
+        "type": "uint256[]"
+      }
+    ],
+    "name": "batchSendETH",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "uint256",
+        "name": "schemeId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "stealthAddress",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes",
+        "name": "ephemeralPubKey",
+        "type": "bytes"
+      },
+      {
+        "internalType": "bytes",
+        "name": "metadata",
+        "type": "bytes"
+      }
+    ],
+    "name": "sendERC20",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "schemeId",
+        "type": "uint256"
+      },
+      {
+        "internalType": "address",
+        "name": "stealthAddress",
+        "type": "address"
+      },
+      {
+        "internalType": "bytes",
+        "name": "ephemeralPubKey",
+        "type": "bytes"
+      },
+      {
+        "internalType": "bytes",
+        "name": "metadata",
+        "type": "bytes"
+      }
+    ],
+    "name": "sendETH",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  }
+]

@@ -1,0 +1,22 @@
+[package]
+name = "integration-tests"
+version = "0.1.0"
+edition = "2021"
+
+[[test]]
+name = "withdraw_batch"
+path = "src/withdraw_batch.rs"
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-announcer = { path = "../stealth-announcer" }
+stealth-registry = { path = "../stealth-registry" }
+stealth-sender = { path = "../stealth-sender" }
+wraith-names = { path = "../wraith-names" }
+stealth-vault = { path = "../stealth-vault", features = ["testutils"] }
+stealth-splitter = { path = "../stealth-splitter", features = ["testutils"] }
+stealth-batch-sender = { path = "../stealth-batch-sender", features = ["testutils"] }
+governance = { path = "../contracts/governance", features = ["testutils"] }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

@@ -1,0 +1,267 @@
+[
+  {
+    "function_v0": {
+      "doc": "Update the meta-address for an existing name.\\nOnly the current owner can update.",
+      "name": "update",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "new_meta_address",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Reverse lookup: find the name for a given stealth meta-address.",
+      "name": "name_of",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "stealth_meta_address",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "string",
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Release a name, making it available again.",
+      "name": "release",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Resolve a name to its stealth meta-address.",
+      "name": "resolve",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "bytes",
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register a name mapped to a stealth meta-address.\\nThe caller (owner) must authorize. Ownership is tied to the caller's address.\\n\\n# Arguments\\n* `owner` - The address registering the name (must authorize).\\n* `name` - The human-readable name (lowercase alphanumeric, 3-32 chars).\\n* `stealth_meta_address` - 64-byte stealth meta-address.",
+      "name": "register",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "stealth_meta_address",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "Storage keys.",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "tuple_v0": {
+            "doc": "Maps name hash (BytesN<32>) to NameEntry.",
+            "name": "Name",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Reverse lookup: meta-address hash (BytesN<32>) to name hash (BytesN<32>).",
+            "name": "Reverse",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A registered name entry.",
+      "lib": "",
+      "name": "NameEntry",
+      "fields": [
+        {
+          "doc": "The human-readable name.",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "The registrant address (for auth).",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "The 64-byte stealth meta-address (spending_pubkey || viewing_pubkey).",
+          "name": "stealth_meta_address",
+          "type_": "bytes"
+        }
+      ]
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "Errors.",
+      "lib": "",
+      "name": "NamesError",
+      "cases": [
+        {
+          "doc": "",
+          "name": "NameTaken",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "NameTooShort",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "NameTooLong",
+          "value": 3
+        },
+        {
+          "doc": "",
+          "name": "InvalidNameCharacter",
+          "value": 4
+        },
+        {
+          "doc": "",
+          "name": "InvalidMetaAddress",
+          "value": 5
+        },
+        {
+          "doc": "",
+          "name": "NameNotFound",
+          "value": 6
+        },
+        {
+          "doc": "",
+          "name": "NotOwner",
+          "value": 7
+        }
+      ]
+    }
+  }
+]

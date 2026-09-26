@@ -1,0 +1,212 @@
+[
+  {
+    "function_v0": {
+      "doc": "Initialise the contract by storing the announcer address.\\n\\nMust be called exactly once before any `send` or `batch_send`.",
+      "name": "init",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "announcer",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "SenderError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Transfer tokens to a stealth address and emit an announcement.\\n\\n# Arguments\\n* `sender`            - The address sending funds (must authorise).\\n* `token`             - SAC token contract address (works for native XLM too).\\n* `amount`            - Amount of tokens to transfer.\\n* `scheme_id`         - Stealth address scheme identifier.\\n* `stealth_address`   - The derived one-time stealth address.\\n* `ephemeral_pub_key` - Ephemeral public key for the recipient to scan.\\n* `metadata`          - Extra data (e.g. view tag).",
+      "name": "send",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "sender",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "token",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "scheme_id",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "stealth_address",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "ephemeral_pub_key",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "metadata",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "SenderError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "Storage keys.",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "The address of the deployed StealthAnnouncer contract.",
+            "name": "Announcer"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Batch version of `send` \\xe2\\x80\\x94 transfers tokens to multiple stealth addresses\\nand emits an announcement for each.\\n\\nAll input vectors must have the same length.",
+      "name": "batch_send",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "sender",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "token",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "scheme_id",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "stealth_addresses",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "ephemeral_pub_keys",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "metadatas",
+          "type_": {
+            "vec": {
+              "element_type": "bytes"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "amounts",
+          "type_": {
+            "vec": {
+              "element_type": "i128"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "SenderError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "Errors that the sender contract can produce.",
+      "lib": "",
+      "name": "SenderError",
+      "cases": [
+        {
+          "doc": "The contract has already been initialised.",
+          "name": "AlreadyInitialized",
+          "value": 1
+        },
+        {
+          "doc": "The contract has not been initialised yet.",
+          "name": "NotInitialized",
+          "value": 2
+        },
+        {
+          "doc": "The batch input vectors have mismatched lengths.",
+          "name": "LengthMismatch",
+          "value": 3
+        }
+      ]
+    }
+  }
+]

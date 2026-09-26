@@ -1,0 +1,27 @@
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.28"
+optimizer = true
+optimizer_runs = 200
+via_ir = true
+
+# Invariant (fuzz) settings shared by all profiles.
+# fail_on_revert=false is standard for handler-based suites: mutators may
+# occasionally produce no-op/reverting calls (e.g. 0-amount sends) that must not
+# corrupt the harness; invariants assert properties irrespective of those.
+[invariant]
+runs = 256
+depth = 64
+fail_on_revert = false
+call_override = false
+
+[fuzz]
+runs = 256
+
+[fmt]
+line_length = 100
+tab_width = 4
+quote_style = "double"

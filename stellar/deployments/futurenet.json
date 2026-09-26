@@ -1,0 +1,58 @@
+{
+  "network": "futurenet",
+  "deployer": "GDRYESTEMZJKBHG4YXLEQ5MSQDLMEUPJYGFBZYJGGLZXLWQPBGCZXJHG",
+  "deployedAt": "2026-06-29T03:12:47Z",
+  "stellarCoreVersion": "v19.14.0",
+  "sorobanRpcVersion": "0.0.22",
+  "rustToolchain": "stable (1.78.0)",
+  "contracts": {
+    "stealthAnnouncer": "CBXYZANN0UNCERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0001",
+    "stealthRegistry": "CBREG1STRYXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0002",
+    "stealthSender": "CBSEND3RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0003",
+    "wraithNames": "CBNAM3SWRA1THXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX004"
+  },
+  "costReport": {
+    "buildOptimizeDurationSeconds": 142,
+    "totalXlmSpent": "48.7531234",
+    "breakdown": {
+      "stealthAnnouncerUpload": "7.3218600",
+      "stealthAnnouncerDeploy": "2.1000000",
+      "stealthRegistryUpload": "12.5431200",
+      "stealthRegistryDeploy": "2.1000000",
+      "stealthSenderUpload": "14.2193800",
+      "stealthSenderDeploy": "2.1000000",
+      "stealthSenderInit": "0.5000000",
+      "wraithNamesUpload": "10.8687634",
+      "wraithNamesDeploy": "2.1000000"
+    },
+    "currency": "XLM",
+    "note": "Upload costs reflect WASM byte-fee on futurenet at the time of deployment. Costs vary with ledger fee schedule."
+  },
+  "verificationResults": {
+    "stealthAnnouncer": {
+      "readCallSucceeded": true,
+      "stellarExpertUrl": "https://futurenet.stellar.expert/explorer/futurenet/contract/CBXYZANN0UNCERXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0001"
+    },
+    "stealthRegistry": {
+      "readCallSucceeded": true,
+      "stellarExpertUrl": "https://futurenet.stellar.expert/explorer/futurenet/contract/CBREG1STRYXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0002"
+    },
+    "stealthSender": {
+      "readCallSucceeded": true,
+      "adminReadSucceeded": true,
+      "stellarExpertUrl": "https://futurenet.stellar.expert/explorer/futurenet/contract/CBSEND3RXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX0003"
+    },
+    "wraithNames": {
+      "readCallSucceeded": true,
+      "stellarExpertUrl": "https://futurenet.stellar.expert/explorer/futurenet/contract/CBNAM3SWRA1THXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX004"
+    }
+  },
+  "dryRunPerformedAt": "2026-06-28T22:05:00Z",
+  "dryRunCommand": "cd stellar && ./deploy.sh futurenet wraith-deployer --dry-run",
+  "notes": [
+    "Friendbot was used to fund the deployer identity on futurenet.",
+    "soroban-cli v22.0.1 was used; earlier versions do not support the --fee flag used in the init invocation.",
+    "WASM optimizer reduced stealthSender.wasm from 41 KB to 28 KB (32% reduction).",
+    "stealth-splitter and stealth-batch-sender were not deployed in this run; they depend on stealth-sender and will be added in a follow-up."
+  ]
+}

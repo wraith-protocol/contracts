@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+/// @dev Precomputed valid signatures for WraithNames invariant tests. Each name
+///      has its own unique spending+viewing keypair (meta-address), so both the
+///      forward and reverse (`nameOf`) mappings are exact for every fixture.
+///      Every signature is produced by the corresponding spending key, so
+///      recovery matches both `_deriveSpendingAddress` and the standard recover.
+library NameFixtures {
+    bytes constant META_WRAITH = hex"02881e4745be81870f44dea8800346158e33565277c53e93506a7e0997b6de936102c59b6b97b2bf0fb08275462a6e5258a86f984914e449fd668b8a92d2ef1b5384";
+    bytes constant SIG_REGISTER_WRAITH = hex"fb30789782d4ca255e7abb442586397ca7823321556d0230ba01b7a60665a0c97e23c02d3cf664eaf79e9d3cbf181ce66f4ad5d30d9147f386be79d0d25c3c2a1c";
+    bytes constant SIG_RELEASE_WRAITH = hex"30a01b1b5aedfaa3236627812e3f570e657c69fe4b155c5a9d36a944f55613a103bc509b70b047a52acfe5c145f85804f47f921169fb8df3e5cd3497cab4219a1b";
+
+    bytes constant META_ALICE = hex"0379312f15495e676c35440f351aeb4ec92b8fe9f05c05c914d0e631dea5b19785039a4f0d6d3cf52fb4bfc53afb36e6a67ffc9a7a069544d5a3248a3710bd801cac";
+    bytes constant SIG_REGISTER_ALICE = hex"cb4b943fe89bff347c62ec1d67c4280eb491a6e471003fec0f67bf68b9abf26672be17d09ad92062574bf2560abb3358b909858de60305ee90d96066dcee5dfa1b";
+    bytes constant SIG_RELEASE_ALICE = hex"9ee31243f6ed27be68aaa877c0fc4155d4f72734bba05bf3ad27febec07c42e62859e249a8bfd88171517a21b81da352cdb81b2e42f1051d1d8151b9a4f324e41b";
+
+    bytes constant META_BOB = hex"03368ca82f28a7ddcc965700cf6861681bad7787863130f1ea2d8f4b1693e75ecb03869ead9e89649a9792ae6ea69f9fa5f4a586560cb4054bf1d474f3872ab2c6ed";
+    bytes constant SIG_REGISTER_BOB = hex"cf9276c0ec3f4a753f637d2e3b6990b406f2e1da2af38f3f16992aae5763d32d32ed9eb0c7b6df8d29d582b09fc68195acf14713aa81b69b3c1cf47f1300b74c1c";
+    bytes constant SIG_RELEASE_BOB = hex"464d13a5c1449440ef73ec0f619c9b9670bdea727c056e5ff9cd5e545f0438000b5745b2d92e22d3c30bb906101de6820dbcc0be3de6e942b6c806fad06a39d41c";
+
+    bytes constant META_CARLO = hex"02c927d91d1e83960fc1b25928b75c0ca72c83a6b3f698fa98162d609fbeb2355a037d29d43e1eaab4046d2ce8d7c0d8b03c361615059af42971136a605e6e584add";
+    bytes constant SIG_REGISTER_CARLO = hex"ac9ac78cd41f730213829866de0dfa7e296cf2b93aeaa53c1aec9e670e3ece9b0fc85ee974574fa995bca5efaad1ce8c41374374ce4d4369d931ba452885c4bf1b";
+    bytes constant SIG_RELEASE_CARLO = hex"60283fd985f1141090e050ddafa0d94a6689000f9249abadcb7dfeafbf305dd4780495aa33145cb3a0909d6ab85774966b896c34a238b3c28eae4cd05c8bed541b";
+
+    bytes constant META_DARIA = hex"0395e9910a7a8df0c498b8697c66805d70652e079ab53471fc05154f10b52a6f0c03ed913d78ea96696aec04e4686a929653a18909516c2c33740b9f86bcbbae385d";
+    bytes constant SIG_REGISTER_DARIA = hex"a7d9965884f2182fc03b8e17e63c9f24651972566d5268b405e89b2fbce18d287d36b62de09cc882001362b7143ef8ba1ee3e690b10be9039b7f626ab91011911b";
+    bytes constant SIG_RELEASE_DARIA = hex"5e461ae2c2a90b9e6e010a2eaa54d120de6671c51c2216decea79fb5639a5343035da626d2c968cea120a57e5546c4329291578d583cd1b122005a95a68508b21b";
+
+    bytes constant META_ELIOT = hex"020f34ef86de9b9fb9ca016c5936bdc37d0c26ccb7219c3d126044450fd26c4c9802210a01dc609b165fae2f0ce03a6ad7194bc54d8fe529122f44f68539de67128d";
+    bytes constant SIG_REGISTER_ELIOT = hex"2f6285dea52e517cc327673c8577bd7d5a076d54c163c588ac5002bf9420fe5323d92562a8f23fa835af3ed98789aba03c02ead0b9ce2129ee46e8e892fb76a41b";
+    bytes constant SIG_RELEASE_ELIOT = hex"16e15af79f218d62dcdf44107dc40fd880350af3b31b345a420e831fa4de8e567b61177465a22c0c3d9815897c3056e324fb3b02197f8f90204ded20167e612a1b";
+
+    bytes constant META_FELIX = hex"0293f6c527239ed45ad4daf3a56e27f5e94cc24a061fab647fa10392defdb81a3e0339c744554c08a2aac7139c07aba79f8c91b5f3d21d715815b0316b730e180001";
+    bytes constant SIG_REGISTER_FELIX = hex"657203310c36aaaeab0642f718a6d333a38243fd9fdbe9eca35fd6375e09413a52bca2d266cd7b12894ce61aa0e6a8510998e8d028656aea25ae3b5431c6109c1c";
+    bytes constant SIG_RELEASE_FELIX = hex"61d25e0fc4ecef7d0ba745a10e52f05ae7c9bd54ad005c4c1253cc7f75a1c65621b96e8ec3e77b4dc520f66ebbf6db8c7a813f69df9c01a7f05aeb10c0deb92f1b";
+
+    bytes constant META_GRETA = hex"0334eb60bf7df7fd5ad143f93dc2aeaa1c8f4d4522c26f7556b1d220812d2109680292926b933b201a50ef7696e1cbf5c4c46ad5f24ccbaab7bca75ec2b1c67bc80e";
+    bytes constant SIG_REGISTER_GRETA = hex"68c613b8fc415818dce030efc26631d50a0cb0a6703861bfa67faf3fe559d2d32b1d9c0ccef32e24357f25aa4847b17e48d780b814596c476225c13957c7b11d1b";
+    bytes constant SIG_RELEASE_GRETA = hex"5cab11e0bd901198efe3a7d405519677099205d2dece0475d71914cebf62662d23e3088515ccd5406f2c2f22d11d606110e83a4c86373984bc005b372302a9121b";
+
+    bytes constant META_WRAITH_ALT = hex"0357e25b66d1c9a72adb1f6c25f13aad8f867a5a8793df29650bffa32860beeaa9027cf186b6aad032541d6afb376fc9ccff84c82ae3ed370159a46c526650fae7ef";
+    bytes constant SIG_UPDATE_WRAITH = hex"cdf71a4ef640bc10ce1b96cbd10d5d54070302caaf9ff290a899156f372676f001e18234eaf513a39ae838a145d8ee9c2abf1051dc3f1f9846fb320e208883581b";
+}

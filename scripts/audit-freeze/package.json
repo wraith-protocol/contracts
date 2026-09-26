@@ -1,0 +1,19 @@
+{
+  "name": "wraith-audit-freeze",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CI gate: blocks PRs that touch audit-frozen paths without the audit-approved label. Reads freeze_paths/freeze_until from audit-prep/ENGAGEMENT.md at the PR's base ref.",
+  "type": "module",
+  "main": "check.ts",
+  "scripts": {
+    "check": "npx tsx check.ts",
+    "test": "npx vitest run",
+    "test:watch": "npx vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.9"
+  }
+}

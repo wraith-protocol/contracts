@@ -89,7 +89,7 @@ contract WraithSender is ReentrancyGuard {
             amounts.length != len
         ) revert LengthMismatch();
 
-        uint256 totalSent;
+        uint256 totalSent = 0;
         for (uint256 i; i < len; ) {
             (bool sent, ) = stealthAddresses[i].call{value: amounts[i]}("");
             require(sent);

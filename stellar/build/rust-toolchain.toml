@@ -1,0 +1,8 @@
+[toolchain]
+# Bumped from 1.81 to 1.86: transitive deps like `time-core` now require the
+# 2024 edition which needs Rust >= 1.85. Bumping the pinned toolchain keeps
+# the reproducible build compiling without vendored patches.
+channel = "1.88.0"
+targets = ["wasm32-unknown-unknown"]
+components = ["rust-std"]
+profile = "minimal"

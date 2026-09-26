@@ -6,9 +6,16 @@ evm/cache/
 evm/artifacts/
 evm/typechain-types/
 evm/dist/
+evm/foundry/out/
+evm/foundry/cache/
+evm/subgraph/node_modules/
+evm/subgraph/generated/
+evm/subgraph/build/
+evm/results.sarif
 
 # Stellar
 stellar/target/
+stellar/node_modules/
 
 # Solana
 solana/target/
@@ -18,3 +25,7 @@ solana/.anchor/
 # CKB
 ckb/target/
 ckb/build/
+
+# Root Node/TS Build & Dependencies
+node_modules/
+dist/

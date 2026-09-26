@@ -1,0 +1,34 @@
+[package]
+name = "stealth-sender-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[lib]
+name = "stealth_sender_fuzz"
+path = "src/lib.rs"
+
+[[bin]]
+name = "batch_decode"
+path = "fuzz_targets/batch_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "batch_execute"
+path = "fuzz_targets/batch_execute.rs"
+test = false
+doc = false
+bench = false
+
+# Detach from the parent Soroban workspace: this host crate builds for the
+# native target, not wasm32, and is not a contract member.
+[workspace]
