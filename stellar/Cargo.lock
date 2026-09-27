@@ -272,6 +272,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "conformance-fixtures"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "soroban-sdk",
+ "stealth-announcer",
+ "stealth-registry",
+ "stealth-sender",
+ "wraith-names",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.9.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

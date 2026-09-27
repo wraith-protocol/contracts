@@ -1,0 +1,17 @@
+[package]
+name = "conformance-fixtures"
+version = "0.1.0"
+edition = "2021"
+
+# No library — this crate is tests only.
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-announcer = { path = "../stealth-announcer" }
+stealth-registry  = { path = "../stealth-registry" }
+stealth-sender    = { path = "../stealth-sender" }
+wraith-names      = { path = "../wraith-names" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+ed25519-dalek = "2"

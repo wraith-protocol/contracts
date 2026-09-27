@@ -263,6 +263,52 @@ jobs:
         if: steps.abi.outcome == 'success'
         run: git diff --exit-code abi/
 
+  conformance:
+    needs: changes
+    if: needs.changes.outputs.evm == 'true' || needs.changes.outputs.stellar == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # ── EVM conformance ──────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install EVM dependencies
+        run: npm ci
+        working-directory: evm
+
+      - name: Compile EVM contracts
+        run: npx hardhat compile
+        working-directory: evm
+
+      - name: Run EVM conformance tests
+        run: npx hardhat test test/conformance.test.ts
+        working-directory: evm
+
+      # ── Subgraph mapping conformance (Matchstick) ────────────────────────────
+      - name: Install subgraph dependencies
+        run: npm ci
+        working-directory: evm/subgraph
+
+      - name: Generate subgraph types
+        run: npm run codegen
+        working-directory: evm/subgraph
+
+      - name: Run subgraph Matchstick tests
+        run: npm test
+        working-directory: evm/subgraph
+
+      # ── Stellar conformance ──────────────────────────────────────────────────
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Run Stellar conformance tests
+        run: cargo test --package conformance-fixtures
+        working-directory: stellar
+
   stellar-kani:
     needs: changes
     if: needs.changes.outputs.stellar == 'true'

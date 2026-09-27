@@ -28,7 +28,7 @@
                   "symbol": "Name"
                 },
                 {
-                  "bytes": "098424a5f2bcec2f611bcb2931b973f7bd051d92d3a22ab83eda44dd6afe6b5e"
+                  "bytes": "6601223eb0d29e8abddb0df3e7950f2bfe812c2d0fa52040586a1580c73412fc"
                 }
               ]
             },
@@ -48,7 +48,7 @@
                       "symbol": "Name"
                     },
                     {
-                      "bytes": "098424a5f2bcec2f611bcb2931b973f7bd051d92d3a22ab83eda44dd6afe6b5e"
+                      "bytes": "6601223eb0d29e8abddb0df3e7950f2bfe812c2d0fa52040586a1580c73412fc"
                     }
                   ]
                 },
@@ -60,7 +60,7 @@
                         "symbol": "name"
                       },
                       "val": {
-                        "string": "4xl5"
+                        "string": "dzl4ho6"
                       }
                     },
                     {
@@ -68,7 +68,7 @@
                         "symbol": "owner"
                       },
                       "val": {
-                        "address": "GAZ74TTR5ITXKGXBUNP32JKSO65X5JHJAVIDNPUY4GP4CG7PGPYTKVGT"
+                        "address": "GBEKSP2D6SKOE6LCUKWSKCYMGZ2IQIC65PN5VBKSXGTZLK265NFK36KH"
                       }
                     },
                     {
@@ -82,7 +82,7 @@
                         "symbol": "stealth_meta_address"
                       },
                       "val": {
-                        "bytes": "bd009ceba44d8aa5dc558fe3d868d27c4bba1790ab93d974c6ca3ef03185394896d65bfe877b322b8b865464fca10f2d1c453bfd158f8f276a40ded6358d6a88"
+                        "bytes": "fa2217a0557b7b535ce1410ccc0327bba9b0152097ce46b96d184c5668f9929576e7c9d6e07310b15402396e9ce32afcab819f086daf56034d1aea723480b16d"
                       }
                     }
                   ]
@@ -104,7 +104,7 @@
                   "symbol": "Replay"
                 },
                 {
-                  "bytes": "b18e8ba0cf68486a0a5323ccddb64ec0e406292d6098ae2e3e410baa3aa08034"
+                  "bytes": "4244aef88d2990267e3cf9692c53b9ee6a43edcc172885e8cbd930591c911db6"
                 }
               ]
             },
@@ -124,7 +124,7 @@
                       "symbol": "Replay"
                     },
                     {
-                      "bytes": "b18e8ba0cf68486a0a5323ccddb64ec0e406292d6098ae2e3e410baa3aa08034"
+                      "bytes": "4244aef88d2990267e3cf9692c53b9ee6a43edcc172885e8cbd930591c911db6"
                     }
                   ]
                 },
@@ -149,7 +149,7 @@
                   "symbol": "Reverse"
                 },
                 {
-                  "bytes": "c9002cc1dca9a37f844694116b28a3ceee122ec48a6475e0ddb8a334f4154cc0"
+                  "bytes": "9207fc8fb3752686f66c302faf88239d8e4bfc2a8e971b8b6e999160220c405f"
                 }
               ]
             },
@@ -169,13 +169,13 @@
                       "symbol": "Reverse"
                     },
                     {
-                      "bytes": "c9002cc1dca9a37f844694116b28a3ceee122ec48a6475e0ddb8a334f4154cc0"
+                      "bytes": "9207fc8fb3752686f66c302faf88239d8e4bfc2a8e971b8b6e999160220c405f"
                     }
                   ]
                 },
                 "durability": "persistent",
                 "val": {
-                  "bytes": "098424a5f2bcec2f611bcb2931b973f7bd051d92d3a22ab83eda44dd6afe6b5e"
+                  "bytes": "6601223eb0d29e8abddb0df3e7950f2bfe812c2d0fa52040586a1580c73412fc"
                 }
               }
             },
@@ -239,5 +239,42 @@
       ]
     ]
   },
-  "events": []
+  "events": [
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000001",
+        "type_": "contract",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "metric"
+              },
+              {
+                "symbol": "wr_names"
+              },
+              {
+                "symbol": "res_hit"
+              }
+            ],
+            "data": {
+              "vec": [
+                {
+                  "i128": {
+                    "hi": 0,
+                    "lo": 1
+                  }
+                },
+                {
+                  "vec": []
+                }
+              ]
+            }
+          }
+        }
+      },
+      "failed_call": false
+    }
+  ]
 }
