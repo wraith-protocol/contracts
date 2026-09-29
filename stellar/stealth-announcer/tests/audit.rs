@@ -135,6 +135,7 @@ fn wa_ann_04_cpi_can_emit_announcements_without_auth() {
         STELLAR_V2_SCHEME_ID.into_val(&env),
         0u32.into_val(&env),
         METADATA_KIND_VIEW_TAG.into_val(&env),
+        0u64.into_val(&env),
     ];
     let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
 
