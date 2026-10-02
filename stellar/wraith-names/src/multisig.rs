@@ -13,7 +13,18 @@ use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 use crate::{auction, DataKey, NamesError};
 
 /// 7 days, matching the GOVERNANCE.md upgrade timelock.
+/// Rotation timelock, in seconds. 7 days in production.
+///
+/// The `drill-timelock` feature shortens this to make an operator recovery
+/// drill practical to run against a real network in one sitting — see
+/// docs/RECOVERY_DRILL.md. It must never be enabled in a production build;
+/// the production value is unit-tested in this module's own test suite and
+/// in GOVERNANCE.md's documented 7-day requirement.
+#[cfg(not(feature = "drill-timelock"))]
 pub const ROTATION_TIMELOCK_SECS: u64 = 7 * 24 * 60 * 60;
+
+#[cfg(feature = "drill-timelock")]
+pub const ROTATION_TIMELOCK_SECS: u64 = 60;
 
 /// A pending signer-rotation proposal.
 #[contracttype]

@@ -1,188 +1,130 @@
-/**
- * Tests for the rescue-stealth-funds tool.
- *
- * These tests validate the core derivation, validation, and balance-checking
- * logic against known fixture data, without requiring a live Stellar network.
- */
-
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { StrKey } from '@stellar/stellar-sdk';
+import { generateRecipient, recipientDerive } from '../stealth-derivation';
 import {
-  recomputeStealthAddress,
   parseMetaAddress,
-  computeSharedSecret,
-  deriveStealthAddress,
-  deriveEphemeralPubKey,
+  recomputeStealthAddress,
   buildAnnouncementPayload,
   balanceMatches,
+  queryBalance,
+  hasFundsBeenMoved,
+  type RescueInputs,
 } from '../rescue-stealth-funds';
 
-// ─── Fixtures ────────────────────────────────────────────────────────────────
+const EPHEMERAL_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
-const FIXTURES = {
-  // 32-byte ephemeral private key (hex)
-  ephemeralKey: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
-  // 64-byte stealth meta-address: spending_pubkey (32 bytes) || viewing_pubkey (32 bytes)
-  metaAddress: [
-    'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-  ].join(''),
-  amount: '100.0',
-  asset: 'XLM',
-  announcerId: 'CDLZFC3SYJYDKTNBT7YIJ4HPN5XKKBYYY7QB7QY7PJY7PJY7PJY7PJY',
-};
+function inputsFor(metaAddress: string): RescueInputs {
+  return {
+    ephemeralKey: EPHEMERAL_KEY,
+    recipientMetaAddress: metaAddress,
+    amount: '100.0',
+    asset: 'XLM',
+    announcerId: 'CDLZFC3SYJYDKTNBT7YIJ4HPN5XKKBYYY7QB7QY7PJY7PJY7PJY7PJY',
+    rpc: 'https://soroban-testnet.stellar.org',
+    horizon: 'https://horizon-testnet.stellar.org',
+    networkPassphrase: 'Test SDF Network ; September 2015',
+  };
+}
 
-// ─── Tests ───────────────────────────────────────────────────────────────────
+afterEach(() => vi.unstubAllGlobals());
 
 describe('parseMetaAddress', () => {
-  it('should parse a valid 64-byte meta-address into spending and viewing keys', () => {
-    const result = parseMetaAddress(FIXTURES.metaAddress);
-    expect(result.spendingPubKey).toBe(
-      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    );
-    expect(result.viewingPubKey).toBe(
-      'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-    );
+  it('splits a 64-byte meta-address into spending and viewing keys', () => {
+    const meta = 'aa'.repeat(32) + 'bb'.repeat(32);
+    const r = parseMetaAddress(meta);
+    expect(r.spendingPubKey).toBe('aa'.repeat(32));
+    expect(r.viewingPubKey).toBe('bb'.repeat(32));
   });
 
-  it('should reject a meta-address that is not exactly 64 bytes', () => {
-    // 'aabb' = 2 bytes when hex-decoded
+  it('rejects meta-addresses that are not exactly 64 bytes', () => {
     expect(() => parseMetaAddress('aabb')).toThrow('exactly 64 bytes');
-    // 130 hex chars = 65 bytes
     expect(() => parseMetaAddress('aa'.repeat(65))).toThrow('exactly 64 bytes');
-    // 126 hex chars = 63 bytes
-    expect(() => parseMetaAddress('aa'.repeat(63))).toThrow('exactly 64 bytes');
-  });
-
-  it('should reject a meta-address with invalid hex characters', () => {
     expect(() => parseMetaAddress('zz'.repeat(32))).toThrow();
   });
 });
 
-describe('computeSharedSecret', () => {
-  it('should produce a deterministic shared secret for the same inputs', () => {
-    const secret1 = computeSharedSecret(FIXTURES.ephemeralKey, FIXTURES.metaAddress.slice(64));
-    const secret2 = computeSharedSecret(FIXTURES.ephemeralKey, FIXTURES.metaAddress.slice(64));
-    expect(secret1).toEqual(secret2);
-  });
-
-  it('should produce different secrets for different ephemeral keys', () => {
-    const secret1 = computeSharedSecret(FIXTURES.ephemeralKey, FIXTURES.metaAddress.slice(64));
-    const secret2 = computeSharedSecret(
-      'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-      FIXTURES.metaAddress.slice(64),
-    );
-    expect(secret1).not.toEqual(secret2);
-  });
-
-  it('should produce a 32-byte (SHA-256) shared secret for Ed25519 keys', () => {
-    const secret = computeSharedSecret(FIXTURES.ephemeralKey, FIXTURES.metaAddress.slice(64));
-    expect(secret.length).toBe(32);
-  });
-
-  it('should reject an ephemeral key shorter than 32 bytes', () => {
-    expect(() => computeSharedSecret('aabb', 'aabb'.repeat(16))).toThrow('must be 32 bytes');
-  });
-});
-
-describe('deriveStealthAddress', () => {
-  it('should produce a deterministic stealth address for the same inputs', () => {
-    const secret = computeSharedSecret(FIXTURES.ephemeralKey, FIXTURES.metaAddress.slice(64));
-    const addr1 = deriveStealthAddress(FIXTURES.metaAddress.slice(0, 64), secret);
-    const addr2 = deriveStealthAddress(FIXTURES.metaAddress.slice(0, 64), secret);
-    expect(addr1).toBe(addr2);
-  });
-
-  it('should produce addresses starting with "stealth:" prefix', () => {
-    const secret = computeSharedSecret(FIXTURES.ephemeralKey, FIXTURES.metaAddress.slice(64));
-    const addr = deriveStealthAddress(FIXTURES.metaAddress.slice(0, 64), secret);
-    expect(addr).toMatch(/^stealth:/);
-  });
-});
-
 describe('recomputeStealthAddress', () => {
-  it('should recompute deterministically', () => {
-    const result1 = recomputeStealthAddress(FIXTURES.ephemeralKey, FIXTURES.metaAddress);
-    const result2 = recomputeStealthAddress(FIXTURES.ephemeralKey, FIXTURES.metaAddress);
-    expect(result1.stealthAddress).toBe(result2.stealthAddress);
-    expect(result1.sharedSecretHex).toBe(result2.sharedSecretHex);
+  it('produces a real, valid Stellar G... account', () => {
+    const recipient = generateRecipient();
+    const { stealthAddress } = recomputeStealthAddress(EPHEMERAL_KEY, recipient.metaAddress);
+    expect(stealthAddress).toMatch(/^G/);
+    expect(StrKey.isValidEd25519PublicKey(stealthAddress)).toBe(true);
   });
 
-  it('should produce different addresses for different recipient meta-addresses', () => {
-    const result1 = recomputeStealthAddress(FIXTURES.ephemeralKey, FIXTURES.metaAddress);
-    const differentMeta = 'cc'.repeat(32) + 'dd'.repeat(32);
-    const result2 = recomputeStealthAddress(FIXTURES.ephemeralKey, differentMeta);
-    expect(result1.stealthAddress).not.toBe(result2.stealthAddress);
+  it('is deterministic and differs per recipient', () => {
+    const a = generateRecipient();
+    const b = generateRecipient();
+    const a1 = recomputeStealthAddress(EPHEMERAL_KEY, a.metaAddress);
+    const a2 = recomputeStealthAddress(EPHEMERAL_KEY, a.metaAddress);
+    const b1 = recomputeStealthAddress(EPHEMERAL_KEY, b.metaAddress);
+    expect(a1.stealthAddress).toBe(a2.stealthAddress);
+    expect(a1.stealthAddress).not.toBe(b1.stealthAddress);
   });
 
-  it('should throw for invalid meta-address length', () => {
-    expect(() => recomputeStealthAddress(FIXTURES.ephemeralKey, 'aabb')).toThrow();
-  });
-});
-
-describe('deriveEphemeralPubKey', () => {
-  it('should produce a deterministic public key from the same private key', () => {
-    const pk1 = deriveEphemeralPubKey(FIXTURES.ephemeralKey);
-    const pk2 = deriveEphemeralPubKey(FIXTURES.ephemeralKey);
-    expect(pk1).toBe(pk2);
+  it('lets the recipient rederive the same address from the announced ephemeral key', () => {
+    const recipient = generateRecipient();
+    const { stealthAddress, ephemeralPubKey } = recomputeStealthAddress(EPHEMERAL_KEY, recipient.metaAddress);
+    expect(recipientDerive(recipient, ephemeralPubKey).address).toBe(stealthAddress);
   });
 
-  it('should produce a 64-char hex string (32 bytes)', () => {
-    const pk = deriveEphemeralPubKey(FIXTURES.ephemeralKey);
-    expect(pk).toMatch(/^[0-9a-f]{64}$/);
+  it('rejects an invalid meta-address or ephemeral key', () => {
+    expect(() => recomputeStealthAddress(EPHEMERAL_KEY, 'aabb')).toThrow();
+    expect(() => recomputeStealthAddress('aabb', generateRecipient().metaAddress)).toThrow('32 bytes');
   });
 });
 
 describe('buildAnnouncementPayload', () => {
-  it('should build a valid announcement payload', () => {
-    const inputs = {
-      ephemeralKey: FIXTURES.ephemeralKey,
-      recipientMetaAddress: FIXTURES.metaAddress,
-      amount: FIXTURES.amount,
-      asset: FIXTURES.asset,
-      announcerId: FIXTURES.announcerId,
-      rpc: 'https://horizon-testnet.stellar.org',
-      networkPassphrase: 'Test SDF Network ; September 2025',
-    };
-    const result = recomputeStealthAddress(FIXTURES.ephemeralKey, FIXTURES.metaAddress);
-    const payload = buildAnnouncementPayload(inputs, result.stealthAddress);
+  it('targets the v2 announcer with a real ephemeral key and a one-byte view tag', () => {
+    const recipient = generateRecipient();
+    const inputs = inputsFor(recipient.metaAddress);
+    const { stealthAddress, ephemeralPubKey } = recomputeStealthAddress(EPHEMERAL_KEY, recipient.metaAddress);
+    const payload = buildAnnouncementPayload(inputs, stealthAddress);
+    expect(payload.schemeId).toBe(2);
+    expect(payload.stealthAddress).toBe(stealthAddress);
+    expect(payload.ephemeralPubKey).toBe(ephemeralPubKey);
+    expect(payload.metadata).toMatch(/^[0-9a-f]{2}$/);
+  });
 
-    expect(payload.schemeId).toBe(1);
-    expect(payload.stealthAddress).toBe(result.stealthAddress);
-    expect(payload.ephemeralPubKey).toMatch(/^[0-9a-f]{64}$/);
-    expect(payload.metadata).toBe('0x00');
+  it('honours an explicit scheme id', () => {
+    const recipient = generateRecipient();
+    const { stealthAddress } = recomputeStealthAddress(EPHEMERAL_KEY, recipient.metaAddress);
+    const payload = buildAnnouncementPayload({ ...inputsFor(recipient.metaAddress), schemeId: 7 }, stealthAddress);
+    expect(payload.schemeId).toBe(7);
   });
 });
 
 describe('balanceMatches', () => {
-  it('should return true when balance equals expected amount', () => {
+  it('compares balance against the expected amount', () => {
     expect(balanceMatches('100.0', '100.0')).toBe(true);
-    expect(balanceMatches('100.0000001', '100.0')).toBe(true);
-  });
-
-  it('should return true when balance exceeds expected amount', () => {
     expect(balanceMatches('150.0', '100.0')).toBe(true);
-  });
-
-  it('should return false when balance is less than expected amount', () => {
     expect(balanceMatches('50.0', '100.0')).toBe(false);
-    expect(balanceMatches('0', '100.0')).toBe(false);
-  });
-
-  it('should return false when balance is null', () => {
     expect(balanceMatches(null, '100.0')).toBe(false);
   });
 });
 
-describe('CLI argument validation', () => {
-  it('should reject ephemeral keys that are not 32 bytes when hex-decoded', () => {
-    const buf = Buffer.from('aabb', 'hex');
-    expect(buf.length).toBe(2); // 2 bytes, not 32
-    expect(buf.length === 32).toBe(false);
+describe('balance guard', () => {
+  const addr = recomputeStealthAddress(EPHEMERAL_KEY, generateRecipient().metaAddress).stealthAddress;
+  const horizon = 'https://horizon.example';
+  const stubBalance = (balance: string) =>
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ balances: [{ asset_type: 'native', balance }] }),
+    })));
+
+  it('reads the native balance of a real G... address', async () => {
+    stubBalance('100.0000000');
+    expect(await queryBalance(addr, 'XLM', horizon)).toBe('100.0000000');
   });
 
-  it('should reject meta-addresses that are not 64 bytes when hex-decoded', () => {
-    const buf = Buffer.from('a'.repeat(62), 'hex'); // 31 bytes
-    expect(buf.length).toBe(31);
-    expect(buf.length === 64).toBe(false);
+  it('flags funds as moved when the account no longer exists', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })));
+    expect(await hasFundsBeenMoved(addr, '100', horizon)).toBe(true);
+  });
+
+  it('flags funds as moved when the balance is nearly empty, but not when funds are present', async () => {
+    stubBalance('5.0000000');
+    expect(await hasFundsBeenMoved(addr, '100', horizon)).toBe(true);
+    stubBalance('100.0000000');
+    expect(await hasFundsBeenMoved(addr, '100', horizon)).toBe(false);
   });
 });
