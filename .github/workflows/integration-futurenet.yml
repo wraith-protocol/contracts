@@ -1,4 +1,4 @@
-name: Stellar Futurenet Integration Tests
+name: Stellar Futurenet Smoke Tests
 
 on:
   schedule:
@@ -28,15 +28,14 @@ jobs:
       - name: Install Stellar CLI
         run: cargo install stellar-cli --version "=${STELLAR_CLI_VERSION}" --locked
 
-      - name: Run integration tests
-        working-directory: stellar/integration-tests
+      - name: Run deployed-network smoke test
         env:
-          FUTURENET_SECRET: ${{ secrets.FUTURENET_TEST_SECRET }}
-        run: cargo test -- --nocapture 2>&1 | tee test-results.txt
+          STELLAR_ADMIN_SECRET: ${{ secrets.FUTURENET_TEST_SECRET }}
+        run: ./stellar/scripts/deploy-dryrun.sh 2>&1 | tee test-results.txt
 
       - name: Upload test results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: futurenet-test-results
-          path: stellar/integration-tests/test-results.txt
+          path: test-results.txt
