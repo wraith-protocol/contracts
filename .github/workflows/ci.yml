@@ -287,6 +287,9 @@ jobs:
         if: steps.abi.outcome == 'success'
         run: git diff --exit-code abi/
 
+      - name: Test validate-deployment script (mocked CLI)
+        run: bash scripts/validate-deployment.test.sh
+
   stellar-kani:
     needs: changes
     if: needs.changes.outputs.stellar == 'true'
@@ -333,7 +336,6 @@ jobs:
     defaults:
       run:
         working-directory: stellar
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -371,15 +373,47 @@ jobs:
           RPC_URL: https://rpc-futurenet.stellar.org
           IDENTITY_NAME: wraith-dryrun-ci
         run: |
+          set -euo pipefail
           ./scripts/deploy-dryrun.sh 2>&1 | tee deploy-dryrun-output.txt
+          exit_code=${PIPESTATUS[0]}
+          if [ $exit_code -ne 0 ]; then
+            echo "::error::Deploy dry-run script failed with exit code $exit_code"
+            exit $exit_code
+          fi
+
+      - name: Validate deployment output
+        run: |
+          chmod +x ./scripts/validate-deployment.sh
+          ./scripts/validate-deployment.sh deploy-dryrun-output.txt futurenet
 
       - name: Parse and save contract IDs
         run: |
           cat deploy-dryrun-output.txt | grep -E '(stealth-announcer|stealth-registry|stealth-sender|wraith-names)\s' | \
-            awk '{print $1, $2}' > contract-ids.txt || true
+            awk '{print $1, $2}' > contract-ids.txt
+          
+          # Verify contract-ids.txt is not empty
+          if [ ! -s contract-ids.txt ]; then
+            echo "::error::contract-ids.txt is empty - failed to parse contract IDs"
+            exit 1
+          fi
+          
+          # Count lines to verify all 4 contracts are present
+          contract_count=$(wc -l < contract-ids.txt)
+          if [ "$contract_count" -ne 4 ]; then
+            echo "::error::Expected 4 contract IDs, found $contract_count"
+            cat contract-ids.txt
+            exit 1
+          fi
+          
           echo "### Deploy Dry-Run Results" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat deploy-dryrun-output.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Contract Manifest" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat deploy-dryrun-output-manifest.json >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload dry-run output
@@ -389,6 +423,7 @@ jobs:
           name: deploy-dryrun-results
           path: |
             stellar/deploy-dryrun-output.txt
+            stellar/deploy-dryrun-output-manifest.json
             stellar/contract-ids.txt
 
   stellar-chaos-nightly:
