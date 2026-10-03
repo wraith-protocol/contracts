@@ -1634,6 +1634,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "stealth-registry-v0"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "stealth-sender"
 version = "0.1.0"
 dependencies = [
@@ -1641,6 +1648,13 @@ dependencies = [
  "soroban-sdk",
  "wraith-asset-policy",
  "wraith-metrics",
+]
+
+[[package]]
+name = "stealth-sender-v0"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -1823,6 +1837,19 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "upgrade-migration-tests"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+ "stealth-registry",
+ "stealth-registry-v0",
+ "stealth-sender",
+ "stealth-sender-v0",
+ "wraith-names",
+ "wraith-names-v0",
+]
 
 [[package]]
 name = "version_check"
@@ -2163,6 +2190,13 @@ dependencies = [
  "proptest",
  "soroban-sdk",
  "wraith-metrics",
+]
+
+[[package]]
+name = "wraith-names-v0"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]

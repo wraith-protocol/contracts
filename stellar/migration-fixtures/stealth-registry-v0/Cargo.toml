@@ -1,0 +1,12 @@
+[package]
+name = "stealth-registry-v0"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Frozen v0 stealth-registry bytecode fixture for storage migration tests"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
