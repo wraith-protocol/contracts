@@ -14,6 +14,24 @@ members = [
   "integration-tests",
   "contracts/governance",
 ]
+# A plain `cargo build` from this directory produces the deployable contract
+# artifacts, so it must select only the contract crates. `bench`,
+# `bench-crossover` and `integration-tests` are host-only: they enable
+# soroban-sdk/testutils in [dependencies], and the SDK refuses to compile
+# testutils for wasm32, so including them in the default set breaks every wasm
+# build (see SUPPLY_CHAIN.md). Reach them with --workspace or -p.
+default-members = [
+  "stealth-announcer",
+  "stealth-registry",
+  "stealth-sender",
+  "stealth-splitter",
+  "stealth-batch-sender",
+  "stealth-vault",
+  "wraith-names",
+  "wraith-asset-policy",
+  "wraith-metrics",
+  "contracts/governance",
+]
 resolver = "2"
 
 [workspace.dependencies]
