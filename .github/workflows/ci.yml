@@ -16,9 +16,10 @@ env:
   RUST_NIGHTLY_TOOLCHAIN: 'nightly-2026-09-01'
   NODE_VERSION: '22.23.2'
   PNPM_VERSION: '10.28.2'
-  STELLAR_CLI_VERSION: '22.0.1'
-  # sha256 of stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz
-  STELLAR_CLI_SHA256: '02cb00cf57ce8f432e0cc1653a1b603353a97079c22a8370dac60c21eca18fe3'
+  STELLAR_CLI_VERSION: '26.1.0'
+  # sha256 of stellar-cli-${STELLAR_CLI_VERSION}-x86_64-unknown-linux-gnu.tar.gz,
+  # as published by the upstream release.
+  STELLAR_CLI_SHA256: 'e18d5a7629102e1ccc07241acbcbebfc05b1c02476ce7d3204ba2d7418be5c0c'
   FOUNDRY_VERSION: 'v1.8.3'
   SLITHER_VERSION: '0.11.4'
   KANI_VERSION: '0.68.0'
@@ -233,24 +234,26 @@ jobs:
           path: |
             stellar/bench/data/crossover.csv
             stellar/bench/data/crossover-chart.md
-      # WASM build depends on soroban-sdk 22.0.11 compiling under current
-      # stable rustc, which fails with 162 unresolved-import errors in the
-      # SDK's transitive deps. This is a soroban-sdk 22.0.11 bug fixed in
-      # 23.x/27.x — bumping is a major API migration owned separately.
-      # Keep the step visible but non-blocking so it doesn't gate wave PRs.
-      - name: Build WASM (soroban-sdk 22 vs current rustc; non-blocking)
-        continue-on-error: true
+      # The 162 errors this step used to produce were not a soroban-sdk/rustc
+      # incompatibility: a plain `cargo build` in a virtual workspace selects
+      # every member, and bench, bench-crossover and integration-tests enable
+      # soroban-sdk/testutils, which the SDK refuses to compile for wasm32.
+      # default-members in stellar/Cargo.toml limits the default build to the
+      # contract crates. See SUPPLY_CHAIN.md for the pins and upgrade path.
+      - name: Build WASM
         run: cargo build --target wasm32-unknown-unknown --release
       - name: Optimize and Check WASM Size
-        continue-on-error: true
         run: |
-          if ! ls target/wasm32-unknown-unknown/release/*.wasm > /dev/null 2>&1; then
-            echo "No WASM artifacts (build step above did not produce output); skipping optimize."
-            exit 0
+          shopt -s nullglob
+          artifacts=(target/wasm32-unknown-unknown/release/*.wasm)
+          if [ ${#artifacts[@]} -eq 0 ]; then
+            echo "Error: the WASM build produced no artifacts."
+            exit 1
           fi
-          for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
-            soroban contract optimize --wasm "$wasm"
-            opt_wasm="${wasm%.*}_optimized.wasm"
+          for wasm in "${artifacts[@]}"; do
+            stellar contract optimize --wasm "$wasm"
+            # `contract optimize` writes "<name>.optimized.wasm" beside the input.
+            opt_wasm="${wasm%.wasm}.optimized.wasm"
             SIZE=$(stat -c%s "$opt_wasm")
             echo "$opt_wasm size is $SIZE bytes"
             if [ "$SIZE" -gt 112640 ]; then
@@ -262,30 +265,33 @@ jobs:
       - name: Run Upgrade Authority Enforcement Tests
         run: cargo test upgrade_auth --workspace
 
-      # Bindings depend on a successful workspace WASM build (currently
-      # non-blocking; see the note on the Build WASM step). Mark this
-      # non-blocking too so bindings-drift detection doesn't spuriously
-      # fail wave PRs.
       - name: Generate Stellar TypeScript bindings
-        id: bindings
-        continue-on-error: true
         run: pnpm bindings:stellar
         working-directory: .
 
+      # Scoped to the generated artifacts: `cargo test --workspace` earlier in
+      # this job rewrites soroban test_snapshots, and that churn must not be
+      # attributed to the bindings.
       - name: Check for bindings drift (diff detection)
-        if: steps.bindings.outcome == 'success'
-        run: git diff --exit-code
         working-directory: .
-      # ABI extraction depends on the same soroban-sdk 22 WASM build as above.
-      # When the SDK bump (23.x/27.x) lands, remove continue-on-error to
-      # enforce ABI snapshot freshness on every PR.
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- stellar/bindings)" ]; then
+            git --no-pager status --short --untracked-files=all -- stellar/bindings
+            git --no-pager diff -- stellar/bindings
+            echo "Error: Stellar bindings are out of date. Run pnpm bindings:stellar and commit the result."
+            exit 1
+          fi
+
       - name: Extract ABI snapshots
-        id: abi
-        continue-on-error: true
         run: ./abi/update.sh
       - name: Check ABI snapshots
-        if: steps.abi.outcome == 'success'
-        run: git diff --exit-code abi/
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- abi/)" ]; then
+            git --no-pager status --short --untracked-files=all -- abi/
+            git --no-pager diff --stat -- abi/
+            echo "Error: ABI snapshots are out of date. Run stellar/abi/update.sh and commit the result."
+            exit 1
+          fi
 
   stellar-kani:
     needs: changes
