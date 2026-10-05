@@ -49,7 +49,7 @@ STELLAR_ADMIN_SECRET=SCVAL... \
 ### Requirements
 
 - `STELLAR_ADMIN_SECRET` env var (Stellar secret key, must be funded on futurenet)
-- `stellar-cli >= 22.0.1` (or `soroban-cli`)
+- `stellar-cli >= 26.1.0` (or `soroban-cli`)
 - Rust `wasm32-unknown-unknown` target installed
 - The admin account must have sufficient XLM balance (≥ 10 XLM recommended)
 
@@ -102,13 +102,19 @@ This script runs on the `stellar-nightly` schedule in CI. See
 |---|---|---|
 | Rust toolchain | stable ≥ 1.78 | `rustup update stable` |
 | wasm32 target | any | `rustup target add wasm32-unknown-unknown` |
-| stellar-cli | 22.0.1 | `cargo install stellar-cli --locked` |
+| stellar-cli | 26.1.0 | `cargo install stellar-cli --locked` |
 | Funded identity | — | see section below |
 
-> **Why 22.0.1?** Earlier versions do not support the `--fee` flag on contract
-> invocations used by the `init` call. Attempting to deploy with an older CLI
-> will succeed for upload/deploy but fail silently on init with a fee-budget
-> error that is only visible in the node logs.
+> **Why 26.1.0?** Two reasons, both learned the hard way. Earlier versions do
+> not support the `--fee` flag on contract invocations used by the `init`
+> call, so a deploy succeeds for upload/deploy but fails silently on init with a
+> fee-budget error that is only visible in the node logs. And the 22.x CLI cannot
+> optimize this workspace: rustc emits bulk-memory instructions for four of the
+> nine contracts, which the wasm-opt bundled with 22.x rejects during validation.
+> CI pins the same 26.1.0 and regenerates the TypeScript bindings with it, so a
+> different CLI still deploys fine but will not reproduce
+> `stellar/bindings/typescript`. See
+> [`../SUPPLY_CHAIN.md`](../SUPPLY_CHAIN.md).
 
 ---
 

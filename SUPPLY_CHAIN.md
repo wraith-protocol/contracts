@@ -49,7 +49,7 @@ Declared once per workflow in a top-level `env:` block headed
 | Rust (Solana)           | `1.91.0` action / `1.89.0` `solana/rust-toolchain.toml` | `ci.yml`                                                                     | rustup channel manifest signatures                |
 | Node.js                 | `22.23.2`                                               | `ci.yml`, `audit-freeze.yml`, `stellar-verification.yml`, `supply-chain.yml` | `actions/setup-node` release checksums            |
 | pnpm                    | `10.28.2`                                               | same as Node.js, and `packageManager` in `package.json`                      | corepack npm registry signature                   |
-| stellar-cli (CI)        | `22.0.1`                                                | `ci.yml` (`STELLAR_CLI_SHA256`)                                              | `sha256sum -c` against the pinned hash            |
+| stellar-cli (CI)        | `26.1.0`                                                | `ci.yml` (`STELLAR_CLI_SHA256`)                                              | `sha256sum -c` against the pinned hash            |
 | stellar-cli (Futurenet) | `28.0.0`                                                | `integration-futurenet.yml`                                                  | `cargo install --locked` (crates.io checksums)    |
 | Foundry                 | `v1.8.3`                                                | `ci.yml`                                                                     | `foundry-rs/foundry-toolchain`                    |
 | slither-analyzer        | `0.11.4`, solc `0.8.28`                                 | `ci.yml`                                                                     | PyPI via `crytic/slither-action`                  |
@@ -58,6 +58,52 @@ Declared once per workflow in a top-level `env:` block headed
 | cargo-fuzz              | `0.12.0`                                                | `ci.yml`                                                                     | `cargo install --locked`                          |
 | cargo-tarpaulin         | `0.37.4`                                                | `coverage.yml`                                                               | `cargo install --locked`                          |
 | cosign                  | `v2.2.4`                                                | `stellar-attestation.yml`                                                    | `sigstore/cosign-installer` checksum              |
+
+### Stellar artifact checks
+
+The `stellar` job builds the contract WASM, optimizes it, regenerates
+`stellar/bindings/typescript/**` and `stellar/abi/*.json`, and fails the PR if
+either set of checked-in artifacts moves. Nothing in that chain is
+`continue-on-error` any more, so the three constraints below decide the pins.
+
+- **The wasm32 target set must stay free of `soroban-sdk/testutils`.** The SDK
+  guards that feature with `compile_error!` on wasm, and a plain `cargo build` in
+  a virtual workspace selects *every* member, including the host-only `bench`,
+  `bench-crossover` and `integration-tests` crates that enable it.
+  `default-members` in `stellar/Cargo.toml` is what keeps
+  `cargo build --target wasm32-unknown-unknown --release` building only the ten
+  deployable members (nine cdylibs and the `wraith-metrics` helper library, which
+  emits no WASM). A new member that enables `testutils` has to stay out of that
+  list; otherwise the wasm build fails with hundreds of errors inside the SDK
+  rather than in the new crate, which reads like a toolchain bug.
+- **Contract code may not use host-only SDK APIs.** Converting an `Address` into
+  an `xdr::ScAddress` exists only behind `cfg(not(target_family = "wasm"))`, and
+  linking `alloc` unconditionally leaves the cdylib without a global allocator.
+  Both failures surface in this blocking step, not in `cargo test`.
+- **`contract optimize` needs a wasm-opt that accepts bulk memory.** rustc emits
+  `memory.copy`/`memory.fill` for four of the nine contracts on every toolchain
+  tested (1.88.0 and 1.98.1), and stellar-cli 22.0.1's bundled optimizer rejects
+  them during validation, so the size gate could never pass for those artifacts.
+  26.1.0 validates all nine and is the CI pin.
+
+The upgrade path, in short:
+
+- 26.1.0 is the version that produced the bindings already committed here. Its
+  template emits `@stellar/stellar-sdk` `^14.5.0` and no `networks` block, which
+  is what every checked-in client looks like. Pinning a different CLI therefore
+  regenerates all five clients and their `package.json`, so a CLI bump is an
+  artifact-regeneration PR with reviewable output, never a one-line config bump.
+- Do not move past 26.x without checking both outputs. stellar-cli 28.1.0 renames
+  the `type_` key to `type` in `contract info interface --output json-formatted`,
+  which rewrites every `stellar/abi/*.json` snapshot, and marks
+  `contract bindings typescript` deprecated in favour of the JavaScript SDK
+  generator. Each needs a decision and a fresh baseline before the pin moves.
+  28.1.0's optimizer produces the same payloads as 26.1.0, so the size gate is
+  not what holds the pin back.
+- The release container (next section) still builds with stellar-cli 22.0.0,
+  which cannot validate those four contracts, so `stellar/build/build.sh` needs
+  the same bump. That changes deployed hashes, so it belongs to a planned
+  redeploy rather than to this check; tracked as a known gap below.
 
 ### Release build (Stellar reproducible build)
 
@@ -185,8 +231,16 @@ any other `.github/` change.
 - `model-checking/kani-github-action` and `heyAyushh/setup-anchor` call further
   actions by moving tag internally. We pin the outer action. Upgrading those
   inner actions requires bumping the outer SHA.
-- stellar-cli `22.0.1` publishes neither checksums nor build provenance. The
-  pinned hash was taken from the GitHub release asset on first use.
+- stellar-cli `22.0.1`, the previous CI pin, published neither checksums nor
+  build provenance, and its optimizer cannot validate the workspace's
+  bulk-memory contracts. `26.1.0` publishes a sha256 digest per release asset;
+  `STELLAR_CLI_SHA256` is that upstream digest, and CI re-checks the downloaded
+  archive against it.
+- The release container's stellar-cli `22.0.0` has the same optimizer as the old
+  CI pin, so `stellar/build/build.sh` aborts on the four contracts that use bulk
+  memory. Bumping it changes the optimized bytes, which changes the hashes
+  `stellar/build/verify.js` compares against deployed contracts, so it belongs to
+  a planned redeploy rather than to the CI pin above.
 - The repository dependency graph is not enabled. Enabling it (Settings → Code
   security) would additionally allow `actions/dependency-review-action` for
   license policy. The OSV review above does not require it.

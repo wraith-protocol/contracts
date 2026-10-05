@@ -38,6 +38,12 @@ To run tests for all contracts:
 cargo test
 ```
 
+`cargo test` from this directory covers the crates in `default-members`, which
+is the deployable set. The host-only members (`bench`, `bench-crossover`,
+`integration-tests`) enable `soroban-sdk/testutils` and are excluded from the
+default target set so that the wasm build stays clean; add `--workspace` to run
+them too.
+
 ## Audits & Formal Verification
 
 Per-contract audit write-ups for the contracts that custody user funds:
