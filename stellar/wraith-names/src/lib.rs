@@ -1,10 +1,12 @@
 #![no_std]
 
+// Only the test module allocates. Linking `alloc` into the crate unconditionally
+// makes the wasm32 cdylib require a global allocator it does not have.
+#[cfg(test)]
 extern crate alloc;
 
 use core::convert::TryInto;
 
-use soroban_sdk::xdr::{AccountId, PublicKey, ScAddress};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env,
     String, Vec,
@@ -140,6 +142,73 @@ pub enum NamesError {
 
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
+
+/// An ed25519 account strkey (`G…`) is 56 unpadded base32 characters over
+/// `[version byte, 32-byte public key, 2-byte CRC16 checksum]`.
+const ACCOUNT_STRKEY_CHARS: usize = 56;
+const ACCOUNT_STRKEY_BYTES: usize = 35;
+/// Version 6 left-shifted into the high five bits, which is what makes the
+/// strkey start with `G`.
+const ACCOUNT_VERSION_BYTE: u8 = 6 << 3;
+
+fn base32_quintet(byte: u8) -> Option<u8> {
+    match byte {
+        b'A'..=b'Z' => Some(byte - b'A'),
+        b'2'..=b'7' => Some(26 + byte - b'2'),
+        _ => None,
+    }
+}
+
+fn crc16_xmodem(bytes: &[u8]) -> u16 {
+    let mut crc: u16 = 0;
+    for &byte in bytes {
+        crc ^= (byte as u16) << 8;
+        for _ in 0..8 {
+            let overflowed = crc & 0x8000 != 0;
+            crc = crc.wrapping_shl(1);
+            if overflowed {
+                crc ^= 0x1021;
+            }
+        }
+    }
+    crc
+}
+
+/// Recovers the ed25519 public key from an account strkey.
+///
+/// Returns `None` for a contract address (`C…`), a muxed account (`M…`), or a
+/// corrupt checksum, which the caller maps to `NamesError::InvalidSigner`.
+fn account_public_key(strkey: &[u8]) -> Option<[u8; 32]> {
+    if strkey.len() != ACCOUNT_STRKEY_CHARS {
+        return None;
+    }
+
+    let mut decoded = [0u8; ACCOUNT_STRKEY_BYTES];
+    let mut accumulator: u32 = 0;
+    let mut bits: u32 = 0;
+    let mut written: usize = 0;
+    for &byte in strkey {
+        let quintet = base32_quintet(byte)?;
+        accumulator = (accumulator << 5) | quintet as u32;
+        bits += 5;
+        if bits >= 8 {
+            bits -= 8;
+            decoded[written] = ((accumulator >> bits) & 0xff) as u8;
+            written += 1;
+        }
+    }
+
+    if written != ACCOUNT_STRKEY_BYTES || decoded[0] != ACCOUNT_VERSION_BYTE {
+        return None;
+    }
+    if u16::from_le_bytes([decoded[33], decoded[34]]) != crc16_xmodem(&decoded[..33]) {
+        return None;
+    }
+
+    let mut public_key = [0u8; 32];
+    public_key.copy_from_slice(&decoded[1..33]);
+    Some(public_key)
+}
 
 #[contract]
 pub struct WraithNamesContract;
@@ -456,18 +525,17 @@ impl WraithNamesContract {
     }
 
     fn owner_public_key(env: &Env, owner: &Address) -> Result<BytesN<32>, NamesError> {
-        let sc_address: ScAddress = owner.try_into().map_err(|_| NamesError::InvalidSigner)?;
-
-        match sc_address {
-            ScAddress::Account(AccountId(PublicKey::PublicKeyTypeEd25519(public_key))) => {
-                let public_key_bytes: [u8; 32] = public_key
-                    .as_slice()
-                    .try_into()
-                    .map_err(|_| NamesError::InvalidSigner)?;
-                Ok(BytesN::from_array(env, &public_key_bytes))
-            }
-            _ => Err(NamesError::InvalidSigner),
+        // soroban-sdk converts an `Address` to an `xdr::ScAddress` only on the
+        // host (`cfg(not(target_family = "wasm"))`), so the deployed wasm has to
+        // recover the owner's key from the strkey instead.
+        let strkey = owner.to_string();
+        if strkey.len() as usize != ACCOUNT_STRKEY_CHARS {
+            return Err(NamesError::InvalidSigner);
         }
+        let mut strkey_bytes = [0u8; ACCOUNT_STRKEY_CHARS];
+        strkey.copy_into_slice(&mut strkey_bytes);
+        let public_key = account_public_key(&strkey_bytes).ok_or(NamesError::InvalidSigner)?;
+        Ok(BytesN::from_array(env, &public_key))
     }
 
     fn register_internal(
@@ -1175,6 +1243,47 @@ mod test {
         let sc_address = ScAddress::Account(AccountId(PublicKey::PublicKeyTypeEd25519(public_key)));
         let owner = Address::try_from_val(env, &sc_address).expect("account address");
         (owner, signing_key)
+    }
+
+    #[test]
+    fn strkey_decode_recovers_the_account_public_key() {
+        let env = Env::default();
+        let seed = [7u8; 32];
+        let (owner, signing_key) = signing_account(&env, seed);
+        let strkey = owner.to_string();
+        let mut bytes = [0u8; ACCOUNT_STRKEY_CHARS];
+        strkey.copy_into_slice(&mut bytes);
+        let decoded = account_public_key(&bytes).expect("account strkey decodes");
+        assert_eq!(decoded, signing_key.verifying_key().to_bytes());
+    }
+
+    /// The all-zero ed25519 public key as encoded by the reference strkey
+    /// encoder: version byte `6 << 3`, 32 zero bytes, then the CRC16 checksum
+    /// in little-endian byte order.
+    const ZERO_ACCOUNT_STRKEY: &[u8; ACCOUNT_STRKEY_CHARS] =
+        b"GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+    #[test]
+    fn strkey_decode_matches_a_known_vector() {
+        let decoded = account_public_key(ZERO_ACCOUNT_STRKEY).expect("valid strkey");
+        assert_eq!(decoded, [0u8; 32]);
+    }
+
+    #[test]
+    fn strkey_decode_rejects_a_corrupt_checksum() {
+        let mut strkey = *ZERO_ACCOUNT_STRKEY;
+        strkey[ACCOUNT_STRKEY_CHARS - 1] = b'A';
+        assert_eq!(account_public_key(&strkey), None);
+    }
+
+    #[test]
+    fn strkey_decode_rejects_non_account_addresses() {
+        let env = Env::default();
+        let contract = Address::generate(&env);
+        let strkey = contract.to_string();
+        let mut bytes = [0u8; ACCOUNT_STRKEY_CHARS];
+        strkey.copy_into_slice(&mut bytes);
+        assert_eq!(account_public_key(&bytes), None);
     }
 
     fn sign_authorization(
