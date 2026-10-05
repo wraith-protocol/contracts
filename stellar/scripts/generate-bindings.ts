@@ -237,9 +237,12 @@ async function main() {
     console.log();
   }
 
-  // Create global index.ts file re-exporting all clients
+  // Create global index.ts file re-exporting all clients.
+  //
+  // Keep this byte-for-byte deterministic: CI regenerates the bindings and
+  // fails the PR on any diff, so a timestamp here would make every run look
+  // like drift.
   const indexContent = `// Auto-generated Stellar TypeScript bindings re-exports
-// Generated on ${new Date().toISOString()}
 
 export * as StealthAnnouncer from './stealth-announcer/src/index';
 export * as StealthRegistry from './stealth-registry/src/index';

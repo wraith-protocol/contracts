@@ -20,6 +20,40 @@
   },
   {
     "function_v0": {
+      "doc": "Remove a previously registered stealth meta-address.\\n\\n# Arguments\\n* `registrant` - The address whose meta-address is being removed (must authorise).\\n* `scheme_id`  - The stealth address scheme identifier.",
+      "name": "remove_keys",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "registrant",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "scheme_id",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "RegistryError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
       "doc": "Register or update a stealth meta-address.\\n\\n# Arguments\\n* `registrant` - The address whose meta-address is being set (must authorise).\\n* `scheme_id`  - The stealth address scheme identifier.\\n* `stealth_meta_address` - 64-byte value: `spending_pubkey || viewing_pubkey`.",
       "name": "register_keys",
       "inputs": [
@@ -102,6 +136,46 @@
               }
             }
           }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Wraith Protocol standard metric event schema.\\n\\nAll Wraith contracts emit metric events using this structure to enable\\nstandardized off-chain observability and monitoring.",
+      "lib": "",
+      "name": "WraithMetricEvent",
+      "fields": [
+        {
+          "doc": "Contract identifier (e.g., \"stealth-registry\", \"stealth-sender\")",
+          "name": "contract",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Optional dimensions for filtering/grouping (e.g., token_address, scheme_id)",
+          "name": "dimensions",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "tuple": {
+                  "value_types": [
+                    "symbol",
+                    "val"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "Metric name (e.g., \"register_count\", \"send_volume\")",
+          "name": "metric_name",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Numeric value of the metric",
+          "name": "value",
+          "type_": "i128"
         }
       ]
     }

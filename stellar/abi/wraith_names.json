@@ -1,6 +1,64 @@
 [
   {
     "function_v0": {
+      "doc": "Initialise the contract by storing the pause admin.\\n\\nMust be called before `pause` / `unpause`. Idempotent: calling\\nmore than once is a no-op (the first admin sticks).",
+      "name": "init",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Pause the contract \\xe2\\x80\\x94 admin only.\\nPrevents all registrations, updates, releases and TTL extensions\\nwhile paused. Lookups (`resolve`, `name_of`) remain available.",
+      "name": "pause",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
       "doc": "Update the meta-address for an existing name.\\nOnly the current owner can update.",
       "name": "update",
       "inputs": [
@@ -99,7 +157,7 @@
   },
   {
     "function_v0": {
-      "doc": "Resolve a name to its stealth meta-address.",
+      "doc": "Resolve a name to its stealth meta-address.\\n\\nFor a subdomain (`payments.alice`) resolution walks to the parent\\n(`alice`): if the parent no longer exists the subdomain does not resolve.",
       "name": "resolve",
       "inputs": [
         {
@@ -124,7 +182,50 @@
   },
   {
     "function_v0": {
-      "doc": "Register a name mapped to a stealth meta-address.\\nThe caller (owner) must authorize. Ownership is tied to the caller's address.\\n\\n# Arguments\\n* `owner` - The address registering the name (must authorize).\\n* `name` - The human-readable name (lowercase alphanumeric, 3-32 chars).\\n* `stealth_meta_address` - 64-byte stealth meta-address.",
+      "doc": "Current protocol-level governance signer set.",
+      "name": "signers",
+      "inputs": [],
+      "outputs": [
+        {
+          "vec": {
+            "element_type": "address"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Unpause the contract \\xe2\\x80\\x94 admin only.",
+      "name": "unpause",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register a name mapped to a stealth meta-address.",
       "name": "register",
       "inputs": [
         {
@@ -162,6 +263,26 @@
     }
   },
   {
+    "function_v0": {
+      "doc": "Returns true if the contract is paused.",
+      "name": "is_paused",
+      "inputs": [],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Current protocol-level governance quorum threshold.",
+      "name": "threshold",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
     "udt_union_v0": {
       "doc": "Storage keys.",
       "lib": "",
@@ -182,7 +303,7 @@
         },
         {
           "tuple_v0": {
-            "doc": "Reverse lookup: meta-address hash (BytesN<32>) to name hash (BytesN<32>).",
+            "doc": "Reverse lookup: meta-address hash (BytesN<32>) to name string.",
             "name": "Reverse",
             "type_": [
               {
@@ -191,6 +312,278 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Replay protection for signed on-behalf calls.",
+            "name": "Replay",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Guardian config for a name.",
+            "name": "Guardians",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Pending recovery proposal for a name.",
+            "name": "Recovery",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Pause admin address.",
+            "name": "Admin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Whether the contract is paused.",
+            "name": "Paused"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Protocol-level governance multisig signer set.",
+            "name": "MultisigSigners"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Protocol-level governance multisig quorum threshold.",
+            "name": "MultisigThreshold"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Pending protocol-level signer-rotation proposal, if any.",
+            "name": "PendingRotation"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Pending auction-admin rotation proposal, if any.",
+            "name": "PendingAuctionAdminRotation"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Renew (extend TTL for) multiple names in a single atomic transaction.\\n\\nAll names must exist. If any name is not found, the entire operation\\nreverts.",
+      "name": "bulk_renew",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "names",
+          "type_": {
+            "vec": {
+              "element_type": "string"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "extend_to_ledger",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Claim a won auction: registers the name to the winner with their\\nstealth meta-address.",
+      "name": "claim_name",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "winner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "stealth_meta_address",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "AuctionError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Commit a sealed bid. `commitment` hides the bid amount; `deposit` is\\ntransferred to the contract and must cover the bid revealed later.",
+      "name": "commit_bid",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "bidder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "commitment",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "deposit",
+          "type_": "i128"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "AuctionError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Reveal a previously committed bid by disclosing the amount and salt.",
+      "name": "reveal_bid",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "bidder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "salt",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "AuctionError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Read the auction state for a name, if any.",
+      "name": "get_auction",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "option": {
+            "value_type": {
+              "udt": {
+                "name": "Auction"
+              }
+            }
           }
         }
       ]
@@ -203,19 +596,66 @@
       "name": "NameEntry",
       "fields": [
         {
-          "doc": "The human-readable name.",
+          "doc": "",
           "name": "name",
           "type_": "string"
         },
         {
-          "doc": "The registrant address (for auth).",
+          "doc": "",
           "name": "owner",
           "type_": "address"
         },
         {
-          "doc": "The 64-byte stealth meta-address (spending_pubkey || viewing_pubkey).",
+          "doc": "For a subdomain (`sub.parent`), the name hash of the parent label.\\n`None` for a flat top-level name. Existing flat names register with\\n`None`, so prior behaviour is preserved.",
+          "name": "parent",
+          "type_": {
+            "option": {
+              "value_type": {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
           "name": "stealth_meta_address",
           "type_": "bytes"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Withdraw a losing (or unrevealed) bid deposit in full.",
+      "name": "withdraw_bid",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "bidder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "AuctionError"
+              }
+            }
+          }
         }
       ]
     }
@@ -260,6 +700,1333 @@
           "doc": "",
           "name": "NotOwner",
           "value": 7
+        },
+        {
+          "doc": "",
+          "name": "SignatureExpired",
+          "value": 8
+        },
+        {
+          "doc": "",
+          "name": "SignatureReplay",
+          "value": 9
+        },
+        {
+          "doc": "",
+          "name": "InvalidSigner",
+          "value": 10
+        },
+        {
+          "doc": "",
+          "name": "NotGuardian",
+          "value": 11
+        },
+        {
+          "doc": "",
+          "name": "NoProposal",
+          "value": 12
+        },
+        {
+          "doc": "",
+          "name": "ProposalAlreadyExists",
+          "value": 13
+        },
+        {
+          "doc": "",
+          "name": "AlreadyApproved",
+          "value": 14
+        },
+        {
+          "doc": "",
+          "name": "DelayNotElapsed",
+          "value": 15
+        },
+        {
+          "doc": "",
+          "name": "ThresholdNotMet",
+          "value": 16
+        },
+        {
+          "doc": "",
+          "name": "TooManyGuardians",
+          "value": 17
+        },
+        {
+          "doc": "",
+          "name": "InvalidThreshold",
+          "value": 18
+        },
+        {
+          "doc": "",
+          "name": "InvalidExtendLedger",
+          "value": 19
+        },
+        {
+          "doc": "",
+          "name": "ParentNotFound",
+          "value": 20
+        },
+        {
+          "doc": "The contract is paused.",
+          "name": "Paused",
+          "value": 32
+        },
+        {
+          "doc": "The protocol-level governance multisig has not been initialised.",
+          "name": "MultisigNotInitialized",
+          "value": 21
+        },
+        {
+          "doc": "The protocol-level governance multisig has already been initialised.",
+          "name": "MultisigAlreadyInitialized",
+          "value": 22
+        },
+        {
+          "doc": "The caller is not a current protocol-level governance signer.",
+          "name": "NotSigner",
+          "value": 23
+        },
+        {
+          "doc": "A signer-rotation proposal is already pending.",
+          "name": "RotationAlreadyPending",
+          "value": 24
+        },
+        {
+          "doc": "No signer-rotation proposal is pending.",
+          "name": "NoPendingRotation",
+          "value": 25
+        },
+        {
+          "doc": "The caller has already approved the pending rotation.",
+          "name": "AlreadyApprovedRotation",
+          "value": 26
+        },
+        {
+          "doc": "The pending rotation has not collected enough approvals yet.",
+          "name": "QuorumNotMet",
+          "value": 27
+        },
+        {
+          "doc": "The rotation timelock has not elapsed yet.",
+          "name": "TimelockNotElapsed",
+          "value": 28
+        },
+        {
+          "doc": "",
+          "name": "NameTooDeep",
+          "value": 29
+        },
+        {
+          "doc": "",
+          "name": "BulkLimitExceeded",
+          "value": 30
+        },
+        {
+          "doc": "The name is premium (<= 4 chars) and the auction window is active, so\\nit can only be obtained through the sealed-bid auction.",
+          "name": "PremiumAuctionRequired",
+          "value": 31
+        },
+        {
+          "doc": "The auction subsystem has not been initialised, so there is no auction\\nadmin to rotate.",
+          "name": "AuctionsNotInitialized",
+          "value": 1600
+        },
+        {
+          "doc": "An auction has a revealed winner and has not settled yet, so the\\nauction admin cannot be rotated out from under it.",
+          "name": "AuctionInProgress",
+          "value": 1601
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register multiple names in a single atomic transaction.\\n\\nAll names must be valid and not already taken. If any name fails,\\nthe entire operation reverts.",
+      "name": "bulk_register",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "names",
+          "type_": {
+            "vec": {
+              "element_type": "string"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "meta_addresses",
+          "type_": {
+            "vec": {
+              "element_type": "bytes"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "One-time initialization of the premium-name auction system.\\n\\n`admin` operates settlements per the runbook, `treasury` receives\\nwinning bids, `token` is the payment asset (native XLM SAC on mainnet),\\n`reserve_price` is the minimum bid, and `commit_secs` / `reveal_secs`\\nare the phase durations for each auction. The 90-day premium window\\nstarts at the ledger timestamp of this call.",
+      "name": "init_auctions",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "treasury",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "token",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "reserve_price",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "commit_secs",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "reveal_secs",
+          "type_": "u64"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "AuctionError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "One-time setup of the protocol-level governance signer set used to\\nauthorise signer rotations.",
+      "name": "init_multisig",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "signers",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "threshold",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Start a sealed-bid auction for a premium name (<= 4 chars, top-level).\\nPermissionless: anyone may open the auction for an eligible name.",
+      "name": "start_auction",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "AuctionError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Read the auction configuration, if initialized.",
+      "name": "auction_config",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": {
+              "udt": {
+                "name": "AuctionConfig"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Settle an auction after the reveal phase: pays the winning bid to the\\ntreasury and refunds the winner's excess deposit. Permissionless so\\nfunds can never be trapped, operated by the admin per the runbook.",
+      "name": "settle_auction",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "AuctionError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Extend TTL for persistent storage entries only.\\nExtend the TTL of a registered name to a future ledger.\\nThis is a permissionless function that anyone can call.\\nIdempotent: calling twice in the same ledger has no additional effect.",
+      "name": "extend_name_ttl",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "extend_to_ledger",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "The pending signer-rotation proposal, if any.",
+      "name": "pending_rotation",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": {
+              "udt": {
+                "name": "RotationProposal"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Update a name on behalf of an owner using a signed authorization.",
+      "name": "update_on_behalf",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "new_meta_address",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "signature",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Guardian configuration for a name.",
+      "lib": "",
+      "name": "GuardianConfig",
+      "fields": [
+        {
+          "doc": "",
+          "name": "guardians",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "threshold",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Release a name on behalf of an owner using a signed authorization.",
+      "name": "release_on_behalf",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "signature",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Compute the sealed-bid commitment for the given parameters.\\n\\nIntended for off-chain use (simulation only): calling this in a real\\ntransaction would leak the bid amount.",
+      "name": "compute_commitment",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "bidder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "salt",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "bytes_n": {
+            "n": 32
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register a name on behalf of an owner using a signed authorization.",
+      "name": "register_on_behalf",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "stealth_meta_address",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "signature",
+          "type_": {
+            "bytes_n": {
+              "n": 64
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "expiry",
+          "type_": "u64"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A pending recovery proposal.",
+      "lib": "",
+      "name": "RecoveryProposal",
+      "fields": [
+        {
+          "doc": "",
+          "name": "approvals",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "new_meta_address",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "new_owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "proposed_at",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cancel the pending rotation, clearing all of its state.",
+      "name": "cancel_rotate_signers",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Approve the pending signer-rotation proposal.",
+      "name": "approve_rotate_signers",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Execute the pending rotation once quorum is met and the timelock has\\nelapsed. Emits `SignersRotated`.",
+      "name": "execute_rotate_signers",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Propose a new signer set + threshold behind the rotation timelock.\\n`caller` must be a current signer; the proposal is auto-approved by\\n`caller`. Rejects thresholds that could never reach quorum.",
+      "name": "propose_rotate_signers",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "new_signers",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "new_threshold",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Auctions with a revealed winner that have not settled yet. While this\\nis non-zero, `execute_rotate_auction_admin` is blocked.",
+      "name": "auctions_pending_settlement",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cancel the pending auction-admin rotation, clearing all of its state.",
+      "name": "cancel_rotate_auction_admin",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Approve the pending auction-admin rotation proposal.",
+      "name": "approve_rotate_auction_admin",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Execute the pending auction-admin rotation once quorum is met and the\\ntimelock has elapsed. Emits `AuctionAdminRotated(old, new)`.\\n\\nFails with `AuctionInProgress` while any auction is in its reveal or\\nsettle phase, leaving the proposal intact so it can be retried after\\nsettlement.",
+      "name": "execute_rotate_auction_admin",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Propose a new premium-auction admin behind the 7-day rotation\\ntimelock, gated by the same governance signer set as\\n`propose_rotate_signers`. `caller` must be a current signer; the\\nproposal is auto-approved by `caller`.",
+      "name": "propose_rotate_auction_admin",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "new_admin",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "The pending auction-admin rotation proposal, if any.",
+      "name": "pending_auction_admin_rotation",
+      "inputs": [],
+      "outputs": [
+        {
+          "option": {
+            "value_type": {
+              "udt": {
+                "name": "AdminRotationProposal"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "State of a single name auction.",
+      "lib": "",
+      "name": "Auction",
+      "fields": [
+        {
+          "doc": "Timestamp at which the commit phase ends and the reveal phase begins.",
+          "name": "commit_end",
+          "type_": "u64"
+        },
+        {
+          "doc": "Highest revealed bid amount so far.",
+          "name": "highest_amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "Highest revealed bidder so far. Ties go to the earliest reveal.",
+          "name": "highest_bidder",
+          "type_": {
+            "option": {
+              "value_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "name",
+          "type_": "string"
+        },
+        {
+          "doc": "Timestamp at which the reveal phase ends and settlement is possible.",
+          "name": "reveal_end",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "settled",
+          "type_": "bool"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A sealed bid.",
+      "lib": "",
+      "name": "SealedBid",
+      "fields": [
+        {
+          "doc": "sha256 commitment binding bidder, name, amount and salt.",
+          "name": "commitment",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "Tokens locked in the contract; refunded in full to losers.",
+          "name": "deposit",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "revealed",
+          "type_": "bool"
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "Storage keys for the auction subsystem.",
+      "lib": "",
+      "name": "AuctionKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "Auction configuration (instance storage).",
+            "name": "Config"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Auction state per name hash.",
+            "name": "Auction",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Sealed bid per (name hash, bidder).",
+            "name": "Bid",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              },
+              "address"
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Count of auctions with a revealed winner that have not settled yet\\n(instance storage). Guards auction-admin rotation.",
+            "name": "PendingSettlements"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "Auction errors. Codes start at 100 to stay disjoint from `NamesError`.",
+      "lib": "",
+      "name": "AuctionError",
+      "cases": [
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 100
+        },
+        {
+          "doc": "",
+          "name": "AlreadyInitialized",
+          "value": 101
+        },
+        {
+          "doc": "",
+          "name": "InvalidConfig",
+          "value": 102
+        },
+        {
+          "doc": "",
+          "name": "WindowClosed",
+          "value": 103
+        },
+        {
+          "doc": "",
+          "name": "NotPremiumName",
+          "value": 104
+        },
+        {
+          "doc": "",
+          "name": "NameAlreadyRegistered",
+          "value": 105
+        },
+        {
+          "doc": "",
+          "name": "AuctionExists",
+          "value": 106
+        },
+        {
+          "doc": "",
+          "name": "NoAuction",
+          "value": 107
+        },
+        {
+          "doc": "",
+          "name": "CommitPhaseOver",
+          "value": 108
+        },
+        {
+          "doc": "",
+          "name": "AlreadyCommitted",
+          "value": 109
+        },
+        {
+          "doc": "",
+          "name": "DepositBelowReserve",
+          "value": 110
+        },
+        {
+          "doc": "",
+          "name": "RevealPhaseNotActive",
+          "value": 111
+        },
+        {
+          "doc": "",
+          "name": "NoBid",
+          "value": 112
+        },
+        {
+          "doc": "",
+          "name": "AlreadyRevealed",
+          "value": 113
+        },
+        {
+          "doc": "",
+          "name": "CommitmentMismatch",
+          "value": 114
+        },
+        {
+          "doc": "",
+          "name": "BidBelowReserve",
+          "value": 115
+        },
+        {
+          "doc": "",
+          "name": "BidExceedsDeposit",
+          "value": 116
+        },
+        {
+          "doc": "",
+          "name": "RevealPhaseNotOver",
+          "value": 117
+        },
+        {
+          "doc": "",
+          "name": "AlreadySettled",
+          "value": 118
+        },
+        {
+          "doc": "",
+          "name": "NotSettled",
+          "value": 119
+        },
+        {
+          "doc": "",
+          "name": "NotWinner",
+          "value": 120
+        },
+        {
+          "doc": "",
+          "name": "WinnerCannotWithdraw",
+          "value": 121
+        },
+        {
+          "doc": "",
+          "name": "InvalidMetaAddress",
+          "value": 122
+        },
+        {
+          "doc": "",
+          "name": "RegistrationFailed",
+          "value": 123
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Auction configuration, set once at initialization.",
+      "lib": "",
+      "name": "AuctionConfig",
+      "fields": [
+        {
+          "doc": "Operator that runs settlements per the runbook.",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "Duration of the commit phase of each auction, in seconds.",
+          "name": "commit_secs",
+          "type_": "u64"
+        },
+        {
+          "doc": "Ledger timestamp at initialization; the premium window runs for\\n`PREMIUM_WINDOW_SECS` from this point.",
+          "name": "launch_time",
+          "type_": "u64"
+        },
+        {
+          "doc": "Minimum bid; deposits must also be at least this amount.",
+          "name": "reserve_price",
+          "type_": "i128"
+        },
+        {
+          "doc": "Duration of the reveal phase of each auction, in seconds.",
+          "name": "reveal_secs",
+          "type_": "u64"
+        },
+        {
+          "doc": "Payment token (native XLM SAC on mainnet).",
+          "name": "token",
+          "type_": "address"
+        },
+        {
+          "doc": "Receives winning bids.",
+          "name": "treasury",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A pending signer-rotation proposal.",
+      "lib": "",
+      "name": "RotationProposal",
+      "fields": [
+        {
+          "doc": "",
+          "name": "approvals",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "executable_at",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "new_signers",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "new_threshold",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A pending auction-admin rotation proposal. Mirrors `RotationProposal` \\xe2\\x80\\x94\\nsame signer set, same quorum, same timelock \\xe2\\x80\\x94 but carries the incoming\\nauction operator address instead of a new signer set.",
+      "lib": "",
+      "name": "AdminRotationProposal",
+      "fields": [
+        {
+          "doc": "",
+          "name": "approvals",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "executable_at",
+          "type_": "u64"
+        },
+        {
+          "doc": "",
+          "name": "new_admin",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Wraith Protocol standard metric event schema.\\n\\nAll Wraith contracts emit metric events using this structure to enable\\nstandardized off-chain observability and monitoring.",
+      "lib": "",
+      "name": "WraithMetricEvent",
+      "fields": [
+        {
+          "doc": "Contract identifier (e.g., \"stealth-registry\", \"stealth-sender\")",
+          "name": "contract",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Optional dimensions for filtering/grouping (e.g., token_address, scheme_id)",
+          "name": "dimensions",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "tuple": {
+                  "value_types": [
+                    "symbol",
+                    "val"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "Metric name (e.g., \"register_count\", \"send_volume\")",
+          "name": "metric_name",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Numeric value of the metric",
+          "name": "value",
+          "type_": "i128"
         }
       ]
     }

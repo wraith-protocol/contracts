@@ -1,7 +1,7 @@
 [
   {
     "function_v0": {
-      "doc": "Emits a stealth address announcement event.\\n\\nThis is a pure event-emission function with no access control and no\\nstorage. Indexers watch for these events to let recipients detect\\nincoming payments.\\n\\n# Arguments\\n* `scheme_id` - Identifier for the stealth address scheme (e.g. 1 for the default DKSAP scheme).\\n* `stealth_address` - The one-time stealth address that received funds.\\n* `ephemeral_pub_key` - The ephemeral public key used to derive the stealth address.\\n* `metadata` - Arbitrary metadata (e.g. view tag) to speed up scanning.",
+      "doc": "Emits a Stellar v2 stealth address announcement event.\\n\\nThis is a pure event-emission function with no access control and no\\nstorage. Indexers watch for these events to let recipients detect\\nincoming payments.\\n\\nv2 event shape:\\n* topics: `(\"announce\", scheme_id, view_tag_bucket, metadata_kind)`\\n* data: `(stealth_address, ephemeral_pub_key, metadata)`\\n\\nThe stable `view_tag_bucket` derivation is `metadata[0] as u32`, where\\n`metadata_kind = 1` (`METADATA_KIND_VIEW_TAG`) means the first metadata\\nbyte is the view tag and the remaining bytes are scheme-specific. This\\nlets wallets and indexers filter Stellar RPC `getEvents` by scheme and\\nbucket before doing client-side cryptographic validation.\\n\\nMigration note: v1 announcements used the old Stellar layout\\n`(\"announce\", scheme_id, stealth_address)` with\\n`(caller, ephemeral_pub_key, metadata)`. Do not reinterpret historical v1\\nevents as v2. The compatibility path is a new announcer deployment using\\n`scheme_id = 2`.\\n\\n# Arguments\\n* `scheme_id` - Must be `2` for the v2 St",
       "name": "announce",
       "inputs": [
         {
