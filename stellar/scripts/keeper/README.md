@@ -260,7 +260,7 @@ Run the keeper tests:
 pnpm test scripts/keeper
 
 # Integration test with local contract
-cargo test --manifest-path stellar/Cargo.toml
+cargo test --workspace --manifest-path stellar/Cargo.toml
 ```
 
 ## Cost Model

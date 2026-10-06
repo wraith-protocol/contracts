@@ -38,15 +38,39 @@ case; it is already 80.40% below budget. Symbol stripping is safe for these
 cdyli artifacts: it removes non-executable metadata only and therefore has no
 runtime or storage semantics.
 
-wraith_names is retained in the historical baseline below, but cannot be
-compiled for wasm32-unknown-unknown with the repository's pinned
-soroban-sdk 22.0.11: its existing ScAddress: TryFrom<&Address> conversion
-fails before code generation. This is an unrelated pre-existing compile error;
-CI should keep this contract's existing 9,755-byte optimized baseline until that
-source/toolchain mismatch is fixed.
+wraith_names was excluded from the table above on the grounds that it "cannot be
+compiled for wasm32-unknown-unknown with the repository's pinned soroban-sdk
+22.0.11". That claim was wrong. Two separate defects were to blame, and neither
+is a toolchain incompatibility:
 
-Historical contract	Previous optimized baseline (bytes)
-wraith_names	9,755
+a plain `cargo build` in this virtual workspace selected the host-only members
+(bench, bench-crossover, integration-tests), which enable soroban-sdk/testutils;
+the SDK rejects that feature for wasm32, so every wasm build died.
+`default-members` in stellar/Cargo.toml now limits the default build to the
+contract crates.
+wraith-names converted the owner `Address` into an `xdr::ScAddress`, an impl the
+SDK gates behind `cfg(not(target_family = "wasm"))`. It now decodes the owner's
+strkey on chain, so the wasm artifact builds.
+
+Current measurement for wraith_names, with the CI toolchain (Rust 1.98.1,
+stellar-cli 26.1.0): 75,055 bytes built, 57,575 bytes optimized, which is 48.89%
+below the 112,640-byte budget and the largest payload in the workspace.
+
+Current workspace payload
+Fresh measurement of every contract member with the CI toolchain (Rust 1.98.1,
+stellar-cli 26.1.0), run as CI runs it. "Budget used" is the optimized payload
+against the 112,640-byte gate.
+
+Contract	Built (bytes)	Optimized (bytes)	Budget used
+wraith_names	75,055	57,575	51.11%
+stealth_sender	34,177	24,986	22.18%
+stealth_batch_sender	29,068	21,902	19.44%
+governance	24,044	18,506	16.43%
+stealth_splitter	21,502	16,899	15.00%
+stealth_vault	22,637	16,585	14.72%
+stealth_announcer	8,228	6,575	5.84%
+stealth_registry	8,246	5,973	5.30%
+wraith_asset_policy	6,245	4,559	4.05%
 
 Metric emission delta (wraith_metrics wiring)
 Wiring wraith_metrics::emit_metric into wraith-names, stealth-splitter,
@@ -60,16 +84,14 @@ Contract	Before metrics (bytes)	After metrics (bytes)	Delta	Growth
 stealth_splitter	9,774	10,720	+946	+9.68%
 stealth_vault	9,237	11,117	+1,880	+20.35%
 governance	16,589	18,506	+1,917	+11.56%
-wraith_names	not measurable	not measurable	--	--
-All three measurable payloads stay far below the 112,640-byte CI budget; the
-largest, governance, is 83.57% below it.
+wraith_names	--	57,575	--	--
+Every payload stays far below the 112,640-byte CI budget; the largest,
+wraith_names, is 48.89% below it.
 
-wraith_names cannot be compiled for wasm32-unknown-unknown at all (see
-the note above), so its metric-emission delta cannot be measured on this toolchain.
-The failure reproduces identically on the parent commit, so it is unrelated to the
-metric wiring. Once the soroban-sdk bump lands and the contract builds,
-re-run the command below and fill the row in the wiring adds five call sites,
-so it should land in the same +1 to +2 KB range as the other three.
+wraith_names carries the metrics wiring in the commit that made it build for
+wasm32, so there is no "before" payload to measure against on any toolchain that
+compiles it. Its 57,575-byte optimized payload is therefore the current
+absolute, not a delta.
 
 Batch-sender hardening pass
 the stealth_batch_sender contract gained init, pause/admin, typed errors, and
@@ -88,24 +110,20 @@ cargo build --target wasm32-unknown-unknown --release
 for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
   stellar contract optimize --wasm "$wasm"
 done
-find target/wasm32-unknown-unknown/release -name '*_optimized.wasm' 
+find target/wasm32-unknown-unknown/release -name '*.optimized.wasm' \
   -printf '%f %s bytes\n' | sort
 The optimizer is deliberately run on the release output, as the network deploys
 the optimized payload rather than the intermediate compiler artifact. CI rejects
 any optimized payload over 112,640 bytes.
 
-A workspace-wide wasm32 build fails because integration-tests pulls
-soroban-sdk with the testutils feature and Cargo unifies that feature across
-the whole build. To measure a single contract, name it explicitly so the
-testutil-enabled members stay out of the graph:
+`stellar contract optimize` writes the result beside the input as
+`<name>.optimized.wasm`. The workflow previously stat'ed `<name>_optimized.wasm`,
+so the size gate never read a real file and the step failed even when the payload
+was well within budget.
 
-Shell
-
-cargo build -p stealth-vault -p stealth-splitter -p governance \
-  --target wasm32-unknown-unknown --release
-for wasm in target/wasm32-unknown-unknown/release/*.wasm; do
-  stellar contract optimize --wasm "$wasm"
-done
-
-Note that stellar-cli 27.x writes <name>.optimized.wasm where the 22.0.1 CLI
-pinned in CI writes <name>_optimized.wasm; match the glob to the CLI in use.
+The wasm32 build used to be restricted to explicitly named contracts because a
+plain workspace build pulled in integration-tests, which enables soroban-sdk
+with the testutils feature, and Cargo unifies that feature across the whole
+build graph. `default-members` in stellar/Cargo.toml now keeps the testutils-only
+members out of the default target set, so the plain build above produces exactly
+the deployable contract artifacts.
