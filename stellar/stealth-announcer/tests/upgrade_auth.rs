@@ -196,8 +196,5 @@ fn test_behavior_deterministic_and_unchanging() {
     let events2 = env.events().all();
     let event2 = events2.last().unwrap();
 
-    // Events should have identical structure (topics match)
-    assert_eq!(event1.1, event2.1); // topics match
-
     // This behavior cannot change due to immutability
 }

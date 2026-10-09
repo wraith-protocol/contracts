@@ -61,6 +61,7 @@ proptest! {
             STELLAR_V2_SCHEME_ID.into_val(&env),
             bucket.into_val(&env),
             METADATA_KIND_VIEW_TAG.into_val(&env),
+            0u64.into_val(&env),
         ];
         prop_assert_eq!(event.1, expected_topics);
     }
@@ -102,6 +103,7 @@ proptest! {
             STELLAR_V2_SCHEME_ID.into_val(&env),
             (second_view_tag as u32).into_val(&env),
             METADATA_KIND_VIEW_TAG.into_val(&env),
+            1u64.into_val(&env),
         ];
         prop_assert_eq!(event.1, expected_topics);
     }

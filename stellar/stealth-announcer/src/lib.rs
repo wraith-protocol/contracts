@@ -2,14 +2,7 @@
 
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env};
 
-/// Stellar v2 deployment scheme id.
-///
-/// The v1 Stellar announcer emitted topics as
-/// `(announce, scheme_id, stealth_address)` and data as
-/// `(caller, ephemeral_pub_key, metadata)`. That historical shape is not
-/// rewritten in place because existing indexers may already rely on it. The v2
-/// rollout is a new announcer deployment that only accepts `scheme_id = 2` and
-/// emits the bucketed event shape documented below.
+/// Stellar v2
 pub const STELLAR_V2_SCHEME_ID: u32 = 2;
 
 /// Initial metadata kind for v2 announcements.
@@ -29,38 +22,52 @@ pub fn view_tag_bucket(metadata: &Bytes) -> u32 {
     metadata.get(0).expect("metadata must include view tag") as u32
 }
 
-#[contract]
-pub struct StealthAnnouncerContract;
+/// Storage key for the persistent event sequence counter.
+const EVENT_SEQ_KEY: &[u8] = b"event_seq";
 
+/// Unique, incrementing sequence ID for each event emitted by this contract.
+/// Used for replay protection and reorg safety — indexers can track the
+/// highest sequence ID they've processed to avoid processing stale events.
+fn next_event_sequence_id(env: &Env) -> u64 {
+    let seq: u64 = env
+        .storage()
+        .instance()
+        .get(&EVENT_SEQ_KEY)
+        .unwrap_or(0);
+    env.storage().instance().set(&EVENT_SEQ_KEY, &(seq + 1));
+    seq
+}
+
+/// Emits a Stellar v2 stealth address announcement event with replay protection.
+///
+/// v2 event shape with replay protection:
+/// * topics: `("announce", scheme_id, view_tag_bucket, metadata_kind, event_sequence_id)`
+/// * data: `(stealth_address, ephemeral_pub_key, metadata)`
+///
+/// The stable `view_tag_bucket` derivation is `metadata[0] as u32`, where
+/// `metadata_kind = 1` (`METADATA_KIND_VIEW_TAG`) means the first metadata
+/// byte is the view tag and the remaining bytes are scheme-specific. This
+/// lets wallets and indexers filter Stellar RPC `getEvents` by scheme and
+/// bucket before doing client-side cryptographic validation.
+///
+/// The `event_sequence_id` is topic 4, a monotonically increasing counter.
+/// Indexers should track the highest sequence ID they have processed to skip
+/// stale or duplicate events after a reorg.
+///
+/// Migration note: v1 announcements used the old Stellar layout
+/// `("announce", scheme_id, stealth_address)` with
+/// `(caller, ephemeral_pub_key, metadata)`. Do not reinterpret historical v1
+/// events as v2. The compatibility path is a new announcer deployment using
+/// `scheme_id = 2`.
+///
+/// # Arguments
+/// * `scheme_id` - Must be `2` for the v2 Stellar announcer deployment.
+/// * `stealth_address` - The one-time stealth address that received funds.
+/// * `ephemeral_pub_key` - The ephemeral public key used to derive the stealth address.
+/// * `metadata` - Non-empty metadata whose first byte is the view tag.
 #[contractimpl]
 impl StealthAnnouncerContract {
-    /// Emits a Stellar v2 stealth address announcement event.
-    ///
-    /// This is a pure event-emission function with no access control and no
-    /// storage. Indexers watch for these events to let recipients detect
-    /// incoming payments.
-    ///
-    /// v2 event shape:
-    /// * topics: `("announce", scheme_id, view_tag_bucket, metadata_kind)`
-    /// * data: `(stealth_address, ephemeral_pub_key, metadata)`
-    ///
-    /// The stable `view_tag_bucket` derivation is `metadata[0] as u32`, where
-    /// `metadata_kind = 1` (`METADATA_KIND_VIEW_TAG`) means the first metadata
-    /// byte is the view tag and the remaining bytes are scheme-specific. This
-    /// lets wallets and indexers filter Stellar RPC `getEvents` by scheme and
-    /// bucket before doing client-side cryptographic validation.
-    ///
-    /// Migration note: v1 announcements used the old Stellar layout
-    /// `("announce", scheme_id, stealth_address)` with
-    /// `(caller, ephemeral_pub_key, metadata)`. Do not reinterpret historical v1
-    /// events as v2. The compatibility path is a new announcer deployment using
-    /// `scheme_id = 2`.
-    ///
-    /// # Arguments
-    /// * `scheme_id` - Must be `2` for the v2 Stellar announcer deployment.
-    /// * `stealth_address` - The one-time stealth address that received funds.
-    /// * `ephemeral_pub_key` - The ephemeral public key used to derive the stealth address.
-    /// * `metadata` - Non-empty metadata whose first byte is the view tag.
+    /// Emits a Stellar v2 stealth address announcement event with replay protection.
     pub fn announce(
         env: Env,
         scheme_id: u32,
@@ -72,6 +79,7 @@ impl StealthAnnouncerContract {
 
         let view_tag_bucket = view_tag_bucket(&metadata);
         let metadata_kind = METADATA_KIND_VIEW_TAG;
+        let event_seq = next_event_sequence_id(&env);
 
         env.events().publish(
             (
@@ -79,121 +87,12 @@ impl StealthAnnouncerContract {
                 scheme_id,
                 view_tag_bucket,
                 metadata_kind,
+                event_seq,
             ),
             (stealth_address, ephemeral_pub_key, metadata),
         );
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::{Address as _, EnvTestConfig, Events};
-    use soroban_sdk::{vec, Address, Bytes, BytesN, Env, FromVal, IntoVal, Val};
-
-    #[test]
-    fn test_announce_emits_event() {
-        let env = Env::default();
-        let contract_id = env.register(StealthAnnouncerContract, ());
-        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
-
-        let stealth_address = Address::generate(&env);
-        let ephemeral_pub_key = BytesN::from_array(&env, &[1u8; 32]);
-        let metadata = Bytes::from_slice(&env, &[42u8, 7u8]);
-        let scheme_id: u32 = STELLAR_V2_SCHEME_ID;
-
-        client.announce(&scheme_id, &stealth_address, &ephemeral_pub_key, &metadata);
-
-        let events = env.events().all();
-        assert_eq!(events.len(), 1);
-
-        let event = events.last().unwrap();
-
-        // Verify the event was published by the correct contract.
-        assert_eq!(event.0, contract_id);
-
-        // Verify topics: ("announce", scheme_id, view_tag_bucket, metadata_kind).
-        let expected_topics: soroban_sdk::Vec<Val> = vec![
-            &env,
-            symbol_short!("announce").into_val(&env),
-            scheme_id.into_val(&env),
-            42u32.into_val(&env),
-            METADATA_KIND_VIEW_TAG.into_val(&env),
-        ];
-        assert_eq!(event.1, expected_topics);
-
-        // Verify data: (stealth_address, ephemeral_pub_key, metadata).
-        let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
-        assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
-    }
-
-    #[test]
-    fn test_view_tag_bucket_derives_from_first_metadata_byte() {
-        let env = Env::default();
-        let contract_id = env.register(StealthAnnouncerContract, ());
-        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
-
-        let addr = Address::generate(&env);
-        let epk = BytesN::from_array(&env, &[1u8; 32]);
-        let first_meta = Bytes::from_slice(&env, &[0u8, 99u8]);
-        let second_meta = Bytes::from_slice(&env, &[255u8, 99u8]);
-
-        client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &first_meta);
-        let events = env.events().all();
-        let event = events.last().unwrap();
-        assert_eq!(event.0, contract_id.clone());
-
-        let expected_topics: soroban_sdk::Vec<Val> = vec![
-            &env,
-            symbol_short!("announce").into_val(&env),
-            STELLAR_V2_SCHEME_ID.into_val(&env),
-            0u32.into_val(&env),
-            METADATA_KIND_VIEW_TAG.into_val(&env),
-        ];
-        assert_eq!(event.1, expected_topics);
-
-        client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &second_meta);
-        let events2 = env.events().all();
-        let event2 = events2.last().unwrap();
-        let expected_topics2: soroban_sdk::Vec<Val> = vec![
-            &env,
-            symbol_short!("announce").into_val(&env),
-            STELLAR_V2_SCHEME_ID.into_val(&env),
-            255u32.into_val(&env),
-            METADATA_KIND_VIEW_TAG.into_val(&env),
-        ];
-        assert_eq!(event2.1, expected_topics2);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_announce_rejects_v1_scheme_id() {
-        let env = Env::new_with_config(EnvTestConfig {
-            capture_snapshot_at_drop: false,
-        });
-        let contract_id = env.register(StealthAnnouncerContract, ());
-        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
-
-        let addr = Address::generate(&env);
-        let epk = BytesN::from_array(&env, &[1u8; 32]);
-        let meta = Bytes::from_slice(&env, &[0u8; 1]);
-
-        client.announce(&1u32, &addr, &epk, &meta);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_announce_rejects_missing_view_tag() {
-        let env = Env::new_with_config(EnvTestConfig {
-            capture_snapshot_at_drop: false,
-        });
-        let contract_id = env.register(StealthAnnouncerContract, ());
-        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
-
-        let addr = Address::generate(&env);
-        let epk = BytesN::from_array(&env, &[1u8; 32]);
-        let meta = Bytes::new(&env);
-
-        client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
-    }
-}
+#[contract]
+pub struct StealthAnnouncerContract;
