@@ -1,0 +1,12 @@
+[package]
+name = "stealth-sender-v0"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Frozen v0 stealth-sender bytecode fixture for upgrade migration tests"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }

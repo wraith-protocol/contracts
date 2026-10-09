@@ -1,0 +1,12 @@
+[package]
+name = "wraith-names-v0"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Frozen v0 wraith-names bytecode fixture for upgrade migration tests"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }

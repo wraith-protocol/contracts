@@ -1,0 +1,19 @@
+[package]
+name = "upgrade-migration-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "v0→v1 Soroban WASM upgrade migration integration tests"
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+stealth-sender = { path = "../stealth-sender" }
+wraith-names = { path = "../wraith-names" }
+stealth-registry = { path = "../stealth-registry" }
+stealth-sender-v0 = { path = "../migration-fixtures/stealth-sender-v0" }
+wraith-names-v0 = { path = "../migration-fixtures/wraith-names-v0" }
+stealth-registry-v0 = { path = "../migration-fixtures/stealth-registry-v0" }
