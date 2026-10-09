@@ -1,0 +1,62 @@
+[2026-09-29T22:23:03Z] === Operator recovery drill starting (network: futurenet) ===
+[2026-09-29T22:23:04Z] Phase 0: generating drill-only identities and funding via friendbot
+[2026-09-29T22:23:04Z]   identity 'drill-deployer' already exists, reusing
+[2026-09-29T22:23:04Z]   identity 'drill-signer-1' already exists, reusing
+[2026-09-29T22:23:05Z]   identity 'drill-signer-2' already exists, reusing
+[2026-09-29T22:23:05Z]   identity 'drill-signer-3' already exists, reusing
+[2026-09-29T22:23:05Z]   identity 'drill-signer-4' already exists, reusing
+[2026-09-29T22:23:06Z]   identity 'drill-signer-5-new' already exists, reusing
+[2026-09-29T22:23:07Z]   drill-deployer:     GBPV7NHTH2DJHQAEAXKSUJS3YK5V4OJRFWDQU5NSHVIWUWMXW2RJMTVA
+[2026-09-29T22:23:07Z]   drill-signer-1:     GAGEHMDYONXQBDRN2HSAVM76277H3CQRGEP2LMAZ6WDD3D37Y44FQJGX
+[2026-09-29T22:23:07Z]   drill-signer-2:     GD44S76CCB776TAPJZIRNXENR3NOTCXO42V6T47NHFHNY3Y7H25X7GVP
+[2026-09-29T22:23:08Z]   drill-signer-3:     GAYDRMOO6ADFKHVMTYGFE36QY36JXOQGJM7ADV32LFVKJ2JMZ6CHSRMM
+[2026-09-29T22:23:08Z]   drill-signer-4:     GCEOH5QQI3GN7SCZM52NJJYDLWQIELWCRFDFAQHBXREIKRPJDXPDSGCQ (will be simulated as lost/compromised)
+[2026-09-29T22:23:08Z]   drill-signer-5-new: GDC4C5OP74AV4KZCPJJ4UT5OVWG6JYPPFAZD3EBJYVGBPW57L6RX4DYJ (rotated in to replace signer-4)
+[2026-09-29T22:23:09Z] Phase 0b: building stealth-announcer and stealth-sender (drill-timelock feature)
+[2026-09-29T22:23:39Z] Phase 0b: deploying stealth-announcer
+[2026-09-29T22:23:51Z]   stealth-announcer deployed: CBJACIKMXNCZAJMMQYOQZVUX2B2XO6QGCK5FHHZ3NZ36O2LHBEGLQ7UU
+[2026-09-29T22:23:51Z] Phase 0b: deploying stealth-sender
+[2026-09-29T22:24:00Z]   stealth-sender deployed: CAT57VVRLAURHMH4SYSGA33PRUPSPTTGZBCXX3WYAE4P5YEHQOCEBBDB
+[2026-09-29T22:24:01Z] Phase 0c: initialising stealth-sender (admin + announcer)
+null
+[2026-09-29T22:24:12Z] Phase 0c: initialising governance signer set (3-of-5)
+null
+[2026-09-29T22:24:20Z] === Phase 1: simulating operator key loss (drill-signer-4 treated as compromised) ===
+[2026-09-29T22:24:20Z] Incident clock starts now.
+[2026-09-29T22:24:20Z] === Phase 2: pause ===
+null
+[2026-09-29T22:24:34Z]   is_paused confirmed: true
+[2026-09-29T22:24:34Z] === Phase 3: propose signer rotation (drop signer-4, add signer-5-new) ===
+null
+[2026-09-29T22:24:40Z] Phase 3: collecting approvals to reach quorum (3-of-5 current set)
+null
+null
+[2026-09-29T22:25:04Z]   pending_rotation state: {"approvals":["GBPV7NHTH2DJHQAEAXKSUJS3YK5V4OJRFWDQU5NSHVIWUWMXW2RJMTVA","GAGEHMDYONXQBDRN2HSAVM76277H3CQRGEP2LMAZ6WDD3D37Y44FQJGX","GD44S76CCB776TAPJZIRNXENR3NOTCXO42V6T47NHFHNY3Y7H25X7GVP"],"executable_at":1790720740,"new_signers":["GBPV7NHTH2DJHQAEAXKSUJS3YK5V4OJRFWDQU5NSHVIWUWMXW2RJMTVA","GAGEHMDYONXQBDRN2HSAVM76277H3CQRGEP2LMAZ6WDD3D37Y44FQJGX","GD44S76CCB776TAPJZIRNXENR3NOTCXO42V6T47NHFHNY3Y7H25X7GVP","GDC4C5OP74AV4KZCPJJ4UT5OVWG6JYPPFAZD3EBJYVGBPW57L6RX4DYJ"],"new_threshold":3}
+[2026-09-29T22:25:05Z]   approvals collected: 3 (need 3), executable_at (unix): 1790720740
+[2026-09-29T22:25:05Z] === Phase 4: waiting for rotation timelock to elapse ===
+[2026-09-29T22:25:05Z]   sleeping 37s until executable_at
+[2026-09-29T22:25:42Z] === Phase 4: executing signer rotation ===
+null
+[2026-09-29T22:25:52Z]   post-rotation signers: ["GBPV7NHTH2DJHQAEAXKSUJS3YK5V4OJRFWDQU5NSHVIWUWMXW2RJMTVA","GAGEHMDYONXQBDRN2HSAVM76277H3CQRGEP2LMAZ6WDD3D37Y44FQJGX","GD44S76CCB776TAPJZIRNXENR3NOTCXO42V6T47NHFHNY3Y7H25X7GVP","GDC4C5OP74AV4KZCPJJ4UT5OVWG6JYPPFAZD3EBJYVGBPW57L6RX4DYJ"]
+[2026-09-29T22:25:52Z] === Phase 5: rescue — real funds recovered on Futurenet ===
+[2026-09-29T22:25:53Z]   Funds a real stealth account with no announcement, runs the fixed rescue tool
+[2026-09-29T22:25:53Z]   (scripts/rescue-stealth-funds.ts) to publish the announcement (scheme_id=2), has the recipient find it via RPC getEvents,
+[2026-09-29T22:25:53Z]   sweeps the funds with the derived key, and asserts balances before/after.
+[2026-09-29T22:25:53Z]   Any failed assertion aborts the whole drill.
+[2026-09-29T22:26:04.396Z] stuck stealth address: GCD7NNDLUGPQ46PLZP7MZL3KJYBJ3DOFSUOZFAGA7J6PNNVSTE3GK5SX
+[2026-09-29T22:26:10.527Z] funded: stuck=200000000 stroops, dest=50000000 stroops (tx 87c4ed19fc011ea27050bf172b5b7d343ea858e94bd674897d6d342ea3dcf028)
+[2026-09-29T22:26:11.533Z]   rescue tool: Computed stealth address: GCD7NNDLUGPQ46PLZP7MZL3KJYBJ3DOFSUOZFAGA7J6PNNVSTE3GK5SX
+[2026-09-29T22:26:12.557Z]   rescue tool: Balance: 20.0000000 XLM (expected 20)
+[2026-09-29T22:26:12.885Z]   rescue tool: Announcement: scheme 2, ephemeral 6b2cc9def9d85931b3aad961dc3261e54b67f0bf62970df59b215460285d48a3, metadata bf
+[2026-09-29T22:26:15.359Z]   rescue tool: Announcement transaction: 199a6ec27a0672ebbad51d4cc855404a434bb8cae01f4a89e69e8d93fc5eee79
+[2026-09-29T22:26:15.360Z] announce tx (via rescue tool): 199a6ec27a0672ebbad51d4cc855404a434bb8cae01f4a89e69e8d93fc5eee79
+[2026-09-29T22:26:15.655Z] recipient found the payment via the announcement and rederived the key
+[2026-09-29T22:26:20.136Z] sweep tx: d399b4666603a3e8aa637ce0958477e01e96d4d5c6709ffb0542425c594a4d53
+[2026-09-29T22:26:20.881Z] RESCUE VERIFIED in 17.1s. Evidence: drills/evidence-real-rescue-1790720780879.json
+[2026-09-29T22:26:21Z]   Rescue phase verified in 28s. Evidence JSON written to ../drills/evidence-real-rescue-*.json
+[2026-09-29T22:26:21Z] === Phase 6: unpause (recovery) ===
+null
+[2026-09-29T22:26:33Z]   is_paused confirmed: false
+[2026-09-29T22:26:33Z] === Drill complete. Full evidence log: ../drills/2026-09-29T22-23-03Z-operator-recovery.log ===
+[2026-09-29T22:26:33Z]   stealth-announcer: CBJACIKMXNCZAJMMQYOQZVUX2B2XO6QGCK5FHHZ3NZ36O2LHBEGLQ7UU
+[2026-09-29T22:26:34Z]   stealth-sender:    CAT57VVRLAURHMH4SYSGA33PRUPSPTTGZBCXX3WYAE4P5YEHQOCEBBDB

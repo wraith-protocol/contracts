@@ -48,7 +48,7 @@ panic = "abort"
 strip = "symbols"
 debug = false
 debug-assertions = false
-overflow-checks = false
+overflow-checks = true
 incremental = false
 
 # Host-side benches (soroban-sdk testutils) cannot use the contract release

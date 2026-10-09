@@ -9,6 +9,10 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 testutils = ["soroban-sdk/testutils"]
+# Rehearsal-only: shortens the 7-day rotation timelock to make an operator
+# recovery drill practical to run in one sitting on a real network. Never
+# built into a production deployment — see docs/RECOVERY_DRILL.md.
+drill-timelock = []
 
 [dependencies]
 soroban-sdk = { workspace = true }
@@ -17,4 +21,3 @@ wraith-metrics = { path = "../wraith-metrics" }
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 stealth-announcer = { path = "../stealth-announcer" }
-

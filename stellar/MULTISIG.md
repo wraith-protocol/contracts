@@ -228,16 +228,16 @@ stellar contract invoke --network futurenet --id <CONTRACT_ID> --source <ANY_IDE
 
 ### Futurenet rehearsal
 
-> **Status: not yet rehearsed.** The flow above is covered by unit tests in
-> `stealth-sender/src/lib.rs` and `wraith-names/src/lib.rs` (quorum + timelock
-> enforcement, invalid-threshold rejection, and cancelled-mid-rotation state
-> cleanup), but has not been exercised against a live futurenet deployment.
-> Before relying on this runbook for a mainnet rotation, a maintainer with
-> futurenet deploy access should walk through propose → approve (x2) →
-> advance ledger time past the 7-day timelock → execute, and separately
-> propose → approve → cancel → propose again, confirming the CLI commands
-> above match the deployed contract interface, then update this section with
-> the confirmed transcript.
+> **Status: partially rehearsed (`stealth-sender` only).** The propose →
+> approve (x2) → execute flow ran against a live futurenet deployment of
+> `stealth-sender` in the
+> [operator recovery drill](../drills/2026-09-29-operator-recovery.md), using
+> the 60-second `drill-timelock` build in place of the 7-day timelock. The
+> drill's commands worked against the deployed contract interface. Still not
+> rehearsed on a live network: the production 7-day timelock, the propose →
+> approve → cancel → propose again path, and `stealth-batch-sender` and
+> `wraith-names`. Those remain covered only by the unit tests in
+> `stealth-sender/src/lib.rs` and `wraith-names/src/lib.rs`.
 
 ## On-Chain Auction Admin Rotation (`wraith-names`)
 

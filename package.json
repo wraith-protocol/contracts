@@ -9,7 +9,9 @@
     "test:stellar-bindings": "vitest run stellar/scripts/stealth-batch-sender-bindings.test.ts"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@stellar/stellar-sdk": "^15.1.0",
@@ -18,7 +20,8 @@
     "typescript": "^5.7.0",
     "vitest": "^2.1.9"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+  "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "commander": "^15.0.0"
   }
 }
