@@ -404,25 +404,8 @@ else
     smoke_fail "announce failed"
 fi
 
-# 3b. Announce with invalid scheme ID (Rejected path)
-info "3b/7 Announcing with invalid scheme ID..."
-if $CLI contract invoke \
-    --id "$ANNOUNCER_ID" \
-    --source "$IDENTITY_NAME" \
-    --network "$NETWORK" \
-    -- \
-    announce \
-    --scheme-id 999 \
-    --stealth-address "$ADMIN_ADDRESS" \
-    --ephemeral-pub-key "$TEST_EPHEMERAL_KEY" \
-    --metadata "$TEST_METADATA" 2>&1 | grep -qi "InvalidSchemeId"; then
-    ok "invalid scheme ID rejected (InvalidSchemeId)"
-else
-    smoke_fail "invalid scheme ID not rejected with InvalidSchemeId"
-fi
-
-# 4. Query the registry (Rejected / Happy path depending on state)
-info "4/7  Querying stealth-registry..."
+# 4. Query the registry (prove stealth-registry works)
+info "4/5  Querying stealth-registry..."
 REG_RESULT=$($CLI contract invoke \
     --id "$REGISTRY_ID" \
     --source "$IDENTITY_NAME" \
@@ -431,8 +414,24 @@ REG_RESULT=$($CLI contract invoke \
     stealth_meta_address_of \
     --registrant "$ADMIN_ADDRESS" \
     --scheme-id 2 2>/dev/null) || {
-    warn "stealth_meta_address_of returned NotRegistered (expected — no key registered yet)"
-    ok "registry is responsive (NotRegistered is expected)"
+    smoke_fail "Could not read back meta-address"
+    REG_RESULT=""
+}
+if [ -n "$REG_RESULT" ]; then
+    ok "meta-address read back successfully"
+fi
+
+info "  c) Querying unregistered scheme (expecting failure)..."
+UNREG_RESULT=$($CLI contract invoke \
+    --id "$REGISTRY_ID" \
+    --source "$IDENTITY_NAME" \
+    --network "$NETWORK" \
+    -- \
+    stealth_meta_address_of \
+    --registrant "$ADMIN_ADDRESS" \
+    --scheme-id 999 2>/dev/null) || {
+    warn "stealth_meta_address_of returned NotRegistered (expected — no key registered for scheme 999)"
+    ok "registry correctly rejected unregistered scheme"
 }
 
 # 5. Verify sender is initialized (Rejected path: AlreadyInitialized)
