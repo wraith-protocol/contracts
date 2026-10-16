@@ -16,6 +16,29 @@ When adding features that deliberately increase instruction or resource usage pa
 3. Re-run `cargo bench -p wraith-stellar-bench --bench gas -- --format json --out results.json`.
 4. Commit the new `stellar/bench/baseline.json` and updated `stellar/PERF.md`.
 
+### Received-amount check (issue #227)
+
+`stealth-sender::send`, `stealth-sender::batch_send` and
+`stealth-batch-sender::batch_send` read the stealth address balance before and
+after every transfer and reject the call unless it grew by exactly the amount
+sent. The two extra `balance` calls add about 106,000-114,000 instructions and
+16,000-23,000 memory bytes per transfer. Ledger entries, read/write bytes and
+event bytes do not change, and no other benched op moves.
+
+| Op | Instructions before | Instructions after | Delta |
+|----|---:|---:|---:|
+| `stealth-sender::send` (asset=xlm) | 223,328 | 330,285 | +47.9% |
+| `stealth-sender::batch_send` (batch_size=100) | 21,847,884 | 33,186,529 | +51.9% |
+| `stealth-batch-sender::batch_send` (count=100) | 22,037,036 | 33,411,149 | +51.6% |
+
+The cost cannot be cut without weakening the check. Almost all of it is the
+fixed overhead of a cross-contract call (the SAC's `balance` itself is a TTL
+bump and one storage read), and a per-transfer delta needs one read before and
+one after each transfer: reading only afterwards misses a shortfall whenever the
+stealth address already holds a balance, for example a repeated address in a
+batch. A 100-transfer batch stays below 9% of the 400,000,000-instruction and
+17% of the 40 MiB per-transaction limits on Mainnet (protocol 27).
+
 ## How to Read the Units
 
 Soroban metering separates execution and ledger access. `instructions` are modeled
@@ -76,7 +99,7 @@ ownership checks.
 ## Current Numbers
 
 <!-- BENCH:CURRENT:START -->
-These are the harness results auto-updated from `develop` (measured 2026-09-25, commit `33aea4534e25`).
+These are the harness results auto-updated from `develop` (measured 2026-10-16, commit `71bdd4edb2ee`).
 
 | Contract | Function | Parameters | Instructions | Mem bytes | Read entries | Write entries | Read bytes | Write bytes | Event bytes |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -87,13 +110,13 @@ These are the harness results auto-updated from `develop` (measured 2026-09-25, 
 | stealth-announcer | announce | metadata_len=4096 | 15096 | 1610 | 1 | 0 | 104 | 0 | 4288 |
 | stealth-registry | register_keys | first_time | 52852 | 7481 | 3 | 2 | 156 | 280 | 372 |
 | stealth-registry | register_keys | replacement | 50934 | 6801 | 3 | 2 | 364 | 280 | 372 |
-| stealth-sender | send | asset=xlm | 223328 | 32667 | 6 | 3 | 1232 | 520 | 964 |
-| stealth-sender | send | asset=issued | 223280 | 32667 | 6 | 3 | 1232 | 520 | 964 |
-| stealth-sender | batch_send | batch_size=1 | 232340 | 33332 | 6 | 3 | 1232 | 520 | 1216 |
-| stealth-sender | batch_send | batch_size=5 | 853185 | 125400 | 6 | 7 | 1232 | 1416 | 3056 |
-| stealth-sender | batch_send | batch_size=10 | 1674743 | 250790 | 6 | 12 | 1232 | 2536 | 5356 |
-| stealth-sender | batch_send | batch_size=25 | 4352799 | 695660 | 6 | 27 | 1232 | 5896 | 12256 |
-| stealth-sender | batch_send | batch_size=100 | 21847884 | 4465760 | 6 | 102 | 1232 | 22696 | 46756 |
+| stealth-sender | send | asset=xlm | 330285 | 48932 | 6 | 3 | 1232 | 520 | 964 |
+| stealth-sender | send | asset=issued | 330237 | 48932 | 6 | 3 | 1232 | 520 | 964 |
+| stealth-sender | batch_send | batch_size=1 | 339297 | 49597 | 6 | 3 | 1232 | 520 | 1216 |
+| stealth-sender | batch_send | batch_size=5 | 1380248 | 207985 | 6 | 7 | 1232 | 1416 | 3056 |
+| stealth-sender | batch_send | batch_size=10 | 2742894 | 419335 | 6 | 12 | 1232 | 2536 | 5356 |
+| stealth-sender | batch_send | batch_size=25 | 7062139 | 1142485 | 6 | 27 | 1232 | 5896 | 12256 |
+| stealth-sender | batch_send | batch_size=100 | 33186529 | 6762985 | 6 | 102 | 1232 | 22696 | 46756 |
 | stealth-sender | withdraw_many | entries=1 | 166455 | 24918 | 4 | 3 | 888 | 520 | 616 |
 | stealth-sender | withdraw_many | entries=10 | 1478512 | 218040 | 4 | 12 | 888 | 2536 | 4756 |
 | stealth-sender | withdraw_many | entries=30 | 4826570 | 760300 | 4 | 32 | 888 | 7016 | 13956 |
@@ -124,10 +147,10 @@ These are the harness results auto-updated from `develop` (measured 2026-09-25, 
 | governance | propose | happy_path | 116975 | 18098 | 2 | 2 | 464 | 964 | 320 |
 | governance | vote | happy_path | 236214 | 43742 | 4 | 3 | 1636 | 1164 | 364 |
 | governance | execute | happy_path | 164625 | 29805 | 1 | 2 | 1048 | 1040 | 256 |
-| stealth-batch-sender | batch_send | count=1 | 216163 | 31186 | 5 | 3 | 1136 | 520 | 1276 |
-| stealth-batch-sender | batch_send | count=10 | 1677336 | 249202 | 5 | 12 | 1136 | 2536 | 5416 |
-| stealth-batch-sender | batch_send | count=50 | 9540694 | 1667002 | 5 | 52 | 1136 | 11496 | 23816 |
-| stealth-batch-sender | batch_send | count=100 | 22037036 | 4469752 | 5 | 102 | 1136 | 22696 | 46816 |
+| stealth-batch-sender | batch_send | count=1 | 321804 | 47451 | 5 | 3 | 1136 | 520 | 1276 |
+| stealth-batch-sender | batch_send | count=10 | 2745679 | 417747 | 5 | 12 | 1136 | 2536 | 5416 |
+| stealth-batch-sender | batch_send | count=50 | 15073101 | 2645627 | 5 | 52 | 1136 | 11496 | 23816 |
+| stealth-batch-sender | batch_send | count=100 | 33411149 | 6766977 | 5 | 102 | 1136 | 22696 | 46816 |
 <!-- BENCH:CURRENT:END -->
 
 ## Gas Regression Gate
@@ -173,12 +196,12 @@ Chart data is checked into [`stellar/bench/data/`](bench/data/).
 <!-- CROSSOVER_TABLE_START -->
 | N | Individual instr | Batch instr | Indiv /entry | Batch /entry | Individual ns | Batch ns | Indiv ns/entry | Batch ns/entry | Winner |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| 1 | 216310 | 182837 | 216310 | 182837 | 782800 | 575600 | 782800 | 575600 | batch |
-| 2 | 432620 | 320986 | 216310 | 160493 | 1002900 | 412000 | 501450 | 206000 | batch |
-| 5 | 1081550 | 743151 | 216310 | 148630 | 1992000 | 1003000 | 398400 | 200600 | batch |
-| 10 | 2163100 | 1496019 | 216310 | 149601 | 4135300 | 2783400 | 413530 | 278340 | batch |
-| 15 | 3244650 | 2292557 | 216310 | 152837 | 7869400 | 6136100 | 524626 | 409073 | batch |
-| 20 | 4326200 | 3103832 | 216310 | 155191 | 12951500 | 6341200 | 647575 | 317060 | batch |
+| 1 | 330285 | 321804 | 330285 | 321804 | 292000 | 254875 | 292000 | 254875 | batch |
+| 2 | 660570 | 581358 | 330285 | 290679 | 547292 | 392625 | 273646 | 196312 | batch |
+| 5 | 1651425 | 1368719 | 330285 | 273743 | 1227125 | 1134958 | 245425 | 226991 | batch |
+| 10 | 3302850 | 2745679 | 330285 | 274567 | 2484915 | 2051250 | 248491 | 205125 | batch |
+| 15 | 4954275 | 4157539 | 330285 | 277169 | 3723792 | 2562083 | 248252 | 170805 | batch |
+| 20 | 6605700 | 5603009 | 330285 | 280150 | 5087330 | 3526625 | 254366 | 176331 | batch |
 <!-- CROSSOVER_TABLE_END -->
 
 ### Crossover Point
@@ -187,9 +210,10 @@ Chart data is checked into [`stellar/bench/data/`](bench/data/).
 Instruction crossover: `stealth-batch-sender` becomes cheaper at **N = 1**.
 
 Batch stays cheaper across the full measured range. Per-entry batch cost falls
-from ~183k instructions at N=1 toward ~149–155k as N grows, while individual
-`stealth-sender::send` stays flat at 216,310 instructions per entry (it always
-pays for a cross-contract `announce` invoke). Prefer `stealth-batch-sender`
+from ~322k instructions at N=1 toward ~274–280k as N grows, while individual
+`stealth-sender::send` stays flat at 330,285 instructions per entry (it always
+pays for a cross-contract `announce` invoke). Both paths include the
+per-transfer received-amount check (issue #227). Prefer `stealth-batch-sender`
 whenever more than zero recipients share a payment.
 <!-- CROSSOVER_SUMMARY_END -->
 
@@ -201,8 +225,8 @@ xychart-beta
     title "Instructions: individual send vs batch send"
     x-axis [1, 2, 5, 10, 15, 20]
     y-axis "Instructions"
-    line "individual (N x send)" [216310, 432620, 1081550, 2163100, 3244650, 4326200]
-    line "batch (batch_send)" [182837, 320986, 743151, 1496019, 2292557, 3103832]
+    line "individual (N x send)" [330285, 660570, 1651425, 3302850, 4954275, 6605700]
+    line "batch (batch_send)" [321804, 581358, 1368719, 2745679, 4157539, 5603009]
 ```
 <!-- CROSSOVER_CHART_END -->
 
