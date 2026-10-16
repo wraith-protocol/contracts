@@ -58,7 +58,7 @@
   },
   {
     "function_v0": {
-      "doc": "Transfer tokens to a stealth address and emit an announcement.\\n\\n# Arguments\\n* `sender`            - The address sending funds (must authorise).\\n* `token`             - SAC token contract address (works for native XLM too).\\n* `amount`            - Amount of tokens to transfer.\\n* `scheme_id`         - Stealth address scheme identifier.\\n* `stealth_address`   - The derived one-time stealth address.\\n* `ephemeral_pub_key` - Ephemeral public key for the recipient to scan.\\n* `metadata`          - Extra data (e.g. view tag).",
+      "doc": "Transfer tokens to a stealth address and emit an announcement.\\n\\nFails with `ReceivedAmountMismatch`, before announcing, if the stealth\\naddress does not receive exactly `amount` minus the protocol fee.\\n\\n# Arguments\\n* `sender`            - The address sending funds (must authorise).\\n* `token`             - SAC token contract address (works for native XLM too).\\n* `amount`            - Amount of tokens to transfer.\\n* `scheme_id`         - Stealth address scheme identifier.\\n* `stealth_address`   - The derived one-time stealth address.\\n* `ephemeral_pub_key` - Ephemeral public key for the recipient to scan.\\n* `metadata`          - Extra data (e.g. view tag).",
       "name": "send",
       "inputs": [
         {
@@ -276,7 +276,7 @@
   },
   {
     "function_v0": {
-      "doc": "Batch version of `send` \\xe2\\x80\\x94 transfers tokens to multiple stealth addresses\\nand emits an announcement for each.\\n\\nAll input vectors must have the same length.",
+      "doc": "Batch version of `send` \\xe2\\x80\\x94 transfers tokens to multiple stealth addresses\\nand emits an announcement for each.\\n\\nAll input vectors must have the same length. Fails with\\n`ReceivedAmountMismatch` if any stealth address does not receive exactly\\nits amount minus the protocol fee; the whole batch is then rolled back.",
       "name": "batch_send",
       "inputs": [
         {
@@ -518,6 +518,11 @@
           "doc": "The rotation timelock has not elapsed yet.",
           "name": "TimelockNotElapsed",
           "value": 15
+        },
+        {
+          "doc": "The stealth address's balance did not grow by exactly the amount\\ntransferred to it, e.g. because the token charges a fee on transfer.",
+          "name": "ReceivedAmountMismatch",
+          "value": 1200
         }
       ]
     }

@@ -1,7 +1,8 @@
 //! SAC compatibility test harness for stealth-sender.
 //!
 //! Each test exercises one asset variant against the full send() flow and
-//! asserts the expected outcome: success, transfer failure, or post-receipt
+//! asserts the expected outcome: success, transfer failure, rejection because
+//! the stealth address did not receive exactly the amount sent, or post-receipt
 //! issuer action that defeats unlinkability.
 //!
 //! Mock contracts live in tests/mocks/ and mirror real SAC flag semantics.
@@ -10,14 +11,15 @@ mod mocks;
 
 use mocks::{
     token_auth_required::AuthRequiredToken, token_auth_revocable::AuthRevocableToken,
-    token_clawback::ClawbackToken, token_fee::FeeToken,
+    token_bonus::BonusToken, token_clawback::ClawbackToken, token_fee::FeeToken,
     token_immutable_auth_required::ImmutableAuthRequiredToken,
     token_immutable_safe::ImmutableSafeToken, token_standard::StandardToken,
 };
 use soroban_sdk::{
-    testutils::Address as _, testutils::Events as _, token::TokenInterface as _, Address, Bytes,
-    BytesN, Env,
+    testutils::Address as _, testutils::Events as _, token::TokenInterface as _, vec, Address,
+    Bytes, BytesN, Env,
 };
+use stealth_sender::SenderError;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -307,10 +309,10 @@ fn immutable_auth_required_send_fails_permanently() {
     // can never be used with stealth flows without per-address issuer approval.
 }
 
-// ── 9. Custom Soroban token with fee — announced amount ≠ received amount ────
+// ── 9. Custom Soroban token with fee — rejected before announcement ──────────
 
 #[test]
-fn fee_token_send_succeeds_but_amount_mismatch() {
+fn fee_token_send_rejected_before_announcement() {
     let h = Harness::new();
     let treasury = Address::generate(&h.env);
     let token_id = h.env.register(FeeToken, ());
@@ -320,29 +322,74 @@ fn fee_token_send_succeeds_but_amount_mismatch() {
         FeeToken::mint(&h.env, &h.sender, 1_000);
     });
 
-    let send_amount: i128 = 500;
-    h.sender_client().send(
+    // The token keeps 1% of every transfer, so the stealth address would hold
+    // 495 of the 500 sent. The send must fail instead of announcing a payment
+    // that did not arrive in full.
+    let result = h
+        .sender_client()
+        .try_send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
+    assert_eq!(result, Err(Ok(SenderError::ReceivedAmountMismatch)));
+
+    // The whole call is rolled back: no funds moved and nothing was announced.
+    assert_eq!(token_client.balance(&h.sender), 1_000);
+    assert_eq!(token_client.balance(&h.stealth), 0);
+    assert_eq!(token_client.balance(&treasury), 0);
+    h.assert_not_announced();
+}
+
+#[test]
+fn fee_token_batch_send_rejected_before_announcement() {
+    let h = Harness::new();
+    let treasury = Address::generate(&h.env);
+    let token_id = h.env.register(FeeToken, ());
+    let token_client = mocks::token_fee::FeeTokenClient::new(&h.env, &token_id);
+    token_client.init(&treasury);
+    h.env.as_contract(&token_id, || {
+        FeeToken::mint(&h.env, &h.sender, 1_000);
+    });
+
+    // 1% of 99 rounds down to a zero fee, so the first transfer arrives in
+    // full and is announced. The second loses 5 of 500, which must reject the
+    // whole batch, including the first transfer and its announcement.
+    let stealth_2 = Address::generate(&h.env);
+    let result = h.sender_client().try_batch_send(
         &h.sender,
         &token_id,
-        &send_amount,
         &1,
-        &h.stealth,
-        &h.epk,
-        &h.meta,
+        &vec![&h.env, h.stealth.clone(), stealth_2.clone()],
+        &vec![&h.env, h.epk.clone(), h.epk.clone()],
+        &vec![&h.env, h.meta.clone(), h.meta.clone()],
+        &vec![&h.env, 99, 500],
     );
+    assert_eq!(result, Err(Ok(SenderError::ReceivedAmountMismatch)));
 
-    let received = token_client.balance(&h.stealth);
-    let fee = send_amount * 100 / 10_000; // 1%
-    assert_eq!(
-        received,
-        send_amount - fee,
-        "stealth address received less than announced amount"
-    );
-    h.assert_announced();
-    // AUDIT NOTE: the announcement records `amount = 500` but the stealth
-    // address only holds 495. Scanners that rely on the announced amount to
-    // verify receipt will see a discrepancy. This is a correctness issue, not
-    // a security issue, but it breaks the scanning assumption.
+    assert_eq!(token_client.balance(&h.sender), 1_000);
+    assert_eq!(token_client.balance(&h.stealth), 0);
+    assert_eq!(token_client.balance(&stealth_2), 0);
+    assert_eq!(token_client.balance(&treasury), 0);
+    h.assert_not_announced();
+}
+
+#[test]
+fn over_crediting_token_send_rejected_before_announcement() {
+    let h = Harness::new();
+    let token_id = h.env.register(BonusToken, ());
+    let token_client = mocks::token_bonus::BonusTokenClient::new(&h.env, &token_id);
+    h.env.as_contract(&token_id, || {
+        BonusToken::mint(&h.env, &h.sender, 1_000);
+    });
+
+    // The token credits 505 for a 500 transfer. The check requires the exact
+    // amount, so a token that does not move exactly what it is asked to is
+    // rejected in either direction.
+    let result = h
+        .sender_client()
+        .try_send(&h.sender, &token_id, &500, &1, &h.stealth, &h.epk, &h.meta);
+    assert_eq!(result, Err(Ok(SenderError::ReceivedAmountMismatch)));
+
+    assert_eq!(token_client.balance(&h.sender), 1_000);
+    assert_eq!(token_client.balance(&h.stealth), 0);
+    h.assert_not_announced();
 }
 
 // ── 10. WraithAssetPolicy Integration & Adversarial Test ──────────────────────

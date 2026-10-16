@@ -29,7 +29,7 @@ failure classes for restricted assets:
 3. **Amount mismatch** — Custom Soroban tokens with transfer fees credit less
    than `amount` to the stealth address. Scanners that verify receipt by
    checking the announced amount will see a discrepancy. This is a correctness
-   issue.
+   issue. Fixed in issue #227: such sends are now rejected (see Finding 5).
 
 **Recommendation:** stealth-sender should maintain an explicit allowlist of
 supported asset configurations and reject incompatible tokens at send time.
@@ -48,7 +48,7 @@ supported asset configurations and reject incompatible tokens at send time.
 | AUTH_CLAWBACK_ENABLED | ✅ Succeeds | ✅ Yes | 🔴 Issuer can reverse payment | 🔴 Unlinkability broken | **UNSUPPORTED** |
 | AUTH_IMMUTABLE (no clawback, no auth-required) | ✅ Succeeds | ✅ Yes | ❌ None (flags frozen safe) | ✅ Yes | **SUPPORTED** |
 | AUTH_IMMUTABLE + AUTH_REQUIRED | ❌ Fails permanently | ❌ No | N/A | ❌ No | **BLOCKED** |
-| Custom Soroban token (fee hook) | ✅ Succeeds | ✅ Yes | ❌ None | ⚠️ Amount mismatch | **UNSUPPORTED** |
+| Custom Soroban token (fee hook) | ❌ Rejected (`ReceivedAmountMismatch`, issue #227) | ❌ No | N/A | ❌ No | **BLOCKED** |
 
 ---
 
@@ -162,6 +162,12 @@ semantics may cause scanning discrepancies. Consider adding a post-transfer
 balance check in `send()` and including the actual received amount in the
 announcement metadata, or rejecting tokens that are not known-good SACs.
 
+**Status:** Fixed in issue #227. `send` and `batch_send` in `stealth-sender`,
+and `batch_send` in `stealth-batch-sender`, read the stealth address balance
+before and after each transfer and fail with `ReceivedAmountMismatch` unless it
+grew by exactly the transferred amount. The call is rolled back, so no funds
+move and no announcement is emitted for such a token.
+
 ---
 
 ### Finding 6 — No atomic rollback if announcement fails (Low)
@@ -224,7 +230,7 @@ The following configurations must be rejected or explicitly warned against:
 | AUTH_REVOCABLE | Issuer can freeze stealth address balance post-receipt. | **Reject at send time.** |
 | AUTH_REQUIRED | Stealth address must be pre-authorized; incompatible with stealth. | **Reject at send time.** |
 | AUTH_IMMUTABLE + AUTH_REQUIRED | Permanently broken; no remediation path. | **Reject at send time.** |
-| Custom token with fee hooks | Amount mismatch between announced and received. | **Warn; document.** |
+| Custom token with fee hooks | Amount mismatch between announced and received. | **Rejected at send time** (`ReceivedAmountMismatch`, issue #227). |
 
 ---
 
@@ -281,7 +287,9 @@ Adversarial tests are in `stealth-sender/tests/sac_compat.rs` and `stealth-sende
 | `clawback_send_succeeds_then_issuer_claws_back` | AUTH_CLAWBACK_ENABLED | Transfer succeeds; issuer claws back post-receipt |
 | `immutable_safe_send_succeeds` | AUTH_IMMUTABLE (safe) | Transfer + announcement succeed |
 | `immutable_auth_required_send_fails_permanently` | AUTH_IMMUTABLE + AUTH_REQUIRED | Transfer fails permanently; no announcement |
-| `fee_token_send_succeeds_but_amount_mismatch` | Custom token with fee | Transfer succeeds; received < announced |
+| `fee_token_send_rejected_before_announcement` | Custom token with fee | Rejected with `ReceivedAmountMismatch`; no funds move; no announcement |
+| `fee_token_batch_send_rejected_before_announcement` | Custom token with fee | Shortfall on the second transfer rejects the whole batch; no announcement |
+| `over_crediting_token_send_rejected_before_announcement` | Custom token crediting more than sent | Rejected with `ReceivedAmountMismatch`; no announcement |
 | `test_fee_recipient_unauthorized_token_fails` | AUTH_REQUIRED | Transfer to fee recipient fails; transaction reverts atomically; no announcement |
 
 ---

@@ -85,6 +85,9 @@ pub enum BatchSenderError {
     QuorumNotMet = 1315,
     /// The rotation timelock has not elapsed yet.
     TimelockNotElapsed = 1316,
+    /// The stealth address's balance did not grow by exactly the amount
+    /// transferred to it, e.g. because the token charges a fee on transfer.
+    ReceivedAmountMismatch = 1317,
 }
 
 /// A single stealth transfer within a batch.
@@ -140,6 +143,30 @@ fn ephemeral_key_to_bytesn(env: &Env, key: &Bytes) -> Result<BytesN<32>, BatchSe
     let mut buf = [0u8; 32];
     key.copy_into_slice(&mut buf);
     Ok(BytesN::from_array(env, &buf))
+}
+
+/// Transfer `amount` of `token` from `from` to `to`, then check that the
+/// balance of `to` grew by exactly `amount`. Mirrors stealth-sender's
+/// `transfer_exact`.
+///
+/// The balance is read immediately before and after the transfer, so the check
+/// holds per transfer even when `to` already has a balance or appears more than
+/// once in the batch. A token that credits a different amount (a fee-on-transfer
+/// token, or `from == to`) fails with `ReceivedAmountMismatch`, and `batch_send`
+/// returns before announcing a payment that did not arrive as requested.
+fn transfer_exact(
+    token: &TokenClient<'_>,
+    from: &Address,
+    to: &Address,
+    amount: i128,
+) -> Result<(), BatchSenderError> {
+    let before = token.balance(to);
+    token.transfer(from, to, &amount);
+    let after = token.balance(to);
+    if after.checked_sub(before) != Some(amount) {
+        return Err(BatchSenderError::ReceivedAmountMismatch);
+    }
+    Ok(())
 }
 
 /// Wrapper for calling check_asset on the optional asset policy contract.
@@ -250,6 +277,11 @@ impl StealthBatchSender {
     /// whether the failure is a panic or a returned contract error — so a
     /// rejected batch never leaves partial transfers behind.
     ///
+    /// # Received amount
+    /// Fails with `ReceivedAmountMismatch` if any stealth address does not
+    /// receive exactly its `amount`, so no announcement claims more than
+    /// arrived.
+    ///
     /// # Resource budget
     /// Capped at MAX_BATCH_SIZE (100) transfers. This keeps instruction usage
     /// well under Soroban's per-transaction limit while still being ~100x more
@@ -311,8 +343,9 @@ impl StealthBatchSender {
         for transfer in transfers.iter() {
             total_amount += transfer.amount;
 
-            // Execute transfer — any failure here aborts the whole tx (atomicity)
-            token.transfer(&from, &transfer.stealth_address, &transfer.amount);
+            // Execute transfer and check the stealth address received the full
+            // amount. Any failure here aborts the whole tx (atomicity).
+            transfer_exact(&token, &from, &transfer.stealth_address, transfer.amount)?;
 
             // Per-transfer announcement via the announcer contract so indexers
             // see the v2 4-topic layout (`announce`, scheme_id, view_tag_bucket,

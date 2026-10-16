@@ -70,6 +70,9 @@ pub enum SenderError {
     QuorumNotMet = 14,
     /// The rotation timelock has not elapsed yet.
     TimelockNotElapsed = 15,
+    /// The stealth address's balance did not grow by exactly the amount
+    /// transferred to it, e.g. because the token charges a fee on transfer.
+    ReceivedAmountMismatch = 1200,
 }
 
 /// A single withdrawal entry for batched asset exits.
@@ -130,6 +133,29 @@ mod asset_policy_client {
 const TTL_THRESHOLD: u32 = 17280; // ~1 day
 const TTL_EXTEND_TO: u32 = 518400; // ~30 days
 const MAX_WITHDRAW_BATCH_SIZE: u32 = 30;
+
+/// Transfer `amount` of `token` from `from` to `to`, then check that the
+/// balance of `to` grew by exactly `amount`.
+///
+/// The balance is read immediately before and after the transfer, so the check
+/// holds per transfer even when `to` already has a balance or appears more than
+/// once in a batch. A token that credits a different amount (a fee-on-transfer
+/// token, or `from == to`) fails with `ReceivedAmountMismatch`, and the caller
+/// returns before announcing a payment that did not arrive as requested.
+fn transfer_exact(
+    token: &token::Client<'_>,
+    from: &Address,
+    to: &Address,
+    amount: i128,
+) -> Result<(), SenderError> {
+    let before = token.balance(to);
+    token.transfer(from, to, &amount);
+    let after = token.balance(to);
+    if after.checked_sub(before) != Some(amount) {
+        return Err(SenderError::ReceivedAmountMismatch);
+    }
+    Ok(())
+}
 
 #[contract]
 pub struct StealthSenderContract;
@@ -243,6 +269,9 @@ impl StealthSenderContract {
 
     /// Transfer tokens to a stealth address and emit an announcement.
     ///
+    /// Fails with `ReceivedAmountMismatch`, before announcing, if the stealth
+    /// address does not receive exactly `amount` minus the protocol fee.
+    ///
     /// # Arguments
     /// * `sender`            - The address sending funds (must authorise).
     /// * `token`             - SAC token contract address (works for native XLM too).
@@ -312,8 +341,9 @@ impl StealthSenderContract {
             }
         }
 
-        // Transfer tokens from sender to the stealth address.
-        token_client.transfer(&sender, &stealth_address, &transfer_amount);
+        // Transfer tokens from sender to the stealth address and check that the
+        // full amount arrived before announcing it.
+        transfer_exact(&token_client, &sender, &stealth_address, transfer_amount)?;
 
         // Emit the announcement via the announcer contract.
         announcer_client::announce(
@@ -355,7 +385,9 @@ impl StealthSenderContract {
     /// Batch version of `send` — transfers tokens to multiple stealth addresses
     /// and emits an announcement for each.
     ///
-    /// All input vectors must have the same length.
+    /// All input vectors must have the same length. Fails with
+    /// `ReceivedAmountMismatch` if any stealth address does not receive exactly
+    /// its amount minus the protocol fee; the whole batch is then rolled back.
     pub fn batch_send(
         env: Env,
         sender: Address,
@@ -426,7 +458,7 @@ impl StealthSenderContract {
             let transfer_amount = amount - fee;
             total_amount += amount;
 
-            token_client.transfer(&sender, &stealth_address, &transfer_amount);
+            transfer_exact(&token_client, &sender, &stealth_address, transfer_amount)?;
 
             announcer_client::announce(
                 &env,
@@ -585,7 +617,7 @@ impl StealthSenderContract {
 mod test {
     use super::*;
     use soroban_sdk::testutils::storage::Instance;
-    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
     use soroban_sdk::{Bytes, BytesN, Env};
 
     #[contract]
@@ -738,6 +770,77 @@ mod test {
         assert_eq!(token_client.balance(&sender), 500);
         assert_eq!(token_client.balance(&stealth_addr_1), 700);
         assert_eq!(token_client.balance(&stealth_addr_2), 800);
+    }
+
+    #[test]
+    fn test_batch_send_same_stealth_address_twice() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+        client.init(&announcer_id, &None, &None, &0, &Address::generate(&env));
+
+        let token_id = env
+            .register_stellar_asset_contract_v2(Address::generate(&env))
+            .address();
+        let token_client = token::Client::new(&env, &token_id);
+        let sender = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &token_id).mint(&sender, &1000);
+
+        // The second transfer reaches an address that already holds the first
+        // payment. The received-amount check reads the balance around each
+        // transfer, so both pass and both are announced.
+        let stealth = Address::generate(&env);
+        let epk = BytesN::from_array(&env, &[1u8; 32]);
+        let meta = Bytes::from_slice(&env, &[10u8; 1]);
+        client.batch_send(
+            &sender,
+            &token_id,
+            &1,
+            &soroban_sdk::vec![&env, stealth.clone(), stealth.clone()],
+            &soroban_sdk::vec![&env, epk.clone(), epk],
+            &soroban_sdk::vec![&env, meta.clone(), meta],
+            &soroban_sdk::vec![&env, 300, 400],
+        );
+
+        // Read events before any other top-level call replaces them.
+        let announcements = env
+            .events()
+            .all()
+            .iter()
+            .filter(|(contract, _, _)| *contract == announcer_id)
+            .count();
+        assert_eq!(announcements, 2);
+        assert_eq!(token_client.balance(&sender), 300);
+        assert_eq!(token_client.balance(&stealth), 700);
+    }
+
+    #[test]
+    fn test_send_to_own_address_rejected() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let announcer_id = env.register(MockAnnouncer, ());
+        let sender_id = env.register(StealthSenderContract, ());
+        let client = StealthSenderContractClient::new(&env, &sender_id);
+        client.init(&announcer_id, &None, &None, &0, &Address::generate(&env));
+
+        let token_id = env
+            .register_stellar_asset_contract_v2(Address::generate(&env))
+            .address();
+        let token_client = token::Client::new(&env, &token_id);
+        let sender = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &token_id).mint(&sender, &1000);
+
+        // Sending to the caller's own address moves nothing, so the "stealth
+        // address" does not gain the amount and the payment is not announced.
+        let epk = BytesN::from_array(&env, &[1u8; 32]);
+        let meta = Bytes::from_slice(&env, &[0u8; 1]);
+        let result = client.try_send(&sender, &token_id, &500, &1, &sender, &epk, &meta);
+        assert_eq!(result, Err(Ok(SenderError::ReceivedAmountMismatch)));
+        assert_eq!(token_client.balance(&sender), 1000);
     }
 
     // ── Pause / unpause tests ──────────────────────────────────────────────

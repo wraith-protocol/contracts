@@ -78,8 +78,8 @@ It covers:
 | Operation | Expected Caller | Auth Required | Errors | Governance |
 |-----------|----------------|---------------|--------|------------|
 | `init` | Deployer | — | `AlreadyInitialized` | One-time |
-| `send` | Sender | 🔐 `sender.require_auth()` | `NotInitialized`, `Paused`, `TokenNotAllowed`, `LengthMismatch` | — |
-| `batch_send` | Sender | 🔐 `sender.require_auth()` | `NotInitialized`, `Paused`, `TokenNotAllowed`, `LengthMismatch` | — |
+| `send` | Sender | 🔐 `sender.require_auth()` | `NotInitialized`, `Paused`, `TokenNotAllowed`, `LengthMismatch`, `ReceivedAmountMismatch` | — |
+| `batch_send` | Sender | 🔐 `sender.require_auth()` | `NotInitialized`, `Paused`, `TokenNotAllowed`, `LengthMismatch`, `ReceivedAmountMismatch` | — |
 | `withdraw_many` | Withdrawer | 🔐 `withdrawer.require_auth()` | `BatchTooLarge` | — (not paused) |
 | `pause` | **Admin** | 👑 `caller == admin` + 🔐 | `unauthorized: only admin can pause` (panic) | 👑 Admin |
 | `unpause` | **Admin** | 👑 `caller == admin` + 🔐 | `unauthorized: only admin can unpause` (panic) | 👑 Admin |
@@ -100,7 +100,7 @@ It covers:
 | Operation | Expected Caller | Auth Required | Errors | Governance |
 |-----------|----------------|---------------|--------|------------|
 | `init` | Deployer | — | `AlreadyInitialized` | One-time |
-| `batch_send` | Sender | 🔐 `sender.require_auth()` | `NotInitialized`, `Paused`, `TokenNotAllowed`, `LengthMismatch` | — |
+| `batch_send` | Sender | 🔐 `sender.require_auth()` | `NotInitialized`, `Paused`, `TokenNotAllowed`, `LengthMismatch`, `ReceivedAmountMismatch` | — |
 | `pause` | **Admin** | 👑 `caller == admin` + 🔐 | `unauthorized` (panic) | 👑 Admin |
 | `unpause` | **Admin** | 👑 `caller == admin` + 🔐 | `unauthorized` (panic) | 👑 Admin |
 | `init_multisig` | Anyone | — | `MultisigAlreadyInitialized`, `InvalidThreshold` | One-time setup |
@@ -436,6 +436,7 @@ It covers:
 | 13 | AlreadyApprovedRotation | Signer already approved |
 | 14 | QuorumNotMet | Approvals < threshold |
 | 15 | TimelockNotElapsed | <7 days since propose |
+| 1200 | ReceivedAmountMismatch | Stealth address balance did not grow by exactly the transferred amount |
 
 ---
 

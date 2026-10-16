@@ -46,6 +46,7 @@ Code	Name	Meaning	Introduced in
 14	SenderError::QuorumNotMet	Pending rotation lacks enough approvals.	pre-catalog
 15	SenderError::TimelockNotElapsed	Rotation timelock has not elapsed.	pre-catalog
 16	SenderError::Paused	Contract is paused.	pre-catalog
+1200	SenderError::ReceivedAmountMismatch	Stealth address balance did not grow by exactly the transferred amount (for example a fee-on-transfer token); rejected before announcing.	issue #227
 stealth-batch-sender
 Code	Name	Meaning	Introduced in
 1300	BatchSenderError::AlreadyInitialized	Contract initialization was attempted more than once.	issue #155
@@ -65,6 +66,7 @@ Code	Name	Meaning	Introduced in
 1314	BatchSenderError::AlreadyApprovedRotation	Caller already approved the pending rotation.	issue #155
 1315	BatchSenderError::QuorumNotMet	Pending rotation lacks enough approvals.	issue #155
 1316	BatchSenderError::TimelockNotElapsed	Rotation timelock has not elapsed.	issue #155
+1317	BatchSenderError::ReceivedAmountMismatch	Stealth address balance did not grow by exactly the transferred amount (for example a fee-on-transfer token); rejected before announcing.	issue #227
 stealth-vault
 Code	Name	Meaning	Introduced in
 1	VaultError::AlreadyInitialized	Contract initialization was attempted more than once.	pre-catalog
