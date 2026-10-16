@@ -31,7 +31,9 @@ event bytes do not change, and no other benched op moves.
 | `stealth-sender::batch_send` (batch_size=100) | 21,847,884 | 33,186,529 | +51.9% |
 | `stealth-batch-sender::batch_send` (count=100) | 22,037,036 | 33,411,149 | +51.6% |
 
-The cost cannot be cut without weakening the check. Almost all of it is the
+The cost cannot be cut without weakening the check, short of skipping it for
+tokens known to move exact amounts (for example SACs listed in the asset
+policy), which this change does not do. Almost all of it is the
 fixed overhead of a cross-contract call (the SAC's `balance` itself is a TTL
 bump and one storage read), and a per-transfer delta needs one read before and
 one after each transfer: reading only afterwards misses a shortfall whenever the

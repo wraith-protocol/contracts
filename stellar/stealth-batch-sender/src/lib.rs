@@ -152,7 +152,8 @@ fn ephemeral_key_to_bytesn(env: &Env, key: &Bytes) -> Result<BytesN<32>, BatchSe
 /// The balance is read immediately before and after the transfer, so the check
 /// holds per transfer even when `to` already has a balance or appears more than
 /// once in the batch. A token that credits a different amount (a fee-on-transfer
-/// token, or `from == to`) fails with `ReceivedAmountMismatch`, and `batch_send`
+/// token, or `from == to` with a non-zero amount) fails with
+/// `ReceivedAmountMismatch`, and `batch_send`
 /// returns before announcing a payment that did not arrive as requested.
 fn transfer_exact(
     token: &TokenClient<'_>,

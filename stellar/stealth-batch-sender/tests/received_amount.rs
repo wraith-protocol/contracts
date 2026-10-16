@@ -197,6 +197,34 @@ fn fee_on_transfer_batch_rejected_before_announcement() {
 }
 
 #[test]
+fn fee_on_transfer_to_funded_stealth_address_rejected() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, announcer) = setup(&env);
+    let sender = Address::generate(&env);
+    let token = skewed_token(&env, -100, &sender);
+    let stealth = Address::generate(&env);
+
+    // Both transfers go to one stealth address. 99 arrives in full (the 1% fee
+    // rounds to 0), so the second transfer lands on an address that already
+    // holds funds, and its 5-token shortfall must still reject the batch.
+    let result = client.try_batch_send(
+        &sender,
+        &vec![
+            &env,
+            transfer(&env, &stealth, 99),
+            transfer(&env, &stealth, 500),
+        ],
+        &token.address,
+    );
+    assert_eq!(result, Err(Ok(BatchSenderError::ReceivedAmountMismatch)));
+
+    assert_eq!(token.balance(&sender), 1_000);
+    assert_eq!(token.balance(&stealth), 0);
+    assert_eq!(announcer.count(), 0);
+}
+
+#[test]
 fn over_crediting_token_rejected_before_announcement() {
     let env = Env::default();
     env.mock_all_auths();

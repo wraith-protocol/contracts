@@ -392,6 +392,86 @@ fn over_crediting_token_send_rejected_before_announcement() {
     h.assert_not_announced();
 }
 
+#[test]
+fn fee_token_batch_send_to_funded_address_rejected() {
+    let h = Harness::new();
+    let treasury = Address::generate(&h.env);
+    let token_id = h.env.register(FeeToken, ());
+    let token_client = mocks::token_fee::FeeTokenClient::new(&h.env, &token_id);
+    token_client.init(&treasury);
+    h.env.as_contract(&token_id, || {
+        FeeToken::mint(&h.env, &h.sender, 1_000);
+    });
+
+    // Both transfers go to the same stealth address. 99 arrives in full (the
+    // fee rounds to 0), so the second transfer lands on an address that already
+    // holds funds, and its 5-token shortfall must still reject the batch.
+    let result = h.sender_client().try_batch_send(
+        &h.sender,
+        &token_id,
+        &1,
+        &vec![&h.env, h.stealth.clone(), h.stealth.clone()],
+        &vec![&h.env, h.epk.clone(), h.epk.clone()],
+        &vec![&h.env, h.meta.clone(), h.meta.clone()],
+        &vec![&h.env, 99, 500],
+    );
+    assert_eq!(result, Err(Ok(SenderError::ReceivedAmountMismatch)));
+
+    assert_eq!(token_client.balance(&h.sender), 1_000);
+    assert_eq!(token_client.balance(&h.stealth), 0);
+    assert_eq!(token_client.balance(&treasury), 0);
+    h.assert_not_announced();
+}
+
+#[test]
+fn fee_token_send_with_protocol_fee_rolls_back_fee_transfer() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let announcer_id = env.register(Announcer, ());
+    let sender_id = env.register(stealth_sender::StealthSenderContract, ());
+    let sender_client = stealth_sender::StealthSenderContractClient::new(&env, &sender_id);
+    let fee_recipient = Address::generate(&env);
+    sender_client.init(
+        &announcer_id,
+        &None,
+        &Some(fee_recipient.clone()),
+        &50,
+        &Address::generate(&env),
+    );
+
+    let treasury = Address::generate(&env);
+    let token_id = env.register(FeeToken, ());
+    let token_client = mocks::token_fee::FeeTokenClient::new(&env, &token_id);
+    token_client.init(&treasury);
+    let sender = Address::generate(&env);
+    env.as_contract(&token_id, || {
+        FeeToken::mint(&env, &sender, 1_000);
+    });
+    let stealth = Address::generate(&env);
+
+    // A 0.5% protocol fee sends 5 of 1,000 to the fee recipient first (the
+    // token's own 1% of 5 rounds to 0). The stealth transfer of 995 then
+    // arrives as 986, so the send is rejected and the fee transfer is undone
+    // with it.
+    let result = sender_client.try_send(
+        &sender,
+        &token_id,
+        &1_000,
+        &1,
+        &stealth,
+        &BytesN::from_array(&env, &[0xabu8; 32]),
+        &Bytes::from_slice(&env, &[0x01]),
+    );
+    assert_eq!(result, Err(Ok(SenderError::ReceivedAmountMismatch)));
+
+    assert_eq!(token_client.balance(&sender), 1_000);
+    assert_eq!(token_client.balance(&fee_recipient), 0);
+    assert_eq!(token_client.balance(&stealth), 0);
+    assert_eq!(token_client.balance(&treasury), 0);
+    assert!(!announcer::AnnouncerClient::new(&env, &announcer_id).is_called());
+}
+
 // ── 10. WraithAssetPolicy Integration & Adversarial Test ──────────────────────
 
 #[test]

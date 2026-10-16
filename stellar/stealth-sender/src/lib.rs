@@ -140,7 +140,8 @@ const MAX_WITHDRAW_BATCH_SIZE: u32 = 30;
 /// The balance is read immediately before and after the transfer, so the check
 /// holds per transfer even when `to` already has a balance or appears more than
 /// once in a batch. A token that credits a different amount (a fee-on-transfer
-/// token, or `from == to`) fails with `ReceivedAmountMismatch`, and the caller
+/// token, or `from == to` with a non-zero amount) fails with
+/// `ReceivedAmountMismatch`, and the caller
 /// returns before announcing a payment that did not arrive as requested.
 fn transfer_exact(
     token: &token::Client<'_>,
