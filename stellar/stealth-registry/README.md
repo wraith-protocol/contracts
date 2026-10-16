@@ -4,6 +4,26 @@ The `stealth-registry` contract manages the storage and resolution of stealth me
 
 Error codes are tracked in the [Stellar error catalog](../ERRORS.md#stealth-registry).
 
+## SDK 22 lifetime and event tests
+
+From `stellar/`, run `cargo test --workspace` for the normal workspace suite,
+or `cargo test -p stealth-registry --test upgrade_auth` for the registry's
+immutability and lifetime tests. The three lifetime/event regression tests
+run normally without `--ignored`.
+
+The lifetime fixtures configure ledger TTL bounds before registering the
+contract. They advance to renewal thresholds and call the public lookup to
+renew both persistent registrations and the contract instance. They check
+stored values and the actual TTL extensions across one million ledgers and
+ten years of simulated activity. Immutability does not exempt data from
+storage rent: these tests model active registrations, not perpetual storage
+without renewal. Expiration boundaries are covered separately by
+`integration-tests/tests/storage_rent_ttl.rs`.
+
+Event assertions capture `env.events().all()` immediately after each SDK 22
+invocation. They check each operation's contract address, topics and payload,
+and compare repeated registrations, rather than assuming cumulative events.
+
 ## Formal Verification with Kani
 
 Formal verification harnesses are located in `src/proofs/mod.rs` and can be verified using [Kani](https://model-checking.github.io/kani/).
