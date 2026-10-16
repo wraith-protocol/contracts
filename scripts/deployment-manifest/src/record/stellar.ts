@@ -68,15 +68,22 @@ export async function recordStellarContract(
   const entry = await stellarInstance(rpc, target.contractId);
   if (!entry) throw new Error(`${target.name}: no instance entry for ${target.contractId}`);
 
+  const wasmHash = wasmHashFromInstanceEntry(entry.xdr);
+  if (!wasmHash) {
+    throw new Error(`${target.name}: unable to decode WASM hash from instance entry`);
+  }
+
+  const localHash = `0x${sha256Hex(fs.readFileSync(target.wasmPath))}`;
+  if (localHash !== wasmHash) {
+    throw new Error(
+      `${target.name}: WASM hash mismatch (on-chain ${wasmHash}, local ${localHash})`,
+    );
+  }
+
   return {
     name: target.name,
     id: target.contractId,
-    artifactHash: { algorithm: 'sha256', value: sha256Hex(fs.readFileSync(target.wasmPath)) },
-    deployment: {
-      height: entry.lastModifiedLedgerSeq,
-      txHash: null,
-      deployer: target.deployer ?? null,
-      timestamp: null,
-    },
+    artifactHash: { algorithm: 'sha256', value: localHash },
+    deployment: { height: entry.lastModifiedLedgerSeq },
   };
 }

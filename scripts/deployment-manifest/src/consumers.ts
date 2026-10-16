@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseYaml } from 'yaml';
 import {
@@ -327,7 +328,7 @@ const ckbNetworkFiles: Consumer = {
 
 // ─── Stellar ─────────────────────────────────────────────────────────────────
 
-const CONTRACT_IDS = 'stellar/contract-ids.json';
+const STELLAR_CONTRACT_IDS = 'stellar/contract-ids.json';
 
 function renderContractIds(manifest: Manifest): string {
   const deployment = findDeployment(manifest, 'stellar', STELLAR_BINDINGS_NETWORK);
@@ -339,7 +340,7 @@ function renderContractIds(manifest: Manifest): string {
   return serialize(ids);
 }
 
-const stellarContractIds: Consumer = {
+const stellarContractIdsConsumer: Consumer = {
   name: CONTRACT_IDS,
   check(manifest) {
     if (!exists(CONTRACT_IDS)) return [`${CONTRACT_IDS}: missing (run \`npm run build\`)`];
@@ -350,6 +351,53 @@ const stellarContractIds: Consumer = {
         ];
   },
   write: (manifest) => writeIfChanged(CONTRACT_IDS, renderContractIds(manifest)),
+};
+
+const STELLAR_WASM_DIR = 'stellar/wasm';
+
+const stellarWasmHashes: Consumer = {
+  name: STELLAR_WASM_DIR,
+  check(manifest) {
+    const errors: string[] = [];
+    for (const deployment of manifest.deployments.filter((d) => d.chain === 'stellar')) {
+      for (const contract of deployment.contracts) {
+        if (!contract.artifact) continue;
+        const rel = contract.artifact.path;
+        if (!exists(rel)) {
+          errors.push(`${rel}: missing for ${contract.name} on ${deployment.network}`);
+          continue;
+        }
+        const actual = createHash('sha256').update(fs.readFileSync(repoPath(rel))).digest('hex');
+        if (actual !== contract.artifact.sha256) {
+          errors.push(
+            `${rel}: WASM hash ${actual}, manifest has ${contract.artifact.sha256} for ${contract.name}`,
+          );
+        }
+      }
+    }
+    return errors;
+  },
+};
+
+const STELLAR_DOCS = 'docs/stellar.md';
+
+const stellarDocs: Consumer = {
+  name: STELLAR_DOCS,
+  check(manifest) {
+    if (!exists(STELLAR_DOCS)) return [];
+    const source = read(STELLAR_DOCS);
+    const errors: string[] = [];
+    for (const deployment of manifest.deployments.filter((d) => d.chain === 'stellar')) {
+      for (const contract of deployment.contracts) {
+        if (!source.includes(contract.id)) {
+          errors.push(
+            `${STELLAR_DOCS}: ${contract.name} id ${contract.id} on ${deployment.network} is not documented`,
+          );
+        }
+      }
+    }
+    return errors;
+  },
 };
 
 // ─── README ──────────────────────────────────────────────────────────────────
@@ -430,6 +478,9 @@ export const CONSUMERS: Consumer[] = [
   hardhatNetworks,
   anchor,
   ckbNetworkFiles,
+  stellarContractIdsConsumer,
+  stellarWasmHashes,
+  stellarDocs,
   stellarContractIds,
   readme,
 ];

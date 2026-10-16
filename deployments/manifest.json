@@ -1,6 +1,12 @@
 {
-  "$schema": "./schema/v1.json",
+  "$ref": "./schema/v1.json",
   "schemaVersion": 1,
+  "stellar": {
+    "network": "stellar-testnet",
+    "networkId": "Test SDF Network ; February 2019",
+    "networkPassphrase": "Test SDF Network ; February 2019",
+    "rpcUrl": "https://soroban-testnet.stellar.org"
+  },
   "deployments": [
     {
       "chain": "evm",
@@ -11,7 +17,7 @@
       "contracts": [
         {
           "name": "ERC5564Announcer",
-          "id": "0x8AE65c05E7eb48B9bA652781Bc0a3DBA09A484F3",
+          "id": "0x8AE65c05E7eb48B9bA652781Bc0a3DBA09A484F",
           "version": null,
           "sourceCommit": null,
           "artifactHash": {
@@ -74,7 +80,7 @@
             "timestamp": "2026-04-17T18:59:39Z"
           },
           "solana": {
-            "programData": "DQJ8YU4PrKU3E7ZWSJUgXBM5fW5ztWfsymdjEgr4ep73",
+            "programData": "DQJYYU4PrKU3E7ZWSJUgXBM5fW5ztWfsymdjEgr4ep73",
             "upgradeAuthority": "C8Qaq6WeAjhSizcEMFstN2BaAp15ypR76bfvhX6skDvG"
           }
         },
@@ -94,7 +100,7 @@
             "timestamp": "2026-04-17T18:59:04Z"
           },
           "solana": {
-            "programData": "DVtt1mMXZtSxHB8a1XGrvBrfQYh8sstehfNWs4X2CME5",
+            "programData": "DVtt1mMXZtSxHB8a1XGrvBrfQYh8sstehfNWs4X2CME5x",
             "upgradeAuthority": "C8Qaq6WeAjhSizcEMFstN2BaAp15ypR76bfvhX6skDvG"
           }
         },
@@ -114,7 +120,7 @@
             "timestamp": "2026-04-17T19:00:02Z"
           },
           "solana": {
-            "programData": "8YhdNGQvQmjFvcViCYxdoCBRnQjwgRpWpVH7uG82YcJM",
+            "programData": "8YHdNGQvQmjFvcViCYxdoCBRnQjwgRpWpVH7uG82YcJM",
             "upgradeAuthority": "C8Qaq6WeAjhSizcEMFstN2BaAp15ypR76bfvhX6skDvG"
           }
         }
@@ -145,7 +151,7 @@
           "ckb": {
             "hashType": "data2",
             "cellDep": {
-              "txHash": "0xde1e8e4bed2d1d7102b9ad3d7a74925ace007800ae49498f9c374cb4968dd32b",
+              "txHash": "0xde1e8e4bed2d1d7102b9ad3d7a74925ace007800e49498f9c374cb4968dd32b",
               "index": 0,
               "depType": "code"
             }
@@ -197,6 +203,43 @@
               "txHash": "0xa0e99b29fd154385815142b76668d5f4ecf30ae85bc2942bd21e9e51b9066f97",
               "index": 0,
               "depType": "code"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "chain": "stellar",
+      "network": "stellar-testnet",
+      "networkId": "Test SDF Network ; February 2019",
+      "networkPassphrase": "Test SDF Network ; February 2019",
+      "rpcUrl": "https://soroban-testnet.stellar.org",
+      "recordedBy": "chain-query",
+      "contracts": [
+        {
+          "name": "wraith-announcer",
+          "id": "CABCFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFD",
+          "version": null,
+          "sourceCommit": null,
+          "artifactHash": {
+            "algorithm": "sha256",
+            "value": "0x9c1f7c6b8e2d4a5f3b0e1d2c4a6b8e0f1d3c5a7b9e1f3d5c7a9b1e3f5d7c9a0b"
+          },
+          "deployment": {
+            "height": 1234567,
+            "txHash": "0x3a5c7e9b1d3f5a7c9e1b3d5f7a9c1e3b5d7f9a1c3e5b7d9f1a3c5e7b9d1f3a5c",
+            "deployer": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+            "timestamp": "2026-04-20T12:00:00Z"
+          },
+          "stellar": {
+            "wasmHash": "0x9c1f7c6b8e2d4a5f3b0e1d2c4a6b8e0f1d3c5a7b9e1f3d5c7a9b1e3f5d7c9a0b",
+            "governance": {
+              "admin": "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+              "authorized": true,
+              "threshold": 1,
+              "signers": [
+                "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF"
+              ]
             }
           }
         }

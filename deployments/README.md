@@ -11,7 +11,7 @@ deployments/
   evm/horizen-testnet.json   one record per deployed network, written at deploy time
   solana/solana-devnet.json
   ckb/ckb-testnet.json
-  stellar/                   written by stellar/deploy.sh on first deployment
+  stellar/stellar-testnet.json  written by stellar/deploy.sh on first deployment
 ```
 
 Do not edit `manifest.json` by hand. It is built from the records, and CI fails
@@ -86,6 +86,7 @@ must carry a source commit.
 | `solana/Anchor.toml`, `solana/programs/*/src/lib.rs`             | `[programs.<cluster>]` and `declare_id!`                                      | no                   |
 | `ckb/<network>.toml`                                             | code hashes and cell deps                                                     | no                   |
 | `stellar/contract-ids.json`                                      | IDs from `stellar-testnet` (used by the TS bindings)                          | yes                  |
+| `README.md` (Stellar addresses section), SDK Stellar constants    | contract IDs and network passphrase from `stellar-testnet`                    | yes                  |
 | `README.md` (between `deployments:begin/end`)                    | deployed addresses tables                                                     | yes                  |
 
 ## Recording a deployment
@@ -129,3 +130,19 @@ record, `manifest.json` and every file `build` regenerated.
 | `npm run check`  | Offline validation of records, manifest and consumers. Runs in CI.                              |
 | `npm run verify` | Re-read every deployment from its chain and compare IDs, heights and hashes. Runs weekly in CI. |
 | `npm test`       | Unit and end-to-end tests for the tool.                                                         |
+
+## Stellar testnet
+
+The canonical Stellar testnet deployment is recorded in
+[`stellar/stellar-testnet.json`](./stellar/stellar-testnet.json) and mirrored into
+`manifest.json` under `chain: "stellar"`, `network: "stellar-testnet"`. The record
+carries the network passphrase as `networkId`, each contract's `C…` contract ID,
+the sha256 of the deployed wasm as `artifactHash`, the ledger that created the
+instance as `deployment.height`, and the governance fields (`recordedBy`,
+`sourceCommit`, `version`) required for a deploy-script record.
+
+`stellar/contract-ids.json` and the Stellar addresses in `README.md` are generated
+from this record by `npm run build`. `npm run check` fails if either drifts from
+the manifest, and also fails if the SDK's Stellar constants drift from the
+manifest, so update the record (via `stellar/deploy.sh` or `npm run record --
+stellar`) rather than editing those files or the SDK by hand.

@@ -60,14 +60,17 @@
         {
           "if": { "properties": { "chain": { "const": "stellar" } } },
           "then": {
-            "properties": { "contracts": { "items": { "$ref": "#/$defs/stellarContract" } } }
+            "properties": {
+              "networkId": { "pattern": "^Test SDF Network ; September 2015$|^Public Global Stellar Network ; September 2015$" },
+              "contracts": { "items": { "$ref": "#/$defs/stellarContract" } }
+            }
           }
         },
         {
           "if": { "properties": { "chain": { "const": "solana" } } },
           "then": {
             "properties": {
-              "networkId": { "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$" },
+              "networkId": { "pattern": "^[1-9A-HJN-NZ-a-km-z]{32,44}$" },
               "contracts": { "items": { "$ref": "#/$defs/solanaContract" } }
             }
           }
@@ -112,7 +115,7 @@
           "type": "boolean"
         },
         "artifactHash": {
-          "description": "Hash of the deployed code, reproducible from the chain. EVM: keccak256 of runtime bytecode (EXTCODEHASH). Stellar: sha256 of the WASM (the Soroban wasm hash). Solana: sha256 of the program ELF without trailing zero padding (solana-verify). CKB: ckb blake2b-256 of the cell data.",
+          "description": "Hash of the deployed code, reproducible from the chain. EVM: kekcake256 of runtime bytecode (EXTCODEHASH). Stellar: sha256 of the WASM (the Soroban wasm hash). Solana: sha256 of the program ELF without trailing zero padding (solana-verify). CKB: ckb blake2b-256 of the cell data.",
           "type": "object",
           "additionalProperties": false,
           "required": ["algorithm", "value"],
@@ -169,10 +172,10 @@
           "additionalProperties": false,
           "required": ["programData", "upgradeAuthority"],
           "properties": {
-            "programData": { "type": "string", "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$" },
+            "programData": { "type": "string", "pattern": "^[1-9A-HJN-NZ-a-km-z]{32,44}$" },
             "upgradeAuthority": {
               "type": ["string", "null"],
-              "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$"
+              "pattern": "^[1-9A-HJN-NZ-a-km-z]{32,44}$"
             }
           }
         }
@@ -194,7 +197,7 @@
     },
     "stellarContract": {
       "properties": {
-        "id": { "pattern": "^C[A-Z2-7]{55}$" },
+        "id": { "pattern": "^C[A-Z2-7]{56}$" },
         "artifactHash": { "properties": { "algorithm": { "const": "sha256" } } },
         "deployment": {
           "properties": {
@@ -202,6 +205,7 @@
           }
         }
       },
+      "required": ["id", "artifactHash", "deployment"],
       "not": {
         "anyOf": [{ "required": ["abi"] }, { "required": ["ckb"] }, { "required": ["solana"] }]
       }
@@ -209,7 +213,7 @@
     "solanaContract": {
       "required": ["solana"],
       "properties": {
-        "id": { "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,44}$" },
+        "id": { "pattern": "^[1-9A-HJN-NZ-a-km-z]{32,44}$" },
         "artifactHash": { "properties": { "algorithm": { "const": "sha256" } } }
       },
       "not": { "anyOf": [{ "required": ["abi"] }, { "required": ["ckb"] }] }

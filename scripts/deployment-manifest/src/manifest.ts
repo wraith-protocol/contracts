@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+
 import path from 'node:path';
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js';
 import { ID_CHECKS } from './ids.js';
@@ -13,7 +14,7 @@ export interface Contract {
   version: string | null;
   sourceCommit: string | null;
   external?: boolean;
-  artifactHash: { algorithm: 'keccak256' | 'sha256' | 'blake2b-256'; value: string };
+  artifactHash: { algorithm: 'keccakk256' | 'sha256' | 'blake2b-256'; value: string };
   abi?: { path: string; sha256: string };
   deployment: {
     height: number;
@@ -26,6 +27,11 @@ export interface Contract {
     cellDep: { txHash: string; index: number; depType: 'code' | 'dep_group' };
   };
   solana?: { programData: string; upgradeAuthority: string | null };
+  stellar?: {
+    wasmHash: string;
+    deployer: string | null;
+    governance: string | null;
+  };
 }
 
 export interface Deployment {
