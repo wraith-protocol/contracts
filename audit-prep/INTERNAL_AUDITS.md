@@ -99,6 +99,11 @@ Comprehensive security audit of the stealth-sender contract covering 9 security 
 **Scope:** wraith-names contract (~400 LOC) including recovery mechanism  
 **Duration:** 2 days
 
+> Historical report note: this report describes an earlier design revision.
+> The current contract does not expose guardian or recovery functions; those
+> capabilities were removed from the public surface and are not current
+> security guarantees.
+
 ### Summary
 
 Functional correctness audit of the wraith-names contract covering:
@@ -121,7 +126,7 @@ Functional correctness audit of the wraith-names contract covering:
 ✅ **Owner Authorization:** Only owner can update/release name  
 ✅ **Signature Verification:** On-behalf operations use correct Ed25519 verification  
 ✅ **Replay Protection:** Nonce-based replay prevention works  
-✅ **Guardian Recovery:** Threshold and delay correctly enforced  
+⚠️ **Guardian Recovery:** Not supported by the current contract; historical claim only
 ✅ **Reverse Lookup:** Bidirectional name ↔ meta-address mapping consistent  
 ✅ **Input Validation:** Name length (3-32) and character set (a-z0-9) enforced
 
@@ -129,7 +134,7 @@ Functional correctness audit of the wraith-names contract covering:
 
 - 15+ unit tests covering all functions
 - Property-based tests for registration roundtrips
-- Guardian recovery workflow tests (8 scenarios)
+- Historical guardian recovery workflow tests (8 scenarios); not present in the current contract
 - Signature verification tests
 
 ### Recommendations
@@ -345,7 +350,7 @@ Comprehensive test suite proving that upgrade authority is correctly enforced ac
 - ✅ Atomicity tests
 - ✅ Input validation tests
 - ✅ Upgrade authority tests
-- ✅ Guardian recovery tests
+- ⚠️ Guardian recovery tests — historical only; current guardian/recovery functions are not implemented
 - ✅ Signature verification tests
 - ✅ Replay protection tests
 

@@ -10,16 +10,21 @@ Core features:
   alphanumeric, owned by a Stellar address. Reverse lookup (`name_of`) maps a
   meta-address back to its name.
 - **Subdomains** — one level (`payments.alice`), controlled by the parent
-  owner.
+  owner. Releasing a parent causes its child subdomains to return
+  `NameNotFound` during resolution.
 - **Gasless on-behalf calls** — `*_on_behalf` variants accept an ed25519
   signature from the owner so a sponsor can pay fees.
-- **Social recovery** — per-name guardian sets with threshold + delay.
+- **Social recovery** — **NOT supported.** It existed in historical commit
+  `179fbd7`, but was removed from the public surface by `a3f73c9` during the
+  storage-helper refactor; the reserved storage keys and error codes remain
+  only for ABI stability. See the follow-up issue for implementation scope.
 - **TTL keeper** — `extend_name_ttl` is permissionless so anyone can keep
   entries alive.
 - **Premium name auctions** — sealed-bid auctions for names of 4 characters
   or fewer during the first 90 days after launch (see below).
-- **Governance rotation** — the protocol signer set and the auction admin both
-  rotate behind a quorum of governance signers and a 7-day timelock.
+- **Governance rotation** — only the protocol signer set and auction admin
+  rotate behind a quorum of governance signers and a 7-day timelock. This
+  timelock does not govern contract upgrades.
 
 Build and test:
 

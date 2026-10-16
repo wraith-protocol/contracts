@@ -135,7 +135,8 @@ All auditors must review the **exact same commit hash** to ensure consistency.
 
 ### 4. wraith-names
 
-**Purpose:** Human-readable name → stealth meta-address resolution with guardian recovery.
+**Purpose:** Human-readable name → stealth meta-address resolution. Guardian
+recovery is not implemented; the entries below are historical design scope.
 
 **Key Functions:**
 - `register(owner, name, stealth_meta_address)` - Register name
@@ -143,18 +144,18 @@ All auditors must review the **exact same commit hash** to ensure consistency.
 - `release(owner, name)` - Release name
 - `resolve(name)` - Query address
 - `name_of(meta_address)` - Reverse lookup
-- `set_guardians(name, guardians, threshold)` - Configure guardians
-- `propose_recovery(guardian, name, new_owner, new_meta_address)` - Propose recovery
-- `approve_recovery(guardian, name)` - Approve recovery
-- `cancel_recovery(name)` - Cancel recovery
+- `set_guardians(...)` - Not implemented; reserved for a follow-up
+- `propose_recovery(...)` - Not implemented; reserved for a follow-up
+- `approve_recovery(...)` - Not implemented; reserved for a follow-up
+- `cancel_recovery(...)` - Not implemented; reserved for a follow-up
 
-**Storage:** Persistent (names, reverse lookups, guardian configs, recovery proposals)
+**Storage:** Persistent (names and reverse lookups; guardian/recovery keys are reserved)
 
 **Access Control:** 
 - Name operations: Owner authorization
-- Recovery operations: Guardian authorization
+- Recovery operations: Not supported in the current contract
 
-**Upgrade Authority:** Admin (timelock + multisig, eventually renounceable)
+**Upgrade Authority:** No contract upgrade function; pause admin only
 
 **Blast Radius:** Medium
 - No assets held
@@ -163,8 +164,8 @@ All auditors must review the **exact same commit hash** to ensure consistency.
 
 **Critical Security Properties:**
 - Name uniqueness enforced
-- Guardian threshold (N-of-M) honored
-- Recovery delay (timelock) enforced
+- Guardian threshold (N-of-M) honored — not implemented
+- Recovery delay (timelock) enforced — not implemented
 - Signature validation for on-behalf operations
 - Replay protection
 

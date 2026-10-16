@@ -26,9 +26,9 @@ stellar/examples/indexer/
 |---|---|---|---|
 | `announcements` | `(id, contract_address, scheme_id, stealth_address, ephemeral_pub_key, metadata, caller, ledger, tx_hash)` | `view_tag_bucket` (INT), `metadata_kind` (VARCHAR), `scheme_version` (INT) | Enables server-side 256-bucket filtering (`getEvents` topic 2) for ~99.6% traffic reduction. |
 | `registrations` | `(registrant, scheme_id, stealth_meta_address)` | `storage_type` (VARCHAR), `ttl_expiry_ledger` (INT), `is_active` (BOOL) | Tracks persistent storage migration and TTL expiration ledgers. |
-| `name_registrations` | `(name, name_hash, owner, stealth_meta_address)` | `parent_hash` (VARCHAR), `guardians` (TEXT), `recovery_status` (VARCHAR), `is_paused` (BOOL) | Supports hierarchical subdomains (`sub.parent`), multisig recovery, and guardian configs. |
+| `name_registrations` | `(name, name_hash, owner, stealth_meta_address)` | `parent_hash` (VARCHAR), `guardians` (TEXT), `recovery_status` (VARCHAR), `is_paused` (BOOL) | Supports hierarchical subdomains (`sub.parent`) and pause-state indexing. Guardian/recovery columns are reserved for a future implementation. |
 | `pausable_states` *(New)* | — | `(contract_address, is_paused, admin, last_changed_ledger)` | Tracks OpenZeppelin-style circuit breaker state changes across pausable contracts. |
-| `timelock_proposals` *(New)* | — | `(proposal_id, contract_address, proposed_wasm_hash, timelock_end_ledger, status)` | Tracks governance contract upgrade proposals during the mandatory 7-day delay window. |
+| `timelock_proposals` *(New)* | — | `(proposal_id, contract_address, proposed_wasm_hash, timelock_end_ledger, status)` | Reserved schema for future upgrade governance; Wraith Names currently has no contract upgrade or upgrade timelock. |
 | `rate_limit_records` *(New)* | — | `(id, contract_address, sender, window_start_ledger, tx_count, window_limit)` | Observability for per-user rate-limiting windows. |
 | `vault_deposits` *(New)* | — | `(deposit_id, sender, recipient, amount, asset, unlock_ledger, refund_after, status)` | Tracks time-locked payments in `stealth-vault`. |
 | `asset_policy_rules` *(New)* | — | `(policy_address, asset_address, is_allowed)` | Tracks allowlisted assets for `stealth-sender`. |

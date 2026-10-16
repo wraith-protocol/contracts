@@ -36,8 +36,8 @@ alphanumeric); at most one level of nesting is allowed (`a.b.c` is rejected with
   on every management call, so a change of parent ownership transfers control of
   its subdomains.
 - **Resolution** — `resolve("payments.alice")` returns the subdomain's own
-  meta-address, but walks to the parent first: if `alice` has been released the
-  subdomain no longer resolves (`NameNotFound`).
+  meta-address while its parent exists. If the parent has been released,
+  resolution returns `NameNotFound`.
 - **Migration-safe** — Existing flat names are unaffected; they register with no
   parent linkage and behave exactly as before.
 
@@ -226,12 +226,12 @@ Source commits, artifact hashes, ABI hashes and transaction hashes are in [`depl
 
 ## Pause / Circuit-Breaker
 
-| Contract           | Pausable | Admin         |
-|--------------------|----------|---------------|
-| stealth-announcer  | No       | N/A           |
-| stealth-registry   | Yes      | upgrade admin |
-| stealth-sender     | Yes      | upgrade admin |
-| wraith-names       | Yes      | upgrade admin |
+| Contract           | Pausable | Admin              |
+|--------------------|----------|--------------------|
+| stealth-announcer  | No       | N/A (frozen)       |
+| stealth-registry   | No       | N/A (frozen)       |
+| stealth-sender     | Yes      | pause admin        |
+| wraith-names       | Yes      | pause admin        |
 
 See `stellar/PAUSE.md` for full pattern docs.
 

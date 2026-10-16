@@ -12,20 +12,22 @@ This document describes the comprehensive test suite that validates the upgrade 
 Per [GOVERNANCE.md](./GOVERNANCE.md), Wraith Protocol uses different upgrade strategies for different contracts:
 
 - **Frozen** (No upgrade path): `stealth-announcer`, `stealth-registry`
-- **Upgradeable** (Timelock + Multisig): `stealth-sender`, `wraith-names`
+- **Upgradeable** (planned/stub coverage): `stealth-sender`
+- **Pause-only** (no contract upgrade, renunciation, guardian, recovery, or
+  upgrade-timelock support): `wraith-names`
 
 These tests verify that the governance model is correctly implemented and cannot be bypassed.
 
 ## Test Organization
 
-Each contract has a dedicated `tests/upgrade_auth.rs` file:
+Each contract has a dedicated test file in its `tests/` directory:
 
 ```
 stellar/
 ├── stealth-announcer/tests/upgrade_auth.rs   # Frozen contract tests
 ├── stealth-registry/tests/upgrade_auth.rs    # Frozen contract tests
-├── stealth-sender/tests/upgrade_auth.rs      # Upgradeable contract tests
-└── wraith-names/tests/upgrade_auth.rs        # Upgradeable contract tests
+├── stealth-sender/tests/upgrade_auth.rs      # Upgradeable contract tests (stubs)
+└── wraith-names/tests/admin_auth.rs          # Pause-admin tests (renamed from upgrade_auth.rs in #239)
 ```
 
 ## Test Categories
@@ -51,34 +53,47 @@ Per GOVERNANCE.md:
 - `stealth-announcer`: "Simple, trust-minimizing contract that merely emits events. To build trust, the most-watched and foundational contract should be immutable."
 - `stealth-registry`: "Holds the user's meta-address mapping and scheme keys. Keeping this frozen ensures users that their keys cannot be arbitrarily altered or censored."
 
-### 2. Upgradeable Contracts (`stealth-sender`, `wraith-names`)
+### 2. `stealth-sender` (upgrade fn not yet implemented — stub tests)
 
-These tests prove that upgradeable contracts have **controlled upgrade paths** with proper authorization.
+These tests document the intended upgrade model for `stealth-sender`. Note that
+the `upgrade` function does not exist yet; tests that reference it are stubs and
+will be replaced with real coverage when the upgrade infrastructure lands.
 
 #### Key Tests:
 
-- **`test_non_admin_cannot_upgrade`**: Non-admin addresses cannot trigger upgrades (should panic)
-- **`test_admin_can_upgrade`**: Admin with proper authorization can upgrade
-- **`test_post_upgrade_state_preserved`**: All persistent data survives upgrade
-  - For `stealth-sender`: Announcer address preserved
-  - For `wraith-names`: Name registrations, guardian configs, recovery proposals preserved
-- **`test_multisig_threshold_honored`**: 3-of-5 multisig threshold enforced
-  - With 3 signatures: upgrade succeeds
-  - With 2 signatures: upgrade fails
-- **`test_renounced_authority_cannot_be_reacquired`**: Once admin is renounced, no one can upgrade
-- **`test_timelock_delay_enforced`**: 7-day timelock delay enforced
-  - Immediate execution fails
-  - After 120,960 ledgers (7 days at 5s/ledger): succeeds
-- **`test_timelock_proposal_can_be_cancelled`**: Admin can cancel within delay window
-- **`test_upgrade_events_emitted`**: Transparency through event emission
-- **`test_contract_functional_during_upgrade_timelock`**: Normal operations continue during pending upgrade
-- **`test_renounced_contract_behaves_like_frozen`**: After renunciation, matches frozen contract behavior
+- **`test_non_admin_cannot_upgrade`**: Non-admin upgrade attempt panics (stub — manually panics)
+- **`test_admin_can_upgrade`**: Admin upgrade stub (no-op; verified only by manual panic suppression)
+- **`test_post_upgrade_state_preserved`**: Announcer address survives a no-op "upgrade"
+- **`test_multisig_threshold_honored`**: 3-of-5 arithmetic verified on a local Vec (no contract call)
+- **`test_renounced_authority_cannot_be_reacquired`**: Stub (no renunciation fn exists)
+- **`test_timelock_delay_enforced`**: Stub (no timelock fn exists)
+
+### 3. `wraith-names` (pause admin implemented; upgrade fn not yet implemented)
+
+These tests prove that the **pause admin** is correctly enforced in `wraith-names` and
+that the contract's core name CRUD is reliable. They replace the vacuous upgrade stubs
+that previously gave false assurance about unimplemented features.
+
+#### Key Tests:
+
+- **`test_admin_can_pause`**: Pause admin can pause the contract
+- **`test_non_admin_cannot_pause`**: Non-admin pause attempt panics
+- **`test_admin_can_unpause`**: Pause admin can unpause
+- **`test_non_admin_cannot_unpause`**: Non-admin unpause attempt panics
+- **`test_init_is_idempotent`**: `init` is a no-op if admin already set
+- **`test_paused_contract_rejects_mutations`**: All write ops fail with `Paused`
+- **`test_paused_contract_allows_reads`**: `resolve` / `name_of` work while paused
+- **`test_operations_resume_after_unpause`**: CRUD works normally after unpause
+- **`test_name_registrations_survive_ledger_advances`**: Persistent storage outlives ledger advances
+- **`test_core_operations_work_normally`**: Register / update / release / resolve baseline
+- **`test_ownership_preserved_through_pause_cycle`**: Ownership enforced through pause/unpause
 
 #### Rationale:
 
 Per GOVERNANCE.md:
-- `stealth-sender`: "Holds complex logic to process stealth payments. If a critical bug is found, the admin needs a path to upgrade the logic to prevent loss of funds, but with a 7-day timelock so users have a chance to review the upgrade."
-- `wraith-names`: "Handles naming logic and resolution. We may need to add complex resolution upgrades or support new scheme IDs. Once fully matured, we can renounce the upgrade capability."
+- `stealth-sender`: Upgrade infrastructure is a future work item; stubs document the intent.
+- `wraith-names`: Pause-only admin is live. Upgrade / renunciation infrastructure is tracked
+  as a future work item. Tests now cover what is implemented.
 
 ## Running the Tests
 
@@ -131,13 +146,21 @@ Any failure blocks the PR from merging, ensuring upgrade authority enforcement i
 - [x] Update GOVERNANCE.md with test references
 - [x] Update MAINNET_READINESS.md with test checklist
 
+**Reconciliation (Issue #239)** ✅ COMPLETED
+- [x] Replace vacuous upgrade stubs in `wraith-names/tests/upgrade_auth.rs` with honest tests of what is actually implemented (pause admin, name persistence, CRUD)
+- [x] Remove doc checkmarks that claimed unimplemented guarantees were proven
+- [x] Add reason strings to all bare `#[ignore]` attributes in `stealth-registry/tests/upgrade_auth.rs`
+- [x] Update GOVERNANCE.md to separate "implemented" from "aspirational"
+
 **Phase 2: Admin Infrastructure Implementation (Future)**
-- [ ] Add admin storage keys to upgradeable contracts
-- [ ] Implement `upgrade` function with admin authorization
+- [ ] Add `upgrade` function to `wraith-names` with admin authorization
 - [ ] Implement `renounce_admin` function
-- [ ] Add multisig integration (3-of-5 threshold)
-- [ ] Add timelock mechanism (7-day delay)
+- [ ] Add multisig integration (3-of-5 threshold) gating upgrades
+- [ ] Add timelock mechanism (7-day delay) for upgrades
 - [ ] Add upgrade proposal storage and events
+- [ ] When implemented: add full upgrade-lifecycle tests (propose → cancel,
+  propose → execute past timelock, non-admin rejection, post-upgrade state
+  preservation, renunciation success/failure paths)
 
 **Phase 3: Production Deployment**
 - [ ] Deploy multisig wallet with 5 guardians

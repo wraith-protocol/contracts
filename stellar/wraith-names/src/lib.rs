@@ -35,9 +35,14 @@ pub enum DataKey {
     Reverse(BytesN<32>),
     /// Replay protection for signed on-behalf calls.
     Replay(BytesN<32>),
-    /// Guardian config for a name.
+    // RESERVED: guardian config is not implemented. No public `set_guardians`
+    // function exists. Do not remove: discriminant order is part of the ABI.
+    // Tracked for implementation in the follow-up issue.
     Guardians(BytesN<32>),
-    /// Pending recovery proposal for a name.
+    // RESERVED: recovery proposals are not implemented. No public
+    // propose_recovery/execute_recovery/cancel_recovery functions exist. Do
+    // not remove: discriminant order is part of the ABI. Tracked for
+    // implementation in the follow-up issue.
     Recovery(BytesN<32>),
     /// Pause admin address.
     Admin,
@@ -66,7 +71,9 @@ pub struct NameEntry {
     pub parent: Option<BytesN<32>>,
 }
 
-/// Guardian configuration for a name.
+// RESERVED: guardian configuration is not implemented. This struct is
+// retained for ABI stability; no public contract function reads or writes it.
+// Tracked for implementation in the follow-up issue.
 #[contracttype]
 #[derive(Clone)]
 pub struct GuardianConfig {
@@ -74,7 +81,9 @@ pub struct GuardianConfig {
     pub threshold: u32,
 }
 
-/// A pending recovery proposal.
+// RESERVED: recovery proposals are not implemented. This struct is retained
+// for ABI stability; no public contract function reads or writes it. Tracked
+// for implementation in the follow-up issue.
 #[contracttype]
 #[derive(Clone)]
 pub struct RecoveryProposal {
@@ -99,14 +108,14 @@ pub enum NamesError {
     SignatureExpired = 8,
     SignatureReplay = 9,
     InvalidSigner = 10,
-    NotGuardian = 11,
-    NoProposal = 12,
-    ProposalAlreadyExists = 13,
-    AlreadyApproved = 14,
-    DelayNotElapsed = 15,
-    ThresholdNotMet = 16,
-    TooManyGuardians = 17,
-    InvalidThreshold = 18,
+    NotGuardian = 11,           // RESERVED — social recovery not yet implemented
+    NoProposal = 12,            // RESERVED — social recovery not yet implemented
+    ProposalAlreadyExists = 13, // RESERVED — social recovery not yet implemented
+    AlreadyApproved = 14,       // RESERVED — social recovery not yet implemented
+    DelayNotElapsed = 15,       // RESERVED — social recovery not yet implemented
+    ThresholdNotMet = 16,       // RESERVED — social recovery not yet implemented
+    TooManyGuardians = 17,      // RESERVED — social recovery not yet implemented
+    InvalidThreshold = 18,      // RESERVED — social recovery not yet implemented
     InvalidExtendLedger = 19,
     ParentNotFound = 20,
     /// The contract is paused.
@@ -812,6 +821,19 @@ impl WraithNamesContract {
                 return Err(NamesError::NameNotFound);
             }
         };
+
+        if let Some(parent_hash) = entry.parent.clone() {
+            if !env.storage().persistent().has(&DataKey::Name(parent_hash)) {
+                emit_metric(
+                    &env,
+                    contract_ids::WRAITH_NAMES,
+                    metric_names::RESOLVE_MISS_COUNT,
+                    1,
+                    Vec::new(&env),
+                );
+                return Err(NamesError::NameNotFound);
+            }
+        }
 
         Self::extend_ttls(&env, &name_key, None);
 
@@ -1537,7 +1559,6 @@ mod test {
     }
 
     #[test]
-    #[ignore] // subdomain flow not wired; enable when register_subdomain lands
     fn test_subdomain_register_and_resolve() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1560,7 +1581,6 @@ mod test {
     }
 
     #[test]
-    #[ignore] // subdomain flow not wired; enable when register_subdomain lands
     fn test_subdomain_requires_existing_parent() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1577,7 +1597,6 @@ mod test {
     }
 
     #[test]
-    #[ignore] // subdomain flow not wired; enable when register_subdomain lands
     fn test_subdomain_permission_boundary() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1611,7 +1630,6 @@ mod test {
     }
 
     #[test]
-    #[ignore] // subdomain flow not wired; enable when register_subdomain lands
     fn test_subdomain_update_and_release_by_parent_owner() {
         let env = Env::default();
         env.mock_all_auths();
@@ -1641,7 +1659,6 @@ mod test {
     }
 
     #[test]
-    #[ignore] // subdomain flow not wired; enable when register_subdomain lands
     fn test_subdomain_orphaned_when_parent_released() {
         let env = Env::default();
         env.mock_all_auths();

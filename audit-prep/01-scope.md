@@ -23,7 +23,7 @@ Auditors should record the exact commit hash they review in their report. If cod
 | `stealth-announcer` | `stellar/stealth-announcer/src/lib.rs` | Emits stealth-address announcement events. No storage and no access control by design. | Frozen/no upgrade path. |
 | `stealth-registry` | `stellar/stealth-registry/src/lib.rs` | Maps registrants and scheme IDs to 64-byte stealth meta-addresses. | Frozen/no upgrade path. |
 | `stealth-sender` | `stellar/stealth-sender/src/lib.rs` | Atomically transfers a token and emits a stealth announcement. | 3-of-5 multisig plus 7-day timelock if upgraded; pause policy documented in governance plan. |
-| `wraith-names` | `stellar/wraith-names/src/lib.rs` | Maps lowercase `.wraith` names to 64-byte meta-addresses with forward/reverse lookup and on-behalf operations. | 3-of-5 multisig plus 7-day timelock, eventually renounceable. |
+| `wraith-names` | `stellar/wraith-names/src/lib.rs` | Maps lowercase `.wraith` names to 64-byte meta-addresses with forward/reverse lookup and on-behalf operations. | Pause admin only; contract upgrade, timelock, renunciation, guardian, and recovery are not implemented. |
 
 ## In-scope supporting code
 

@@ -49,7 +49,7 @@ This document tracks the requirements and status for launching the Stellar Smart
 ## Risk Acknowledgments
 
 - **Known Limitations of v1**:
-  - Social recovery (Postponed for v1.1) - Rationale: Prioritizing core asset safety over complex recovery UX.
+  - Social recovery is not implemented in the current Wraith Names contract. It is reserved for a follow-up governance issue; no v1.1 implementation is committed here.
   - Vault contract refinements - Rationale: Current implementation meets security requirements; gas optimizations planned for v2.
 
 ---

@@ -84,7 +84,7 @@ Primary users are senders, recipients, relayers/sponsors, indexers/scanners, mai
 
 | Threat | Impact | Existing controls | Audit focus |
 | --- | --- | --- | --- |
-| Non-admin upgrades `stealth-sender` or `wraith-names`. | Malicious code deployment. | Upgrade auth tests and governance plan. | Confirm upgrade interface, admin checks, timelock, and renounce behavior. |
+| Non-admin upgrades `stealth-sender` or `wraith-names`. | Malicious code deployment. | Upgrade auth tests and governance plan. | `wraith-names` currently exposes no upgrade interface; any future upgrade implementation requires separate review. |
 | Frozen contracts secretly retain admin authority. | Registry/announcer trust model invalid. | Upgrade auth tests assert no admin role/interface. | Verify no hidden upgrade, pause, or admin storage paths. |
 | On-behalf replay bypasses ownership. | Relayer reuses old signatures. | Replay key storage and expiry. | Review replay key derivation and storage TTL. |
 | Asset policy admin allows unsafe tokens. | Privacy/liveness break via token issuer powers. | Governance review and policy docs. | Confirm policy admin model and emergency removal path. |

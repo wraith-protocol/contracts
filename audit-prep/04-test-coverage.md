@@ -23,7 +23,7 @@ This report is a reproducible coverage inventory, not a committed HTML coverage 
 | `stealth-announcer` | `stellar/stealth-announcer/tests/audit.rs`, `properties.rs`, `upgrade_auth.rs`, contract-local tests | Event emission, scheme IDs, v2 event shape, metadata behavior, property checks, frozen-contract upgrade assumptions. |
 | `stealth-registry` | `stellar/stealth-registry/tests/registry.rs`, `audit.rs`, `properties.rs`, `upgrade_auth.rs`, contract-local tests | Register/lookup/update/remove, wrong-length rejection, not-registered behavior, storage-key collision, replacement squatting, scheme-ID compatibility, replay/write-boundary behavior, frozen-contract upgrade assumptions. |
 | `stealth-sender` | `stellar/stealth-sender/tests/sac_compat.rs`, `properties.rs`, `upgrade_auth.rs`, mocks under `tests/mocks/`, contract-local tests | Atomic send/batch behavior, auth enforcement, SAC compatibility matrix, unsupported token classes, property checks, upgrade governance assumptions. |
-| `wraith-names` | `stellar/wraith-names/tests/audit.rs`, `properties.rs`, `extend_name_ttl.rs`, `upgrade_auth.rs`, contract-local tests | Register/resolve/update/release, reverse lookup, invalid name handling, meta-address length checks, on-behalf replay/expiry/wrong-signer rejection, TTL extension, upgrade governance assumptions. |
+| `wraith-names` | `stellar/wraith-names/tests/audit.rs`, `properties.rs`, `extend_name_ttl.rs`, `admin_auth.rs`, contract-local tests | Register/resolve/update/release, reverse lookup, invalid name handling, meta-address length checks, on-behalf replay/expiry/wrong-signer rejection, TTL extension, and pause-admin behavior. Upgrade, guardian, and recovery behavior are not implemented. |
 
 ## Commands for auditors
 

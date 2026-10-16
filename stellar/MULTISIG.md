@@ -143,8 +143,8 @@ Commit `multisig-setup.log` to your ops runbook repo (not this repository) after
 
 The account-level Stellar multisig above governs the *admin key* that submits
 transactions. Separately, `stealth-sender` and `wraith-names` — the two
-contracts GOVERNANCE.md marks **Timelock + Multisig Upgradable** — each keep
-their own on-chain governance signer set and quorum threshold, used to
+contracts keep their own on-chain governance signer set and quorum threshold,
+used to
 authorise a `rotate_signers` flow without a contract redeploy (issue #104).
 `stealth-batch-sender` reuses the identical `propose_/approve_/execute_/
 cancel_rotate_signers` shape and 7-day timelock as of issue #155, though
@@ -186,9 +186,9 @@ call.
      --caller <SIGNER_G...>
    ```
 
-3. **Wait out the timelock** — 7 days from the `propose` call
-   (`ROTATION_TIMELOCK_SECS`), mirroring the upgrade timelock in
-   GOVERNANCE.md.
+3. **Wait out the rotation timelock** — 7 days from the `propose` call
+   (`ROTATION_TIMELOCK_SECS`). This delay governs signer rotation only; it is
+   not a contract-upgrade timelock.
 
 4. **Execute** — once quorum is met and the timelock has elapsed, any
    current signer executes the rotation. This swaps in the new signer set

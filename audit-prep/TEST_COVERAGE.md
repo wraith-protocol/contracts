@@ -185,21 +185,21 @@ This document provides a comprehensive overview of test coverage for the Wraith 
 | `test_update_on_behalf_and_release_on_behalf` | On-behalf ops | Multiple operations |
 | `test_on_behalf_malformed_inputs` | Input validation | Invalid meta-address |
 | `test_extend_name_ttl` | TTL management | Permissionless extension |
-| `test_guardian_recovery_workflow` | Recovery | Full workflow |
-| `test_multiple_guardians` | Guardian threshold | N-of-M enforcement |
+| `test_guardian_recovery_workflow` | Recovery | Not implemented; retained as historical planned coverage |
+| `test_multiple_guardians` | Guardian threshold | Not implemented; retained as historical planned coverage |
 
-#### Guardian Recovery Tests (8)
+#### Guardian Recovery Tests (8) — not implemented in the current contract
 
 | Test | Purpose | Coverage |
 |---|---|---|
-| `test_happy_path_recovery` | Full recovery | Threshold + delay |
-| `test_insufficient_approvals` | Threshold enforcement | N-of-M requirement |
-| `test_delay_not_elapsed` | Timelock enforcement | 100k ledger delay |
-| `test_cancel_recovery` | Cancellation | Owner can cancel |
-| `test_non_guardian_rejected` | Authorization | Only guardians approve |
-| `test_double_approval` | Approval tracking | Already approved error |
-| `test_proposal_cleared_after_recovery` | Cleanup | Proposal removal |
-| `test_set_guardians_clears_proposal` | Config change | Reset on guardian update |
+| `test_happy_path_recovery` | Full recovery | Planned; no public recovery function exists |
+| `test_insufficient_approvals` | Threshold enforcement | Planned; no public recovery function exists |
+| `test_delay_not_elapsed` | Timelock enforcement | Planned; no public recovery function exists |
+| `test_cancel_recovery` | Cancellation | Planned; no public recovery function exists |
+| `test_non_guardian_rejected` | Authorization | Planned; no public guardian function exists |
+| `test_double_approval` | Approval tracking | Planned; no public recovery function exists |
+| `test_proposal_cleared_after_recovery` | Cleanup | Planned; no public recovery function exists |
+| `test_set_guardians_clears_proposal` | Config change | Planned; no public guardian function exists |
 
 #### Property-Based Tests (3)
 
@@ -355,7 +355,7 @@ Tests that verify multi-contract interactions.
 **Examples:**
 - stealth-sender → stealth-announcer coupling
 - stealth-sender → SAC token transfers
-- wraith-names → guardian recovery workflow
+- wraith-names → name resolution and pause-admin behavior; guardian recovery is not implemented
 
 **Coverage:** All inter-contract dependencies tested.
 
@@ -545,8 +545,8 @@ For CI to pass:
 - [x] Name release
 - [x] Name updates
 - [x] Reverse lookup
-- [x] Guardian configuration
-- [x] Guardian recovery
+- [ ] Guardian configuration — not implemented
+- [ ] Guardian recovery — not implemented
 - [x] On-behalf operations
 - [x] Batch operations
 - [x] Multi-scheme support

@@ -373,7 +373,7 @@ Below is the project summary:
 1. stealth-announcer (~100 LOC) - Event emitter
 2. stealth-registry (~150 LOC) - Meta-address registry
 3. stealth-sender (~200 LOC) - Atomic asset transfer + announcement
-4. wraith-names (~400 LOC) - Name resolution with guardian recovery
+4. wraith-names (~400 LOC) - Name resolution with pause admin; guardian recovery is not implemented
 
 **Audit Package:** Available at [LINK TO GITHUB REPO]/audit-prep/
 - Scope definition

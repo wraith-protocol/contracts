@@ -30,7 +30,7 @@ The machine-readable record of every deployment, on all chains, is [`deployments
 | `stealth-announcer` | Frozen/no upgrade path. | Verify no admin role, no pause, no upgrade interface. |
 | `stealth-registry` | Frozen/no upgrade path. | Verify user mappings cannot be changed by maintainers. |
 | `stealth-sender` | 3-of-5 multisig, 7-day timelock for upgrades, pause mechanism for emergencies. | Verify pause and upgrade powers are scoped and observable. |
-| `wraith-names` | 3-of-5 multisig, 7-day timelock, eventually renounceable. | Verify state migration and replay storage safety under upgrades. |
+| `wraith-names` | Pause admin only; no contract upgrade, upgrade timelock, renunciation, guardian, or recovery. | Verify pause authority and replay/storage behavior; future governance implementation requires a new review. |
 
 Planned guardians from `stellar/GOVERNANCE.md`:
 

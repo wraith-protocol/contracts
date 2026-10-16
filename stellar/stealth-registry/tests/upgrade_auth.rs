@@ -115,7 +115,7 @@ fn test_user_keys_cannot_be_censored() {
 /// trips the soroban-sdk 22 storage/TTL invariant. Needs a rewrite that
 /// bumps `min_persistent_entry_ttl` in the LedgerInfo before advancing.
 #[test]
-#[ignore]
+#[ignore = "blocked on #239: soroban-sdk 22 TTL invariant breaks ledger-advance tests; see inline comment"]
 fn test_user_data_preserved_indefinitely() {
     let env = Env::default();
     env.mock_all_auths();
@@ -205,7 +205,7 @@ fn test_no_governance_infrastructure() {
 /// across multiple client calls is no longer meaningful. Needs a rewrite
 /// that captures events per-call.
 #[test]
-#[ignore]
+#[ignore = "blocked on #239: soroban-sdk 22 env.events().all() semantics changed; see inline comment"]
 fn test_behavior_deterministic() {
     let env = Env::default();
     env.mock_all_auths();
@@ -274,7 +274,7 @@ fn test_multiple_schemes_independent() {
 /// TTLs trips the soroban-sdk 22 storage/TTL invariant. Same fix pattern as
 /// test_user_data_preserved_indefinitely.
 #[test]
-#[ignore]
+#[ignore = "blocked on #239: soroban-sdk 22 TTL invariant breaks ledger-advance tests; see inline comment"]
 fn test_perpetual_operation_without_admin() {
     let env = Env::default();
     env.mock_all_auths();

@@ -276,6 +276,13 @@ jobs:
       - name: Run Upgrade Authority Enforcement Tests
         run: cargo test upgrade_auth --workspace
 
+      - name: Run Wraith Names Pause Admin Tests
+        run: cargo test admin_auth -p wraith-names
+
+      # Bindings depend on a successful workspace WASM build (currently
+      # non-blocking; see the note on the Build WASM step). Mark this
+      # non-blocking too so bindings-drift detection doesn't spuriously
+      # fail wave PRs.
       - name: Generate Stellar TypeScript bindings
         run: pnpm bindings:stellar
         working-directory: .

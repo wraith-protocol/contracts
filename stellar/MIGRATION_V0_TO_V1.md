@@ -13,7 +13,11 @@ It provides maintainers, indexer operators, SDK developers, and partner protocol
 
 ## 1. Governance & Upgradability Matrix
 
-Wraith Protocol contract architecture separates immutable core components (frozen) from configurable logic (timelocked and pausable) to balance trust-minimization with emergency incident response.
+Wraith Protocol contract architecture separates immutable core components (frozen)
+from pausable components. The current `wraith-names` contract has pause-admin
+controls only: contract upgrades, upgrade timelocks, renunciation, guardians,
+and social recovery are not implemented. Upgrade-oriented items below are
+historical/planned schema material, not current public contract guarantees.
 
 | Contract Crate | Governance Model | Upgrade Authority | Circuit-Breaker (Pausable) | Storage Persistence Model |
 |---|---|---|---|---|
@@ -23,7 +27,7 @@ Wraith Protocol contract architecture separates immutable core components (froze
 | `stealth-batch-sender` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `instance()` for config |
 | `stealth-splitter` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `persistent()` for split definitions |
 | `stealth-vault` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `persistent()` for time-locked deposits |
-| `wraith-names` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `persistent()` for name & reverse records |
+| `wraith-names` | **Pause admin only** | Pause admin | **Yes** (`DataKey::Paused`) | `persistent()` for name & reverse records |
 | `wraith-asset-policy` | **Admin Managed** | Admin Address | No | `instance()` admin, `persistent()` allowlist |
 | `wraith-metrics` | **Library Module** | N/A | N/A | Stateless (Metric Event Publishing) |
 
@@ -31,7 +35,11 @@ Wraith Protocol contract architecture separates immutable core components (froze
 
 ## 2. Field-by-Field Storage Diff (v0 vs v1)
 
-Cutting v1 contracts expands contract state to support persistent rent isolation, circuit-breaker pause states, 7-day governance timelocks, hierarchical subdomains, multisig recovery, and optional asset allowlists/protocol fee configurations.
+Cutting v1 contracts expands contract state to support persistent rent isolation,
+circuit-breaker pause states, hierarchical subdomains, and optional asset
+allowlists/protocol fee configurations. Timelock and recovery entries below are
+reserved or historical design material where the current contract does not
+expose the corresponding public functions.
 
 ### 2.1 `stealth-announcer`
 - **v0 Layout:** Stateless contract. Emitted announcements with topic 2 set to `stealth_address`.
@@ -100,17 +108,17 @@ Cutting v1 contracts expands contract state to support persistent rent isolation
       - `parent`: `Option<BytesN<32>>` *(NEW: Hierarchical subdomains, `None` for root names)*
     - `DataKey::Reverse(BytesN<32>)` -> `BytesN<32>`
     - `DataKey::Replay(BytesN<32>)` -> `bool` *(NEW: Replay protection for gasless `on-behalf` transactions)*
-    - `DataKey::Guardians(BytesN<32>)` -> `GuardianConfig { guardians: Vec<Address>, threshold: u32 }` *(NEW: Multisig social recovery configuration)*
-    - `DataKey::Recovery(BytesN<32>)` -> `RecoveryProposal { new_owner: Address, new_meta_address: Bytes, proposed_at: u32, approvals: Vec<Address> }` *(NEW: Active recovery proposal)*
+    - `DataKey::Guardians(BytesN<32>)` -> `GuardianConfig { guardians: Vec<Address>, threshold: u32 }` *(RESERVED: guardian recovery is not implemented)*
+    - `DataKey::Recovery(BytesN<32>)` -> `RecoveryProposal { new_owner: Address, new_meta_address: Bytes, proposed_at: u32, approvals: Vec<Address> }` *(RESERVED: social recovery is not implemented)*
     - `DataKey::Paused` -> `bool` *(NEW: Pausable circuit breaker state)*
-    - `DataKey::Admin` -> `Address` *(NEW: Timelock & pause authority)*
+    - `DataKey::Admin` -> `Address` *(NEW: pause admin; contract upgrade authority is not implemented)*
 - **Diff Details:**
   | Field / DataKey | v0 Type | v1 Type | Purpose |
   |---|---|---|---|
   | `NameEntry.parent` | N/A | `Option<BytesN<32>>` | Identifies parent label hash for subdomain ownership enforcement (`sub.domain.wraith`) |
   | `DataKey::Replay` | N/A | `BytesN<32>` | Prevents replay attacks on off-chain signed name registrations |
-  | `DataKey::Guardians` | N/A | `GuardianConfig` | Configures M-of-N guardians for social recovery |
-  | `DataKey::Recovery` | N/A | `RecoveryProposal` | Tracks pending ownership recovery proposals |
+  | `DataKey::Guardians` | N/A | `GuardianConfig` | Reserved ABI scaffolding; guardian recovery is not implemented |
+  | `DataKey::Recovery` | N/A | `RecoveryProposal` | Reserved ABI scaffolding; social recovery is not implemented |
   | `DataKey::Paused` | N/A | `bool` | Allows admin to freeze name mutations during incidents |
 
 ---

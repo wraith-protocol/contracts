@@ -5,6 +5,7 @@
   },
   "auth": [
     [],
+    [],
     [
       [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
@@ -12,14 +13,20 @@
           "function": {
             "contract_fn": {
               "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-              "function_name": "",
-              "args": []
+              "function_name": "pause",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
             }
           },
           "sub_invocations": []
         }
       ]
-    ]
+    ],
+    [],
+    []
   ],
   "ledger": {
     "protocol_version": 22,
@@ -53,14 +60,39 @@
                     "executable": {
                       "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                     },
-                    "storage": null
+                    "storage": [
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Admin"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                        }
+                      },
+                      {
+                        "key": {
+                          "vec": [
+                            {
+                              "symbol": "Paused"
+                            }
+                          ]
+                        },
+                        "val": {
+                          "bool": true
+                        }
+                      }
+                    ]
                   }
                 }
               }
             },
             "ext": "v0"
           },
-          4095
+          518400
         ]
       ],
       [
@@ -114,7 +146,7 @@
             },
             "ext": "v0"
           },
-          4095
+          518400
         ]
       ]
     ]
