@@ -63,7 +63,7 @@ jobs:
           # forge-std is a pinned submodule (v1.16.2); openzeppelin and
           # wraith-contracts are symlinks into evm/node_modules and evm/contracts.
           submodules: recursive
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: npm ci
@@ -102,7 +102,7 @@ jobs:
 
       - name: Upload Slither SARIF
         if: always() && hashFiles('evm/results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
         with:
           sarif_file: evm/results.sarif
           category: slither
@@ -129,7 +129,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -169,7 +169,7 @@ jobs:
           sudo ln -sf /usr/local/bin/stellar /usr/local/bin/soroban
           stellar --version
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
@@ -239,7 +239,7 @@ jobs:
           echo "---- crossover.csv ----"
           cat bench/data/crossover.csv
       - name: Upload crossover bench data
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: crossover-bench-data
           path: |
@@ -312,7 +312,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
@@ -336,7 +336,7 @@ jobs:
         working-directory: stellar
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
@@ -355,7 +355,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: wasm32-unknown-unknown
@@ -400,7 +400,7 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
       - name: Upload dry-run output
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: deploy-dryrun-results
@@ -420,7 +420,7 @@ jobs:
       WRAITHCHAOS_SEED: "42"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - name: Run chaos integration tests
@@ -444,7 +444,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
@@ -457,7 +457,7 @@ jobs:
           test -f bench/results.json
 
       - name: Upload bench results artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stellar-bench-results
           path: stellar/bench/results.json
@@ -485,7 +485,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
@@ -533,7 +533,7 @@ jobs:
 
       - name: Upload PR bench results
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stellar-bench-pr-${{ github.event.pull_request.number }}
           path: stellar/bench/results.json
@@ -554,7 +554,7 @@ jobs:
           ref: develop
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
@@ -567,7 +567,7 @@ jobs:
           test -f bench/baseline.json
 
       - name: Upload rotated baseline artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: stellar-bench-baseline
           path: stellar/bench/baseline.json
@@ -590,7 +590,7 @@ jobs:
         working-directory: solana
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: '1.91.0'
       - uses: heyAyushh/setup-anchor@0dfcdd252cd9716ef398947d2b765369c9f3a6de # v4.999
@@ -609,7 +609,7 @@ jobs:
         working-directory: ckb
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: riscv64imac-unknown-none-elf
@@ -623,7 +623,7 @@ jobs:
         run: make test-ci
       - name: Upload CKB transaction fixtures
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ckb-transaction-fixtures
           path: ckb/target/ckb-fixtures/
@@ -640,7 +640,7 @@ jobs:
         working-directory: stellar/stealth-sender/fuzz
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
       - name: Install cargo-fuzz
@@ -652,7 +652,7 @@ jobs:
         run: cargo fuzz run batch_execute -- -max_total_time=900
       - name: Upload crash artifacts
         if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: fuzz-artifacts
           path: stellar/stealth-sender/fuzz/artifacts/
@@ -663,7 +663,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
       - run: npm ci
@@ -676,7 +676,7 @@ jobs:
         working-directory: evm/subgraph
       - run: npm run test -- conformance
         working-directory: evm/subgraph
-      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
       - run: cargo test --package integration-tests --test conformance
