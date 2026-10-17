@@ -163,7 +163,7 @@ soroban contract invoke \
 **Purpose:** Batch operations  
 **Dependencies:** stealth-announcer  
 **Init Required:** Yes  
-**Configuration:** Announcer address
+**Configuration:** Pause admin address, announcer address, optional asset policy
 
 ```bash
 soroban contract deploy \
@@ -173,12 +173,26 @@ soroban contract deploy \
 
 # Returns: CONTRACT_ID_BATCH_SENDER
 
+# Neither `init` nor `init_multisig` checks the caller (see AUTHORIZATION_MATRIX.md):
+# the first call sets the value for good, so run both right after deploy.
+
+# `admin` is the pause admin. It cannot be changed later.
 soroban contract invoke \
   --id CONTRACT_ID_BATCH_SENDER \
   --network mainnet \
   --source [DEPLOYER_SECRET_KEY] \
   -- init \
+  --admin [PAUSE_ADMIN_ADDRESS] \
   --announcer CONTRACT_ID_ANNOUNCER
+
+# Signer set for signer rotation only (see Governance Configuration).
+soroban contract invoke \
+  --id CONTRACT_ID_BATCH_SENDER \
+  --network mainnet \
+  --source [DEPLOYER_SECRET_KEY] \
+  -- init_multisig \
+  --signers '[SIGNER_ADDRESSES]' \
+  --threshold [THRESHOLD]
 ```
 
 ---
@@ -196,6 +210,19 @@ soroban contract invoke \
 - No admin role
 - No upgrade mechanism
 - Immutable forever
+
+**stealth-splitter:**
+- No admin role
+- No pause
+- No upgrade mechanism
+- `init` stores the announcer address once; a second call returns `AlreadyInitialized`
+
+### Non-Upgradeable Contracts (Pause Admin)
+
+**stealth-batch-sender:**
+- No upgrade mechanism
+- **Pause admin:** one address, set once by `init`. `pause` and `unpause` stop or resume `batch_send` and nothing else. No function changes the admin after `init`.
+- **Governance multisig:** the signer set and threshold are set once by `init_multisig`. The multisig only rotates its own signer set: a current signer proposes, a quorum of current signers approves, and after a 7-day timelock (`ROTATION_TIMELOCK_SECS`, ledger timestamp) a signer executes; any signer can cancel a pending rotation. It cannot pause the contract, change the pause admin, or upgrade the code.
 
 ### Upgradeable Contracts (Multisig + Timelock)
 
@@ -366,7 +393,7 @@ A keeper bot will monitor and extend storage rent:
 ### Emergency Procedures
 
 **Scenario 1: Critical Vulnerability Discovered**
-1. Pause affected contracts (if upgradeable)
+1. Pause affected contracts that have a pause function
 2. Notify community via status page
 3. Develop and test fix
 4. Deploy fix via upgrade process
@@ -379,7 +406,7 @@ A keeper bot will monitor and extend storage rent:
 4. Ensure adequate treasury funding
 
 **Scenario 3: Admin Key Compromise**
-1. Emergency multisig rotation
+1. Emergency multisig rotation. The stealth-batch-sender pause admin cannot be replaced: if that key is compromised, deploy a new batch sender and move integrations to it.
 2. Audit all recent admin actions
 3. Notify community
 4. Investigate compromise vector
@@ -436,7 +463,7 @@ sha256sum deployed.wasm
 
 If critical issues are discovered post-deployment:
 
-### For Frozen Contracts (announcer, registry)
+### For Frozen and Non-Upgradeable Contracts (announcer, registry, splitter, batch sender)
 **No rollback possible.** Must deploy new version with different address.
 
 **Mitigation:**

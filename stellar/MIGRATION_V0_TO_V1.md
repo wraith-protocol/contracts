@@ -20,8 +20,8 @@ Wraith Protocol contract architecture separates immutable core components (froze
 | `stealth-announcer` | **Frozen (Immutable)** | None | No | Stateless (Events Only) |
 | `stealth-registry` | **Frozen (Immutable)** | None | No | `persistent()` with TTL auto-extension |
 | `stealth-sender` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `instance()` for config; token transfers |
-| `stealth-batch-sender` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `instance()` for config |
-| `stealth-splitter` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `persistent()` for split definitions |
+| `stealth-batch-sender` | **Non-upgradeable (Pause Admin)** | None | **Yes** (`DataKey::Paused`, pause admin) | `instance()` for config |
+| `stealth-splitter` | **Frozen (Immutable)** | None | No | `instance()` for split definitions |
 | `stealth-vault` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `persistent()` for time-locked deposits |
 | `wraith-names` | **Timelocked + Multisig** | 3-of-5 Multisig | **Yes** (`DataKey::Paused`) | `persistent()` for name & reverse records |
 | `wraith-asset-policy` | **Admin Managed** | Admin Address | No | `instance()` admin, `persistent()` allowlist |

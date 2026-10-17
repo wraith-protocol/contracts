@@ -31,6 +31,8 @@ The machine-readable record of every deployment, on all chains, is [`deployments
 | `stealth-registry` | Frozen/no upgrade path. | Verify user mappings cannot be changed by maintainers. |
 | `stealth-sender` | 3-of-5 multisig, 7-day timelock for upgrades, pause mechanism for emergencies. | Verify pause and upgrade powers are scoped and observable. |
 | `wraith-names` | 3-of-5 multisig, 7-day timelock, eventually renounceable. | Verify state migration and replay storage safety under upgrades. |
+| `stealth-splitter` | Frozen/no upgrade path. | Verify no admin role, no pause, no upgrade interface; `init` only stores the announcer once. |
+| `stealth-batch-sender` | No upgrade path. Pause admin set once by `init`; signer-rotation multisig set once by `init_multisig`, 7-day timelock. | Verify the multisig can only rotate its own signers and the pause admin can only pause and unpause `batch_send`. |
 
 Planned guardians from `stellar/GOVERNANCE.md`:
 

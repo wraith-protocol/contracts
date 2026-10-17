@@ -96,12 +96,12 @@ contracts/
 
 5. **stealth-splitter** (~300 LOC)
    - Payment splitting across multiple recipients
-   - **Status:** Upgradeable
+   - **Status:** Frozen (no upgrade path, no admin)
    - **Blast Radius:** High (handles user assets)
 
 6. **stealth-batch-sender** (~150 LOC)
    - Optimized batch operations
-   - **Status:** Upgradeable
+   - **Status:** Non-upgradeable (pause admin and a signer-rotation multisig, see DEPLOYMENT_MANIFEST.md)
    - **Blast Radius:** High (handles user assets)
 
 ## Audit Timeline
