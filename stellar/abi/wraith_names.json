@@ -157,7 +157,7 @@
   },
   {
     "function_v0": {
-      "doc": "Resolve a name to its stealth meta-address.\\n\\nFor a subdomain (`payments.alice`) resolution walks to the parent\\n(`alice`): if the parent no longer exists the subdomain does not resolve.",
+      "doc": "Resolve a name to its stealth meta-address.\\n\\nFor a subdomain (`payments.alice`) resolution walks to the parent\\n(`alice`): if the parent has been released, or released and registered\\nagain, the subdomain does not resolve. Resolving a subdomain renews the\\nparent's entry too.",
       "name": "resolve",
       "inputs": [
         {
@@ -388,6 +388,19 @@
             "doc": "Pending auction-admin rotation proposal, if any.",
             "name": "PendingAuctionAdminRotation"
           }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Subdomain era of a top-level name (see `NameEntry::era`): created at 0\\nwhen the name gets its first subdomain and incremented every time the\\nname is released. It only ever increases, so an era is never reused.",
+            "name": "SubdomainEra",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
         }
       ]
     }
@@ -595,6 +608,15 @@
       "lib": "",
       "name": "NameEntry",
       "fields": [
+        {
+          "doc": "For a subdomain, the parent's `SubdomainEra` when the subdomain was\\nregistered; `None` for a top-level name. The subdomain is live only\\nwhile the parent's era is unchanged: releasing the parent advances it,\\nso every subdomain registered before the release is retired for good,\\neven if the parent is registered again.",
+          "name": "era",
+          "type_": {
+            "option": {
+              "value_type": "u64"
+            }
+          }
+        },
         {
           "doc": "",
           "name": "name",
@@ -1302,6 +1324,50 @@
           "doc": "",
           "name": "expiry",
           "type_": "u64"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "NamesError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Register the subdomain `label.parent` (e.g. `payments` under `alice` is\\n`payments.alice`), equivalent to `register(owner, \"label.parent\", ..)`.\\n\\n`parent` must be a live top-level name and `owner` its current owner.\\n`label` follows the usual label rules (3+ lowercase alphanumeric\\ncharacters) and the full name must fit in 32 characters. The subdomain\\nis managed by whoever owns `parent` from then on, and is retired when\\n`parent` is released.",
+      "name": "register_subdomain",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "owner",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "parent",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "label",
+          "type_": "string"
+        },
+        {
+          "doc": "",
+          "name": "stealth_meta_address",
+          "type_": "bytes"
         }
       ],
       "outputs": [

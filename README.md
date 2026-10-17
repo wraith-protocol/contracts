@@ -26,18 +26,29 @@ Every payment generates a fresh one-time stealth address so on-chain observers c
 ### Hierarchical names (`wraith-names`)
 
 A name is either a flat label (`alice`) or a subdomain (`payments.alice`). Each
-dot-separated label is validated independently (3-32 chars, lowercase
-alphanumeric); at most one level of nesting is allowed (`a.b.c` is rejected with
-`NameTooDeep`).
+dot-separated label is validated independently (at least 3 lowercase
+alphanumeric characters, so `x.alice` and `.alice` are rejected with
+`NameTooShort`), and the full name, dot included, is at most 32 characters. At
+most one level of nesting is allowed (`a.b.c` is rejected with `NameTooDeep`).
 
-- **Delegation** — A subdomain can only be registered when its parent name
-  already exists, and only the current owner of the parent may register, update,
-  or release subdomains under it. The owner address is re-read from the parent
-  on every management call, so a change of parent ownership transfers control of
-  its subdomains.
+- **Registration** — `register_subdomain(owner, "alice", "payments", meta)`, or
+  equivalently `register(owner, "payments.alice", meta)`. The parent must exist
+  (`ParentNotFound`) and `owner` must be its current owner (`NotOwner`).
+- **Update and release** — Only the current owner of the parent may update or
+  release a subdomain. The owner address is re-read from the parent on every
+  management call, so a change of parent ownership transfers control of its
+  subdomains, which keep resolving.
+- **Parent release** — Releasing `alice` retires every subdomain under it at
+  once: they stop resolving and reverse lookups for them fail (`NameNotFound`).
+  They do not come back if `alice` is registered again, by anyone; the next
+  holder registers subdomains afresh.
+- **Parent expiry** — A subdomain is only usable while its parent's entry is
+  live: if `alice` expires and is archived, `payments.alice` cannot be resolved
+  until `alice` is restored. Renewing a subdomain (`extend_name_ttl`,
+  `bulk_renew`, or a `resolve` that triggers renewal) also renews its parent;
+  renewing the parent does not renew its subdomains.
 - **Resolution** — `resolve("payments.alice")` returns the subdomain's own
-  meta-address, but walks to the parent first: if `alice` has been released the
-  subdomain no longer resolves (`NameNotFound`).
+  meta-address after checking that its parent is live.
 - **Migration-safe** — Existing flat names are unaffected; they register with no
   parent linkage and behave exactly as before.
 
