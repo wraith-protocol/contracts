@@ -168,16 +168,14 @@ else
 fi
 
 # Check for deployment errors
-if grep -qi "error\|fail\|panic" "$OUTPUT_FILE" | grep -v "may have failed" | grep -v "Some smoke tests failed" | grep -v "failed (may already" | grep -v "registration failed" > /dev/null 2>&1; then
-    # Filter out expected errors from re-runs
-    ERROR_LINES=$(grep -i "error\|fail\|panic" "$OUTPUT_FILE" | grep -v "may have failed" | grep -v "Some smoke tests failed" | grep -v "failed (may already" | grep -v "registration failed" | head -5 || echo "")
-    if [ -n "$ERROR_LINES" ]; then
-        fail "Potential errors detected in output:"
-        echo "$ERROR_LINES" | while read -r line; do
-            echo "    $line"
-        done
-        info "Review full output for context (some errors may be expected on re-runs)"
-    fi
+ERROR_LINES=$(grep -i "error\|fail\|panic" "$OUTPUT_FILE" | grep -v "may have failed" | grep -v "Some smoke tests failed" | grep -v "failed (may already" | grep -v "registration failed" | head -5 || echo "")
+if [ -n "$ERROR_LINES" ]; then
+    fail "Potential errors detected in output:"
+    echo "$ERROR_LINES" | while read -r line; do
+        echo "    $line"
+    done
+    info "Review full output for context (some errors may be expected on re-runs)"
+    VALIDATION_FAILED=1
 fi
 
 # Network validation (check if stellar.expert URLs match expected network)

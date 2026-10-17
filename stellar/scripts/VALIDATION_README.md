@@ -50,6 +50,7 @@ Unit tests for the validation script covering:
 - Smoke test failures
 - Early failure (missing output file) generating failed manifest and preserving exit code
 - Late failure (RPC lookup failure) generating failed manifest and preserving exit code
+- Unexpected error/panic line with success marker generating failed manifest and preserving non-zero exit code
 
 **Usage:**
 ```bash

@@ -357,6 +357,43 @@ test_late_failure_rpc_lookup() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Test 11: Success marker plus unexpected error/panic line → fails and writes failed manifest
+# ──────────────────────────────────────────────────────────────────────────────
+test_success_marker_with_unexpected_error() {
+    local output="$TEST_DIR/t11.txt"
+    cat > "$output" <<EOF
+
+═══ Results ═══
+
+  Contract               Contract ID                                             
+  ───────                ───────────                                             
+  stealth-announcer      $ANNOUNCER_ID
+  stealth-registry       $REGISTRY_ID
+  stealth-sender         $SENDER_ID
+  wraith-names           $NAMES_ID
+
+  Stellar Expert links:
+  ├─ Announcer: https://futurenet.stellar.expert/explorer/futurenet/contract/$ANNOUNCER_ID
+  ├─ Registry:  https://futurenet.stellar.expert/explorer/futurenet/contract/$REGISTRY_ID
+  ├─ Sender:    https://futurenet.stellar.expert/explorer/futurenet/contract/$SENDER_ID
+  └─ Names:     https://futurenet.stellar.expert/explorer/futurenet/contract/$NAMES_ID
+
+thread 'main' panicked at 'unexpected simulation failure'
+  ✔ All checks passed. Dry-run complete.
+EOF
+    local manifest="${output%.txt}-manifest.json"
+    rm -f "$manifest"
+
+    MOCK_MISSING_CONTRACT="" assert_fails \
+        "T11a: Success marker with unexpected panic line exits with non-zero code" \
+        "$output"
+
+    assert_manifest_status \
+        "T11b: Success marker with unexpected panic line generates manifest with status failed" \
+        "$output" "failed"
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Run all tests
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -373,6 +410,7 @@ test_smoke_failure
 test_missing_success_marker
 test_early_failure_nonexistent_file
 test_late_failure_rpc_lookup
+test_success_marker_with_unexpected_error
 
 echo ""
 echo "Results: $TESTS_PASSED/$TESTS_RUN tests passed."
