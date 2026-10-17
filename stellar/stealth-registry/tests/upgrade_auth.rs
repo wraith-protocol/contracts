@@ -10,13 +10,90 @@
 #![cfg(test)]
 
 use soroban_sdk::{
-    testutils::{Address as _, BytesN as _, Events, Ledger},
-    Address, Bytes, BytesN, Env,
+    symbol_short,
+    testutils::{
+        storage::{Instance as _, Persistent as _},
+        Address as _, Events, Ledger,
+    },
+    Address, Bytes, BytesN, Env, IntoVal, TryFromVal, Val,
 };
-use stealth_registry::{StealthRegistryContract, StealthRegistryContractClient};
+use stealth_registry::{DataKey, StealthRegistryContract, StealthRegistryContractClient};
 
 extern crate alloc;
 use alloc::vec::Vec;
+
+// Mirror the registry's renewal policy; keep the minimum below the threshold
+// so these tests exercise actual TTL extensions instead of pre-pinning entries.
+const TTL_THRESHOLD: u32 = 17_280;
+const TTL_EXTEND_TO: u32 = 518_400;
+
+fn lifetime_env() -> Env {
+    let env = Env::default();
+    env.ledger().with_mut(|li| {
+        li.sequence_number = 1_000;
+        li.min_persistent_entry_ttl = 100;
+        li.min_temp_entry_ttl = 16;
+        li.max_entry_ttl = 1_000_000;
+    });
+    env.mock_all_auths();
+    env
+}
+
+/// Advance only as far as the next renewal threshold, then touch every active
+/// registration through the public lookup. Immutability does not waive rent:
+/// both the instance and persistent entries must stay live throughout a test.
+fn advance_with_renewals(
+    env: &Env,
+    client: &StealthRegistryContractClient<'_>,
+    registrations: &[(Address, Bytes)],
+    ledgers: u32,
+) {
+    let target = env.ledger().sequence() + ledgers;
+    while env.ledger().sequence() < target {
+        let (instance_ttl, shortest_ttl) = env.as_contract(&client.address, || {
+            let instance_ttl = env.storage().instance().get_ttl();
+            let shortest_ttl = registrations.iter().fold(instance_ttl, |ttl, (user, _)| {
+                ttl.min(
+                    env.storage()
+                        .persistent()
+                        .get_ttl(&DataKey::MetaAddress(user.clone(), 1)),
+                )
+            });
+            (instance_ttl, shortest_ttl)
+        });
+        assert!(shortest_ttl > TTL_THRESHOLD);
+        let step = (shortest_ttl - TTL_THRESHOLD).min(target - env.ledger().sequence());
+        env.ledger()
+            .set_sequence_number(env.ledger().sequence() + step);
+
+        for (user, expected_meta) in registrations {
+            let key = DataKey::MetaAddress(user.clone(), 1);
+            let before =
+                env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+            assert_eq!(client.stealth_meta_address_of(user, &1), *expected_meta);
+            let after =
+                env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+            assert_eq!(
+                after,
+                if before <= TTL_THRESHOLD {
+                    TTL_EXTEND_TO
+                } else {
+                    before
+                }
+            );
+        }
+
+        let remaining = instance_ttl - step;
+        assert_eq!(
+            env.as_contract(&client.address, || env.storage().instance().get_ttl()),
+            if remaining <= TTL_THRESHOLD {
+                TTL_EXTEND_TO
+            } else {
+                remaining
+            }
+        );
+    }
+}
 
 /// Helper to create a mock WASM hash
 fn mock_wasm_hash(env: &Env, seed: u8) -> BytesN<32> {
@@ -109,42 +186,32 @@ fn test_user_keys_cannot_be_censored() {
     assert_eq!(retrieved_after, new_meta);
 }
 
-/// Test that frozen contract preserves user data indefinitely.
-///
-/// Ignored: advancing the ledger by 1M sequences without extending TTLs
-/// trips the soroban-sdk 22 storage/TTL invariant. Needs a rewrite that
-/// bumps `min_persistent_entry_ttl` in the LedgerInfo before advancing.
+/// Active registrations survive one million ledgers with permissionless renewal.
 #[test]
-#[ignore]
 fn test_user_data_preserved_indefinitely() {
-    let env = Env::default();
-    env.mock_all_auths();
+    let env = lifetime_env();
 
     let contract_id = env.register(StealthRegistryContract, ());
     let client = StealthRegistryContractClient::new(&env, &contract_id);
 
     // Multiple users register keys
-    let users: Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
+    let registrations: Vec<(Address, Bytes)> = (0..5)
+        .map(|i| {
+            let user = Address::generate(&env);
+            let mut meta_bytes = [i; 64];
+            meta_bytes[63] = 255;
+            let meta = Bytes::from_slice(&env, &meta_bytes);
+            client.register_keys(&user, &1, &meta);
+            (user, meta)
+        })
+        .collect();
 
-    for (i, user) in users.iter().enumerate() {
-        let mut meta_bytes = [i as u8; 64];
-        meta_bytes[63] = 255;
-        let meta = Bytes::from_slice(&env, &meta_bytes);
-        client.register_keys(user, &1, &meta);
-    }
+    let start = env.ledger().sequence();
+    advance_with_renewals(&env, &client, &registrations, 1_000_000);
+    assert_eq!(env.ledger().sequence(), start + 1_000_000);
 
-    // Advance ledger significantly
-    env.ledger()
-        .set_sequence_number(env.ledger().sequence() + 1_000_000);
-
-    // Verify all user data still accessible (TTL extended on access)
-    for (i, user) in users.iter().enumerate() {
-        let mut expected_meta_bytes = [i as u8; 64];
-        expected_meta_bytes[63] = 255;
-        let expected_meta = Bytes::from_slice(&env, &expected_meta_bytes);
-
-        let retrieved = client.stealth_meta_address_of(user, &1);
-        assert_eq!(retrieved, expected_meta);
+    for (user, expected_meta) in &registrations {
+        assert_eq!(client.stealth_meta_address_of(user, &1), *expected_meta);
     }
 }
 
@@ -199,13 +266,7 @@ fn test_no_governance_infrastructure() {
 }
 
 /// Test that contract behavior is deterministic and unchanging.
-///
-/// Ignored: soroban-sdk 22's `env.events().all()` returns only the events
-/// from the most recent contract invocation, so comparing event counts
-/// across multiple client calls is no longer meaningful. Needs a rewrite
-/// that captures events per-call.
 #[test]
-#[ignore]
 fn test_behavior_deterministic() {
     let env = Env::default();
     env.mock_all_auths();
@@ -228,11 +289,27 @@ fn test_behavior_deterministic() {
     client.register_keys(&user, &1, &meta);
     let events3 = env.events().all();
 
-    // Event structure should be consistent
-    // This behavior cannot change due to immutability
-    assert!(events1.len() > 0);
-    assert!(events2.len() > events1.len());
-    assert!(events3.len() > events2.len());
+    // SDK 22 exposes the latest invocation's events, not a cumulative log.
+    // Each operation emits its domain event followed by a metric event.
+    assert_eq!(events1.len(), 2);
+    assert_eq!(events2.len(), 2);
+    assert_eq!(events3.len(), 2);
+    let register = events1.first().unwrap();
+    let register_topics: soroban_sdk::Vec<Val> =
+        (symbol_short!("register"), user.clone(), 1u32).into_val(&env);
+    assert_eq!(register.0, contract_id);
+    assert_eq!(register.1, register_topics);
+    assert_eq!(Bytes::try_from_val(&env, &register.2).unwrap(), meta);
+
+    let remove = events2.first().unwrap();
+    let remove_topics: soroban_sdk::Vec<Val> =
+        (symbol_short!("remove"), user.clone(), 1u32).into_val(&env);
+    assert_eq!(remove.0, contract_id);
+    assert_eq!(remove.1, remove_topics);
+    <()>::try_from_val(&env, &remove.2).unwrap();
+    // Repeating the same registration reproduces both complete events.
+    assert_eq!(events1, events3);
+    assert_eq!(client.stealth_meta_address_of(&user, &1), meta);
 }
 
 /// Test that multiple scheme IDs work independently.
@@ -268,25 +345,19 @@ fn test_multiple_schemes_independent() {
     assert_eq!(client.stealth_meta_address_of(&user, &3), meta_scheme_3);
 }
 
-/// Test that contract works correctly without any admin forever.
-///
-/// Ignored: advancing the ledger by ~10 years of sequences without extending
-/// TTLs trips the soroban-sdk 22 storage/TTL invariant. Same fix pattern as
-/// test_user_data_preserved_indefinitely.
+/// Ten years of normal use keep old and new registrations live without an admin.
 #[test]
-#[ignore]
 fn test_perpetual_operation_without_admin() {
-    let env = Env::default();
-    env.mock_all_auths();
+    let env = lifetime_env();
 
     let contract_id = env.register(StealthRegistryContract, ());
     let client = StealthRegistryContractClient::new(&env, &contract_id);
 
-    // Simulate years of operation
-    for year in 0..10 {
-        env.ledger()
-            .set_sequence_number(env.ledger().sequence() + 6_307_200); // ~1 year at 5s per ledger
+    let start = env.ledger().sequence();
+    let mut registrations = Vec::new();
 
+    // Simulate years of operation, renewing before expiry within each year.
+    for year in 0..10 {
         // Contract still fully operational
         let user = Address::generate(&env);
         let mut meta_bytes = [year as u8; 64];
@@ -296,8 +367,12 @@ fn test_perpetual_operation_without_admin() {
         client.register_keys(&user, &1, &meta);
         let retrieved = client.stealth_meta_address_of(&user, &1);
         assert_eq!(retrieved, meta);
+        registrations.push((user, meta));
+        advance_with_renewals(&env, &client, &registrations, 6_307_200);
     }
 
-    // After 10 years, contract works exactly as designed
-    // No admin needed, no upgrades needed, trust maintained
+    assert_eq!(env.ledger().sequence(), start + 10 * 6_307_200);
+    for (user, expected_meta) in &registrations {
+        assert_eq!(client.stealth_meta_address_of(user, &1), *expected_meta);
+    }
 }
