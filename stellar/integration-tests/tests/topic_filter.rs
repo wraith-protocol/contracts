@@ -115,7 +115,7 @@ fn topic_3_view_tag_filter_across_announcer_splitter_and_batch_sender() {
     announcer.announce(
         &STELLAR_V2_SCHEME_ID,
         &direct_other,
-        &bytes32(&env, 0x12),
+        &bytes32(&env, 0x13),
         &meta(&env, OTHER_TAGS[0]),
     );
     harvest_announces(&env, &mut harvested);
@@ -149,7 +149,7 @@ fn topic_3_view_tag_filter_across_announcer_splitter_and_batch_sender() {
         &2_000,
         &STELLAR_V2_SCHEME_ID,
         &soroban_sdk::vec![&env, split_match.clone(), split_other.clone()],
-        &soroban_sdk::vec![&env, bytes32(&env, 0x21), bytes32(&env, 0x22)],
+        &soroban_sdk::vec![&env, bytes32(&env, 0x23), bytes32(&env, 0x22)],
         &soroban_sdk::vec![&env, meta(&env, MATCH_TAG), meta(&env, OTHER_TAGS[1])],
     );
     harvest_announces(&env, &mut harvested);
@@ -166,7 +166,7 @@ fn topic_3_view_tag_filter_across_announcer_splitter_and_batch_sender() {
         &env,
         Transfer {
             stealth_address: batch_match.clone(),
-            ephemeral_pub_key: bytes(&env, &[0x31u8; 32]),
+            ephemeral_pub_key: bytes(&env, &[0x33u8; 32]),
             amount: 100,
             metadata: meta(&env, MATCH_TAG),
         },

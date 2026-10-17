@@ -21,7 +21,7 @@ Emits a Stellar v2 stealth address announcement event.
 **Parameters:**
 - `scheme_id: u32` — Must be `2` for the v2 Stellar announcer deployment
 - `stealth_address: Address` — The one-time stealth address that received funds
-- `ephemeral_pub_key: BytesN<32>` — The ephemeral public key used to derive the stealth address
+- `ephemeral_pub_key: BytesN<32>` — The ephemeral public key used to derive the stealth address. It must be a canonical, on-curve, non-small-order ed25519 encoding; the all-zero key and invalid encodings are rejected.
 - `metadata: Bytes` — Non-empty metadata whose first byte is the view tag
 
 **Returns:** None
@@ -42,6 +42,7 @@ The contract uses panics for validation (no custom error enum):
 |-----------|--------------|
 | `scheme_id != 2` | Assertion failure (v1 scheme rejected) |
 | Empty `metadata` | `metadata.get(0)` panic (view tag required) |
+| Invalid `ephemeral_pub_key` | `invalid ed25519 ephemeral public key` (all-zero, non-canonical, off-curve, or small-order) |
 
 ## Event Topics
 
@@ -83,5 +84,7 @@ Tests cover:
 - View tag bucket derivation from first metadata byte
 - Rejection of v1 scheme ID
 - Rejection of missing view tag (empty metadata)
+- Rejection of the all-zero key and invalid ed25519 encodings (non-canonical, off-curve, small-order)
+- Acceptance of canonical, on-curve ed25519 keys (RFC 8032 vectors)
 
 Error codes and panic-only coverage status are tracked in the [Stellar error catalog](../ERRORS.md#stealth-announcer).

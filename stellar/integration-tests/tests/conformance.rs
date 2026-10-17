@@ -15,7 +15,7 @@ fn test_conformance_announcer() {
     let client = StealthAnnouncerContractClient::new(&env, &contract_id);
 
     let stealth_address = Address::generate(&env);
-    let ephemeral_pub_key = BytesN::from_array(&env, &[2; 32]);
+    let ephemeral_pub_key = BytesN::from_array(&env, &[3; 32]);
     let mut meta_arr = [0u8; 32];
     meta_arr[0] = 0x00; // view tag
     let metadata = Bytes::from_array(&env, &meta_arr);
@@ -46,6 +46,45 @@ fn test_conformance_announcer() {
     assert_eq!(d_ephemeral_pub_key, ephemeral_pub_key);
     assert_eq!(d_metadata, metadata);
     assert_eq!(d_metadata.get(0).unwrap(), 0x00); // verify view tag
+}
+
+/// Cross-chain conformance fixture for the rejection path.
+///
+/// The canonical announcement fixture above uses a valid key. These cases pin
+/// the inputs the Stellar announcer must reject: the all-zero key and ed25519
+/// encodings that are non-canonical (`y >= p`) or off-curve. A rejected
+/// announcement must not emit an event.
+#[test]
+#[should_panic(expected = "invalid ed25519 ephemeral public key")]
+fn test_conformance_announcer_rejects_zero_ephemeral_pub_key() {
+    announce_with_raw_key(&[0u8; 32]);
+}
+
+#[test]
+#[should_panic(expected = "invalid ed25519 ephemeral public key")]
+fn test_conformance_announcer_rejects_non_canonical_ephemeral_pub_key() {
+    announce_with_raw_key(&[0xffu8; 32]);
+}
+
+#[test]
+#[should_panic(expected = "invalid ed25519 ephemeral public key")]
+fn test_conformance_announcer_rejects_off_curve_ephemeral_pub_key() {
+    announce_with_raw_key(&[0x02u8; 32]);
+}
+
+fn announce_with_raw_key(raw: &[u8; 32]) {
+    let env = Env::default();
+    let contract_id = env.register(StealthAnnouncerContract, ());
+    let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+
+    let mut meta_arr = [0u8; 32];
+    meta_arr[0] = 0x00;
+    client.announce(
+        &2u32,
+        &Address::generate(&env),
+        &BytesN::from_array(&env, raw),
+        &Bytes::from_array(&env, &meta_arr),
+    );
 }
 
 #[test]

@@ -16,6 +16,17 @@ use stealth_splitter::{Beneficiary, StealthSplitterContract, StealthSplitterCont
 use stealth_vault::{StealthVaultContract, StealthVaultContractClient};
 use wraith_names::{WraithNamesContract, WraithNamesContractClient};
 
+/// Fill bytes whose `[fill; 32]` encoding is a valid ed25519 public key, so the
+/// announcer's encoding checks accept the generated harness inputs.
+const VALID_EPK_FILLS: [u8; 32] = [
+    0x01, 0x03, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x10, 0x11, 0x13, 0x16, 0x17, 0x19, 0x1a, 0x1d, 0x20,
+    0x22, 0x23, 0x24, 0x25, 0x28, 0x2a, 0x2c, 0x2e, 0x2f, 0x32, 0x33, 0x35, 0x36, 0x3a, 0x47, 0x49,
+];
+
+fn valid_epk_fill(seed: usize) -> u8 {
+    VALID_EPK_FILLS[seed % VALID_EPK_FILLS.len()]
+}
+
 #[derive(Clone, Debug)]
 pub struct Row {
     pub contract: &'static str,
@@ -52,7 +63,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 client.announce(
                     &STELLAR_V2_SCHEME_ID,
                     &Address::generate(env),
-                    &BytesN::from_array(env, &[7u8; 32]),
+                    &BytesN::from_array(env, &[0x09u8; 32]),
                     &bytes(env, metadata_len, 9),
                 );
             },
@@ -130,7 +141,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 let mut amounts: SorobanVec<i128> = vec![env];
                 for i in 0..batch_size {
                     addresses.push_back(Address::generate(env));
-                    keys.push_back(BytesN::from_array(env, &[i as u8; 32]));
+                    keys.push_back(BytesN::from_array(env, &[valid_epk_fill(i as usize); 32]));
                     metadatas.push_back(bytes(env, 32, i as u8));
                     amounts.push_back(100);
                 }
@@ -304,7 +315,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 let mut metadatas: SorobanVec<Bytes> = vec![env];
                 for i in 0..n {
                     addresses.push_back(Address::generate(env));
-                    keys.push_back(BytesN::from_array(env, &[i as u8; 32]));
+                    keys.push_back(BytesN::from_array(env, &[valid_epk_fill(i as usize); 32]));
                     metadatas.push_back(bytes(env, 32, i as u8));
                 }
                 client.fund_split(
@@ -377,7 +388,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 &token,
                 &VAULT_UNLOCK_LEDGER,
                 &VAULT_REFUND_AFTER,
-                &BytesN::from_array(env, &[13u8; 32]),
+                &BytesN::from_array(env, &[0x11u8; 32]),
             );
             env.ledger()
                 .with_mut(|li| li.sequence_number = VAULT_REFUND_AFTER);
@@ -399,7 +410,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 &token,
                 &VAULT_UNLOCK_LEDGER,
                 &VAULT_REFUND_AFTER,
-                &BytesN::from_array(env, &[14u8; 32]),
+                &BytesN::from_array(env, &[0x13u8; 32]),
             );
             env.ledger().with_mut(|li| {
                 li.sequence_number = VAULT_REFUND_AFTER + stealth_vault::DEFAULT_GRACE_PERIOD
@@ -482,7 +493,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 for i in 0..count {
                     transfers.push_back(Transfer {
                         stealth_address: Address::generate(env),
-                        ephemeral_pub_key: bytes(env, 32, i as u8),
+                        ephemeral_pub_key: bytes(env, 32, valid_epk_fill(i as usize)),
                         amount: 100,
                         metadata: bytes(env, 32, i as u8),
                     });

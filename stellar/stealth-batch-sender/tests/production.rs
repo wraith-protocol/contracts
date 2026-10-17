@@ -15,7 +15,7 @@ use stealth_batch_sender::{
 };
 
 fn dummy_pub_key(env: &Env) -> Bytes {
-    Bytes::from_slice(env, &[0x02u8; 32])
+    Bytes::from_slice(env, &[0x03u8; 32])
 }
 
 fn dummy_metadata(env: &Env) -> Bytes {

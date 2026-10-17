@@ -133,7 +133,7 @@ fn announcer_multiple_schemes_through_chaos() {
         let contract_id = env.register(StealthAnnouncerContract, ());
         let client = StealthAnnouncerContractClient::new(&env, &contract_id);
         let addr = Address::generate(&env);
-        let epk = bytes32(&env, &[0xab; 32]);
+        let epk = bytes32(&env, &[0xaa; 32]);
         let meta = bytes(&env, &[0x01]);
         client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
         client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &bytes(&env, &[0x02]));
@@ -244,7 +244,7 @@ fn sender_batch_send_through_chaos() {
         let stealth1 = Address::generate(&env);
         let stealth2 = Address::generate(&env);
         let epk1 = bytes32(&env, &[1u8; 32]);
-        let epk2 = bytes32(&env, &[2u8; 32]);
+        let epk2 = bytes32(&env, &[3u8; 32]);
         let meta1 = bytes(&env, &[10u8]);
         let meta2 = bytes(&env, &[20u8]);
         let addresses = soroban_sdk::vec![&env, stealth1.clone(), stealth2.clone()];
@@ -416,7 +416,7 @@ fn sender_announcer_lifecycle_through_chaos() {
         client.init(&announcer_id, &None, &None, &0, &admin);
         let (token, sender_addr) = funded_token(&env);
         let stealth = Address::generate(&env);
-        let epk = bytes32(&env, &[0xff; 32]);
+        let epk = bytes32(&env, &[0xfe; 32]);
         let meta = bytes(&env, &[0x07]);
         client.send(
             &sender_addr,
@@ -647,7 +647,7 @@ fn splitter_create_and_fund_through_chaos() {
         let epks = soroban_sdk::vec![
             &env,
             bytes32(&env, &[0x01u8; 32]),
-            bytes32(&env, &[0x02u8; 32])
+            bytes32(&env, &[0x03u8; 32])
         ];
         let metadatas = soroban_sdk::vec![&env, bytes(&env, &[0x01]), bytes(&env, &[0x02])];
 
@@ -728,7 +728,7 @@ fn batch_sender_batch_send_through_chaos() {
         });
         transfers.push_back(Transfer {
             stealth_address: stealth2.clone(),
-            ephemeral_pub_key: bytes(&env, &[0x02u8; 32]),
+            ephemeral_pub_key: bytes(&env, &[0x03u8; 32]),
             amount: 200,
             metadata: bytes(&env, &[0x02]),
         });

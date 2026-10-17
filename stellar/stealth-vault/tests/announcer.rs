@@ -91,7 +91,7 @@ fn deposit_announces_through_the_real_announcer() {
 #[test]
 fn deposit_and_claim_round_trip_against_the_real_announcer() {
     let f = fixture();
-    let epk = BytesN::from_array(&f.env, &[2u8; 32]);
+    let epk = BytesN::from_array(&f.env, &[3u8; 32]);
     let token_client = token::Client::new(&f.env, &f.token_id);
 
     let deposit_id = f.client.deposit(

@@ -14,6 +14,17 @@ use stealth_sender::{StealthSenderContract, StealthSenderContractClient};
 
 pub const CROSSOVER_SIZES: [u32; 6] = [1, 2, 5, 10, 15, 20];
 
+/// Fill bytes whose `[fill; 32]` encoding is a valid ed25519 public key, so the
+/// announcer's encoding checks accept the generated crossover inputs.
+const VALID_EPK_FILLS: [u8; 32] = [
+    0x01, 0x03, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x10, 0x11, 0x13, 0x16, 0x17, 0x19, 0x1a, 0x1d, 0x20,
+    0x22, 0x23, 0x24, 0x25, 0x28, 0x2a, 0x2c, 0x2e, 0x2f, 0x32, 0x33, 0x35, 0x36, 0x3a, 0x47, 0x49,
+];
+
+fn valid_epk_fill(seed: usize) -> u8 {
+    VALID_EPK_FILLS[seed % VALID_EPK_FILLS.len()]
+}
+
 #[derive(Clone, Debug)]
 pub struct CrossoverRow {
     pub n: u32,
@@ -86,7 +97,7 @@ fn measure_individual(n: u32) -> Measured {
             &100,
             &2,
             &Address::generate(&env),
-            &BytesN::from_array(&env, &[(i as u8).wrapping_add(1); 32]),
+            &BytesN::from_array(&env, &[valid_epk_fill(i as usize); 32]),
             &bytes(&env, 32, (i as u8).wrapping_add(1)),
         );
         total_wall_ns += start.elapsed().as_nanos();
@@ -116,7 +127,7 @@ fn measure_batch(n: u32) -> Measured {
     for i in 0..n {
         transfers.push_back(Transfer {
             stealth_address: Address::generate(&env),
-            ephemeral_pub_key: bytes(&env, 32, 0x02u8.wrapping_add(i as u8)),
+            ephemeral_pub_key: bytes(&env, 32, valid_epk_fill(i as usize)),
             amount: 100,
             metadata: bytes(&env, 1, (i as u8).wrapping_add(1)),
         });

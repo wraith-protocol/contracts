@@ -102,12 +102,11 @@ fn test_frozen_contract_fully_functional() {
     client.announce(&STELLAR_V2_SCHEME_ID, &addr1, &epk1, &meta1);
 
     // Test multiple announcements
-    for i in 0..10 {
+    const VALID_EPK_FILLS: [u8; 10] = [0x01, 0x03, 0x06, 0x09, 0x0a, 0x0b, 0x0c, 0x10, 0x11, 0x13];
+    for (i, fill) in VALID_EPK_FILLS.iter().enumerate() {
         let addr = Address::generate(&env);
-        let mut epk_bytes = [2u8; 32];
-        epk_bytes[0] = i;
-        let epk = BytesN::from_array(&env, &epk_bytes);
-        let meta = Bytes::from_slice(&env, &[i, 2u8]);
+        let epk = BytesN::from_array(&env, &[*fill; 32]);
+        let meta = Bytes::from_slice(&env, &[i as u8, 2u8]);
 
         client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
     }
@@ -147,7 +146,7 @@ fn test_immutability_documented() {
     // Verify the contract works exactly as designed
     let client = StealthAnnouncerContractClient::new(&env, &contract_id);
     let addr = Address::generate(&env);
-    let epk = BytesN::from_array(&env, &[255u8; 32]);
+    let epk = BytesN::from_array(&env, &[254u8; 32]);
     let meta = Bytes::from_slice(&env, &[128u8, 255u8]);
 
     client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);

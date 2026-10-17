@@ -1,5 +1,7 @@
 #![no_std]
 
+mod ed25519;
+
 use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env};
 
 /// Stellar v2 deployment scheme id.
@@ -69,6 +71,10 @@ impl StealthAnnouncerContract {
         metadata: Bytes,
     ) {
         assert_eq!(scheme_id, STELLAR_V2_SCHEME_ID);
+        assert!(
+            ed25519::is_valid_ed25519_public_key(&ephemeral_pub_key.to_array()),
+            "invalid ed25519 ephemeral public key"
+        );
 
         let view_tag_bucket = view_tag_bucket(&metadata);
         let metadata_kind = METADATA_KIND_VIEW_TAG;
