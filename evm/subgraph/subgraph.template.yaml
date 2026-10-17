@@ -1,3 +1,12 @@
+# Template for subgraph.yaml. It has no network, contract addresses or start
+# blocks, so it cannot be deployed as is. scripts/deployment-manifest fills them
+# in from deployments/evm/<network>.json:
+#
+#   npm run manifest -- --network <network>
+#
+# and refuses if a contract or start block is not recorded. codegen, build and
+# test read this file directly. See README.md.
+
 specVersion: 1.0.0
 description: Wraith Protocol stealth address indexer
 repository: https://github.com/wraith-protocol/contracts
@@ -7,11 +16,8 @@ schema:
 dataSources:
   - kind: ethereum
     name: ERC5564Announcer
-    network: horizen-testnet
     source:
-      address: '0x8AE65c05E7eb48B9bA652781Bc0a3DBA09A484F3'
       abi: ERC5564Announcer
-      startBlock: 14202900
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -28,11 +34,8 @@ dataSources:
 
   - kind: ethereum
     name: ERC6538Registry
-    network: horizen-testnet
     source:
-      address: '0x953E6cEdcdfAe321796e7637d33653F6Ce05c527'
       abi: ERC6538Registry
-      startBlock: 14202905
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -51,12 +54,8 @@ dataSources:
 
   - kind: ethereum
     name: WraithNames
-    network: horizen-testnet
     source:
-      # TODO: fill in after deployment — matches scripts/deploy.ts output.
-      address: '0x000000000000000000000000000000000000dead'
       abi: WraithNames
-      startBlock: 14202900
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -75,12 +74,8 @@ dataSources:
 
   - kind: ethereum
     name: WraithSender
-    network: horizen-testnet
     source:
-      # TODO: fill in after deployment — matches scripts/deploy.ts output.
-      address: '0x000000000000000000000000000000000000dead'
       abi: WraithSender
-      startBlock: 14202900
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7
@@ -103,12 +98,8 @@ dataSources:
 
   - kind: ethereum
     name: WraithWithdrawer
-    network: horizen-testnet
     source:
-      # TODO: fill in after deployment — matches scripts/deploy.ts output.
-      address: '0x000000000000000000000000000000000000dead'
       abi: WraithWithdrawer
-      startBlock: 14202900
     mapping:
       kind: ethereum/events
       apiVersion: 0.0.7

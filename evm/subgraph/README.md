@@ -1,11 +1,15 @@
 # Subgraph Deployments
 
 Each subdirectory contains the Goldsky instant subgraph config for one EVM network.
+The `graph-cli` manifest is generated per network from `subgraph.template.yaml`; see
+[graph-cli manifest](#graph-cli-manifest).
 
 ## Structure
 
 ```
 subgraph/
+  subgraph.template.yaml ← graph-cli manifest without network, addresses or start blocks
+  subgraph.yaml          ← generated from the template for one network (git-ignored)
   horizen-testnet/       ← Horizen Testnet
     instant-config.json
     abis/
@@ -66,6 +70,9 @@ cd evm/subgraph/<network>
 goldsky subgraph deploy wraith-protocol-<network>/1.0.0 --from-abi instant-config.json
 ```
 
+To deploy with `graph deploy` instead, generate the manifest first (see
+[graph-cli manifest](#graph-cli-manifest)).
+
 ### 4. Adding a New Network
 
 To add support for a new EVM network:
@@ -100,6 +107,32 @@ To add support for a new EVM network:
 6. Deploy contracts using the new script
 7. Validate and deploy the subgraph
 
+## graph-cli manifest
+
+`subgraph.template.yaml` is the checked-in `graph-cli` manifest. It has no network,
+contract addresses or start blocks. `npm run manifest` fills them in from
+`deployments/evm/<network>.json` and writes `subgraph.yaml`, which is git-ignored:
+
+```bash
+(cd scripts/deployment-manifest && npm ci)   # once, from the repository root; the generator lives here
+cd evm/subgraph
+npm ci
+npm run manifest -- --network <network>
+npm run codegen
+npm run deploy -- <subgraph-name> --node <graph-node-url>   # any graph deploy arguments
+```
+
+`npm run manifest` fails and writes nothing if a contract the template indexes is
+not in the record, has no start block (or start block 0), or has the placeholder
+address `0x…dead`. It lists every such contract. `npm run deploy` and
+`npm run deploy-local` first run `npm run manifest -- --check`, which fails unless
+`subgraph.yaml` exists and is exactly what the generator writes now for the network
+it names, so these scripts do not deploy a stale or hand-edited manifest. A bare
+`graph deploy` skips that check; use the npm scripts.
+
+`codegen`, `build` and `test` read the template directly (`matchstick.yaml` points
+`graph test` at it), so they work without a deployment.
+
 ## Deployed Subgraphs
 
 | Network         | Subgraph URL                                                                                                              |
@@ -114,3 +147,6 @@ To add support for a new EVM network:
 - **Not yet deployed**: WraithNames, WraithSender, WraithWithdrawer
 
 The subgraph currently only indexes the deployed contracts. To add support for WraithNames, WraithSender, and WraithWithdrawer, deploy these contracts to Horizen Testnet and update the subgraph configuration following the redeployment process above.
+
+Until they are recorded in `deployments/evm/horizen-testnet.json`,
+`npm run manifest -- --network horizen-testnet` fails and names the three of them.

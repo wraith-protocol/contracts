@@ -78,20 +78,22 @@ slither . --config-file slither.config.json --fail-medium
 ## Subgraph
 
 `subgraph/` indexes all five contracts: event handlers for Announcer, Registry,
-and Names, plus call handlers for Sender and Withdrawer. The manifest targets
-Horizen Testnet; fill in the three `0x…dead` placeholder addresses (Names,
-Sender, Withdrawer) from `scripts/deploy.ts` output before deploying.
+and Names, plus call handlers for Sender and Withdrawer. The checked-in
+`subgraph.template.yaml` has no network, addresses or start blocks;
+`npm run manifest` generates `subgraph.yaml` from `deployments/evm/<network>.json`
+and refuses if a contract or start block is not recorded (see `subgraph/README.md`).
 
 ```bash
 cd subgraph
 npm ci
-npm run codegen   # graph codegen
-npm run build     # graph build
+npm run codegen   # graph codegen, from the template
+npm run build     # graph build, from the template
 ```
 
 Deploy to a local graph-node:
 
 ```bash
+npm run manifest -- --network <network>
 npm run create-local
 npm run deploy-local
 ```
@@ -103,8 +105,10 @@ npx hardhat run scripts/deploy.ts --network <network>
 ```
 
 The script deploys Announcer, Registry, Sender (pointing at the Announcer),
-Names, and Withdrawer, logging each address. Point the subgraph at the deployed
-addresses and redeploy.
+Names, and Withdrawer, logging each address. On any non-local network it records
+them in `deployments/evm/<network>.json`. Regenerate the subgraph manifest from
+that record (`npm run manifest -- --network <network>` in `subgraph/`) and
+redeploy.
 
 ## CI
 

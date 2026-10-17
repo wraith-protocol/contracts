@@ -100,6 +100,34 @@ export interface LoadedRecord {
   deployment: Deployment;
 }
 
+/**
+ * Parse one record stored under deployments/<chain>/ and list everything wrong
+ * with it. `deployment` is returned whenever the file holds a JSON object, even
+ * if `errors` is not empty.
+ */
+export function readRecord(
+  chain: Chain,
+  file: string,
+): { deployment?: Deployment; errors: string[] } {
+  const name = path.basename(file);
+  let deployment: Deployment;
+  try {
+    deployment = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    return { errors: [`invalid JSON (${(err as Error).message})`] };
+  }
+  if (typeof deployment !== 'object' || deployment === null || Array.isArray(deployment)) {
+    return { errors: ['not a JSON object'] };
+  }
+  const errors = validateDeployment(deployment);
+  if (deployment.chain !== chain)
+    errors.push(`chain "${deployment.chain}" but stored under ${chain}/`);
+  if (`${deployment.network}.json` !== name) {
+    errors.push(`network "${deployment.network}" does not match file name ${name}`);
+  }
+  return { deployment, errors };
+}
+
 /** Read deployments/<chain>/<network>.json, failing on anything malformed or misplaced. */
 export function loadRecords(dir = DEPLOYMENTS_DIR): { records: LoadedRecord[]; errors: string[] } {
   const records: LoadedRecord[] = [];
@@ -110,21 +138,9 @@ export function loadRecords(dir = DEPLOYMENTS_DIR): { records: LoadedRecord[]; e
     for (const name of fs.readdirSync(chainDir).sort()) {
       if (!name.endsWith('.json')) continue;
       const file = path.relative(REPO_ROOT, path.join(chainDir, name));
-      let deployment: Deployment;
-      try {
-        deployment = JSON.parse(fs.readFileSync(path.join(chainDir, name), 'utf8'));
-      } catch (err) {
-        errors.push(`${file}: invalid JSON (${(err as Error).message})`);
-        continue;
-      }
-      const problems = validateDeployment(deployment);
-      if (deployment.chain !== chain)
-        problems.push(`chain "${deployment.chain}" but stored under ${chain}/`);
-      if (`${deployment.network}.json` !== name) {
-        problems.push(`network "${deployment.network}" does not match file name ${name}`);
-      }
+      const { deployment, errors: problems } = readRecord(chain, path.join(chainDir, name));
       if (problems.length) errors.push(...problems.map((p) => `${file}: ${p}`));
-      else records.push({ file, deployment });
+      else records.push({ file, deployment: deployment! });
     }
   }
   return { records, errors };

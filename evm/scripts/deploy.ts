@@ -37,6 +37,7 @@ async function main() {
   // runtime bytecode, then rebuilds deployments/manifest.json and the subgraph
   // instant config. See deployments/README.md.
   const network = hre.network.name;
+  const slug = network.replace(/_/g, '-');
   if (network === 'hardhat' || network === 'localhost') {
     console.log('\nLocal network: not recording to deployments/.');
   } else {
@@ -51,7 +52,7 @@ async function main() {
         'record',
         'evm',
         '--network',
-        network.replace(/_/g, '-'),
+        slug,
         '--rpc',
         hre.network.config.url,
         '--recorded-by',
@@ -64,7 +65,9 @@ async function main() {
       ],
       { cwd: path.join(__dirname, '../../scripts/deployment-manifest'), stdio: 'inherit' },
     );
-    console.log('\nUpdate evm/subgraph/subgraph.yaml to match, then run the manifest check.');
+    console.log(
+      `\nGenerate the subgraph manifest from the record (from evm/): cd subgraph && npm run manifest -- --network ${slug}`,
+    );
   }
 
   console.log('\nDeployment summary:');

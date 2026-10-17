@@ -1,10 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import { parse as parseYaml } from 'yaml';
 import {
   CHAIN_LABEL,
-  EVM_PLACEHOLDER_ADDRESS,
   EXPECTED_CONTRACTS,
   HEIGHT_LABEL,
   ID_LABEL,
@@ -13,6 +11,7 @@ import {
 import { canonicalAbiSha256 } from './hash.js';
 import { CHAINS, findDeployment, serialize, type Deployment, type Manifest } from './manifest.js';
 import { repoPath } from './paths.js';
+import { SUBGRAPH_TEMPLATE, templateErrors } from './subgraph.js';
 
 /**
  * A checked-in file that repeats deployment data. `check` reports every
@@ -33,8 +32,6 @@ function writeIfChanged(rel: string, content: string): boolean {
   return true;
 }
 
-const sameAddress = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-
 function listDirs(rel: string): string[] {
   if (!exists(rel)) return [];
   return fs
@@ -46,46 +43,13 @@ function listDirs(rel: string): string[] {
 
 // ─── EVM ─────────────────────────────────────────────────────────────────────
 
-const SUBGRAPH_YAML = 'evm/subgraph/subgraph.yaml';
-
-const subgraphManifest: Consumer = {
-  name: SUBGRAPH_YAML,
-  check(manifest) {
-    if (!exists(SUBGRAPH_YAML)) return [];
-    const doc = parseYaml(read(SUBGRAPH_YAML)) as {
-      dataSources?: Array<{
-        name: string;
-        network: string;
-        source: { address: string; abi: string; startBlock: number };
-      }>;
-    };
-    const errors: string[] = [];
-    for (const ds of doc.dataSources ?? []) {
-      const where = `${SUBGRAPH_YAML} dataSource ${ds.name}`;
-      const deployment = findDeployment(manifest, 'evm', ds.network);
-      if (!deployment) {
-        errors.push(`${where}: network ${ds.network} has no deployments/evm/${ds.network}.json`);
-        continue;
-      }
-      const contract = deployment.contracts.find((c) => c.name === ds.source.abi);
-      if (!contract) {
-        if (!sameAddress(ds.source.address, EVM_PLACEHOLDER_ADDRESS)) {
-          errors.push(
-            `${where}: ${ds.source.abi} is not in the manifest but has address ${ds.source.address}`,
-          );
-        }
-        continue;
-      }
-      if (!sameAddress(ds.source.address, contract.id)) {
-        errors.push(`${where}: address ${ds.source.address}, manifest has ${contract.id}`);
-      }
-      if (ds.source.startBlock !== contract.deployment.height) {
-        errors.push(
-          `${where}: startBlock ${ds.source.startBlock}, manifest height is ${contract.deployment.height}`,
-        );
-      }
-    }
-    return errors;
+// The deployable evm/subgraph/subgraph.yaml is generated per network by
+// `subgraph --network` and not checked in; only its template is.
+const subgraphTemplate: Consumer = {
+  name: SUBGRAPH_TEMPLATE,
+  check() {
+    if (!exists(SUBGRAPH_TEMPLATE)) return [`${SUBGRAPH_TEMPLATE}: missing`];
+    return templateErrors(read(SUBGRAPH_TEMPLATE)).map((e) => `${SUBGRAPH_TEMPLATE}: ${e}`);
   },
 };
 
@@ -424,7 +388,7 @@ const readme: Consumer = {
 };
 
 export const CONSUMERS: Consumer[] = [
-  subgraphManifest,
+  subgraphTemplate,
   instantConfigs,
   evmAbis,
   hardhatNetworks,

@@ -14,7 +14,7 @@ import {
   type Contract,
   type Deployment,
 } from './manifest.js';
-import { MANIFEST_PATH, REPO_ROOT, recordPath } from './paths.js';
+import { MANIFEST_PATH, REPO_ROOT, recordPath, repoPath } from './paths.js';
 import { ckbNetworkId, recordCkbScript } from './record/ckb.js';
 import { evmNetworkId, recordEvmContract } from './record/evm.js';
 import { recordSolanaProgram, solanaNetworkId } from './record/solana.js';
@@ -24,6 +24,12 @@ import {
   stellarNetworkId,
   wasmHashFromInstanceEntry,
 } from './record/stellar.js';
+import {
+  generateSubgraph,
+  generatedNetwork,
+  SUBGRAPH_MANIFEST,
+  SUBGRAPH_TEMPLATE,
+} from './subgraph.js';
 
 const USAGE = `Usage: tsx src/cli.ts <command>
 
@@ -34,6 +40,13 @@ const USAGE = `Usage: tsx src/cli.ts <command>
             consumer disagrees with it. Offline; this is what CI runs.
   verify    Re-read every deployment from its chain and compare IDs, heights and
             artifact hashes. Needs network access.
+  subgraph --network <slug>
+            Write evm/subgraph/subgraph.yaml from evm/subgraph/subgraph.template.yaml
+            and deployments/evm/<slug>.json. Fails, naming each one, if a contract
+            the template indexes or its start block is not recorded.
+  subgraph --check
+            Fail unless evm/subgraph/subgraph.yaml is what --network would write now
+            for the network it names. The evm/subgraph deploy scripts run it first.
   record <evm|stellar|solana|ckb> --network <slug> --rpc <https-url> [targets...]
             Read deployments from the chain and write deployments/<chain>/<network>.json,
             merging with any existing record, then run build.
@@ -107,6 +120,48 @@ function check(): void {
   console.log(
     `✓ manifest valid; ${records.length} deployments; ${CONSUMERS.length} consumers agree`,
   );
+}
+
+function subgraph(argv: string[]): void {
+  const { values } = parseArgs({
+    args: argv,
+    options: { network: { type: 'string' }, check: { type: 'boolean', default: false } },
+  });
+  if (values.check === Boolean(values.network)) {
+    throw new Error('subgraph takes either --network <slug> or --check');
+  }
+  const out = repoPath(SUBGRAPH_MANIFEST);
+
+  if (values.network) {
+    const { manifest, errors } = generateSubgraph(values.network);
+    if (manifest === null) {
+      console.error(`Cannot generate ${SUBGRAPH_MANIFEST} for ${values.network}:`);
+      fail(errors);
+    }
+    fs.writeFileSync(out, manifest);
+    console.log(`✓ ${SUBGRAPH_MANIFEST} for ${values.network}`);
+    return;
+  }
+
+  if (!fs.existsSync(out)) {
+    fail([
+      `${SUBGRAPH_MANIFEST} has not been generated (run \`npm run manifest -- --network <network>\` in evm/subgraph)`,
+    ]);
+  }
+  const current = fs.readFileSync(out, 'utf8');
+  const network = generatedNetwork(current);
+  if (!network) fail([`${SUBGRAPH_MANIFEST} does not name exactly one network; regenerate it`]);
+  const { manifest, errors } = generateSubgraph(network);
+  if (manifest === null) {
+    console.error(`${SUBGRAPH_MANIFEST} can no longer be generated for ${network}:`);
+    fail(errors);
+  }
+  if (manifest !== current) {
+    fail([
+      `${SUBGRAPH_MANIFEST} differs from ${SUBGRAPH_TEMPLATE} and deployments/evm/${network}.json (run \`npm run manifest -- --network ${network}\`)`,
+    ]);
+  }
+  console.log(`✓ ${SUBGRAPH_MANIFEST} is current for ${network}`);
 }
 
 type TargetArgs = Partial<
@@ -315,6 +370,7 @@ async function main(): Promise<void> {
   if (command === 'build') return build();
   if (command === 'check') return check();
   if (command === 'verify') return verify();
+  if (command === 'subgraph') return subgraph(rest);
   if (command === 'record' && ['evm', 'stellar', 'solana', 'ckb'].includes(rest[0])) {
     return record(rest[0] as Chain, rest.slice(1));
   }
