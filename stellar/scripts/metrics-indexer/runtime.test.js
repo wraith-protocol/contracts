@@ -1,8 +1,17 @@
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import { redactUrl, truncate } from './redact.js';
-import { createPoller, deriveHealthState, summarizeError } from './runtime.js';
+import {
+  createCursorStore,
+  createPoller,
+  deriveHealthState,
+  dedupeEvents,
+  summarizeError,
+} from './runtime.js';
 
 const baseStats = {
   polls: 4,
@@ -181,5 +190,98 @@ describe('redaction and truncation', () => {
     assert.ok(summary.startsWith('Error: zzz'));
     assert.ok(summary.length < 400);
     assert.equal(summarizeError(null), 'unknown error');
+  });
+});
+
+describe('cursor persistence', () => {
+  let dir;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'metrics-cursor-'));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('returns the default cursor when no state file exists', async () => {
+    const store = createCursorStore({ filePath: join(dir, 'cursor.json') });
+    const state = await store.load();
+    assert.equal(state.cursor, store.defaultCursor);
+    assert.deepEqual(state.seenIds, []);
+  });
+
+  it('persists the confirmed cursor across restarts', async () => {
+    const filePath = join(dir, 'cursor.json');
+    const first = createCursorStore({ filePath });
+    await first.commit({ cursor: '1234567890-0', seenIds: ['evt-1', 'evt-2'] });
+
+    const second = createCursorStore({ filePath });
+    const state = await second.load();
+    assert.equal(state.cursor, '1234567890-0');
+    assert.deepEqual(state.seenIds, ['evt-1', 'evt-2']);
+  });
+
+  it('rewinds to the last confirmed cursor on reorg', async () => {
+    const filePath = join(dir, 'cursor.json');
+    const store = createCursorStore({ filePath });
+    await store.commit({ cursor: '100-0', seenIds: ['evt-1'] });
+    await store.commit({ cursor: '200-0', seenIds: ['evt-2'] });
+
+    const rewinded = await store.rewind();
+    assert.equal(rewinded.cursor, '100-0');
+    assert.deepEqual(rewinded.seenIds, ['evt-1']);
+
+    const reloaded = await createCursorStore({ filePath }).load();
+    assert.equal(reloaded.cursor, '100-0');
+  });
+
+  it('recovers from corrupted state files without losing the default cursor', async () => {
+    const filePath = join(dir, 'cursor.json');
+    await writeFile(filePath, '{ not json');
+
+    const store = createCursorStore({ filePath });
+    const state = await store.load();
+    assert.equal(state.cursor, store.defaultCursor);
+
+    const raw = await readFile(filePath, 'utf8');
+    assert.doesNotThrow(() => JSON.parse(raw));
+  });
+
+  it('rejects invalid commits', async () => {
+    const store = createCursorStore({ filePath: join(dir, 'cursor.json') });
+    await assert.rejects(() => store.commit({ cursor: '' }));
+  });
+});
+
+describe('dedupeEvents', () => {
+  it('filters events already seen in previous polls', () => {
+    const seen = ['evt-1', 'evt-2'];
+    const events = [
+      { id: 'evt-1', tx: 'a' },
+      { id: 'evt-3', tx: 'b' },
+      { id: 'evt-2', tx: 'c' },
+      { id: 'evt-4', tx: 'd' },
+    ];
+    const result = dedupeEvents(events, seen);
+    assert.deepEqual(result.fresh.map((e) => e.id), ['evt-3', 'evt-4']);
+    assert.deepEqual(result.seenIds, ['evt-1', 'evt-2', 'evt-3', 'evt-4']);
+  });
+
+  it('deduplicates within a single batch', () => {
+    const events = [
+      { id: 'evt-1' },
+      { id: 'evt-1' },
+      { id: 'evt-2' },
+    ];
+    const result = dedupeEvents(events, []);
+    assert.deepEqual(result.fresh.map((e) => e.id), ['evt-1', 'evt-2']);
+  });
+
+  it('bounds the seen cache size', () => {
+    const events = Array.from({ length: 10 }, (_, i) => ({ id: `evt-${i}` }));
+    const result = dedupeEvents(events, [], { maxSeenIds: 3 });
+    assert.equal(result.seenIds.length, 3);
+    assert.deepEqual(result.seenIds, ['evt-7', 'evt-8', 'evt-9']);
   });
 });

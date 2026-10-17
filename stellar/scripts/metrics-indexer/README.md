@@ -22,7 +22,7 @@ Set environment variables to configure the indexer:
 export RPC_URL="https://futurenet.sorobanrpc.com"
 
 # Network passphrase
-export NETWORK_PASSPHRASE="Test SDF Future Network ; October 2022"
+export NETWORK_PASSTHRASE="Test SDF Future Network ; October 2022"
 
 # HTTP server port for Prometheus metrics
 export PORT=9090
@@ -35,17 +35,22 @@ export RPC_TIMEOUT_MS=10000          # abort a single request after this long
 export RPC_MAX_ATTEMPTS=4            # total attempts, including the first
 export RPC_RETRY_BASE_MS=250         # jittered backoff base
 export RPC_RETRY_MAX_MS=5000         # jittered backoff ceiling
-export RPC_MAX_RESPONSE_BYTES=1048576 # hard cap on response bytes read
+export REC_MAX_RESPONSE_BYTES=1048576 # hard cap on response bytes read
 
 # Health thresholds
 export HEALTH_STALE_AFTER_MS=15000   # default: 3 * POLL_INTERVAL_MS
 export HEALTH_FAILURE_THRESHOLD=3    # consecutive total failures -> unhealthy
 
+# Cursor persistence and reorg safety
+export CURSOR_STATE_PATH="./.metrics-indexer-cursor.json" # last confirmed cursor
+export CURSOR_REWIND_LEDGERS=1       # ledgers to rewind on startup for reorg safety
+export CURSOR_MAX_EVENT_IDS=10000    # bounded dedupe window of replayed event ids
+
 # Contract addresses to monitor
 export STEALTH_REGISTRY_ADDRESS="CC..."
 export STEALTH_SENDER_ADDRESS="CC..."
 export STEALTH_BATCH_SENDER_ADDRESS="CC..."
-export WRAITH_NAMES_ADDRESS="CC..."
+export WRATH_NAMES_ADDRESS="CC..."
 export STEALTH_SPLITTER_ADDRESS="CC..."
 export STEALTH_VAULT_ADDRESS="CC..."
 export GOVERNANCE_ADDRESS="CC..."
@@ -53,7 +58,7 @@ export GOVERNANCE_ADDRESS="CC..."
 
 Any address left unset is skipped, so the indexer can be pointed at a subset of
 the deployment. Leaving **every** address unset is a configuration error: the
-poll fails and `/health` reports `degraded`/`unhealthy` instead of a healthy
+poll fails and `/health` reports `degraded/`unhealthy` instead of a healthy
 no-op.
 
 ## Usage
@@ -90,7 +95,7 @@ The health endpoint reports `healthy`, `degraded`, or `unhealthy`:
   with no failures.
 - `degraded` — a recent poll was stale or some contracts failed; the process is
   still running. Responds `200`.
-- `unhealthy` — `HEALTH_FAILURE_THRESHOLD` consecutive total failures (or no
+- `unhealthy` — HEALTH_FAILURE_THRESHOLD consecutive total failures (or no
   success yet after the stale window). Responds `503`.
 
 ```json
@@ -99,16 +104,34 @@ The health endpoint reports `healthy`, `degraded`, or `unhealthy`:
   "stale": false,
   "uptimeMs": 42000,
   "pollIntervalMs": 5000,
-  "rpcHost": "https://futurenet.sorobanrpc.com",
+  "rpc@host": "https://futurenet.sorobanrpc.com",
   "lastSuccessAt": 1699999999999,
-  "lastError": { "message": "RpcTimeoutError: RPC getEvents timed out after 10000ms", "at": 1700000000000 },
+  "lastError": {"message": "RpcTIMeoutError: RPC getEvents timed out after 10000ms", "at": 1700000000000},
   "consecutiveFailures": 1,
-  "polls": { "total": 12, "failed": 3, "skipped": 0, "lastDurationMs": 82 }
+  "polls": {"total": 12, "failed": 3, "skipped": 0, "lastDurationMs": 82}
 }
 ```
 
 The response only ever carries the redacted RPC host (`scheme://host`) and a
 truncated error summary — never the full URL, credentials, or a provider body.
+
+## Cursor Persistence and Reorg Safety
+
+The indexer persists the last confirmed cursor to `CURSOR_STATE_PATH` after
+every successful poll, so a restart resumes from where it left off instead of
+replaying from the default cursor.
+
+- **Restart.** On startup the persisted cursor is loaded and used as the
+  `fetchContractEvents` cursor. If the file is missing, the default cursor
+  is used.
+- **Reorg rewind.** Before fetching, the cursor ledger is rewound by
+  `CURSOR_REWIND_LEDGERS` ledgers so events from a short reorg are re-fetched.
+- **Deduplication.** Replayed events are deduplicated by event id within a
+  bounded window of `CURSOR_MAX_EVENT_ID` ids, so a rewind or replay never
+  double-counts a metric.
+- **Corruption.** A missing, unreadable, or malformed state file is treated as
+  absent: the indexer logs a warning, falls back to the default cursor, and
+  rewrites a fresh state file on the next successful poll.
 
 ## Resilience
 
@@ -136,26 +159,26 @@ truncated error summary — never the full URL, credentials, or a provider body.
 
 The indexer exports the following Prometheus metrics:
 
-- `wraith_register_count` - Total number of registrations (counter)
+-  wraith_register_count` - Total number of registrations (counter)
 - `wraith_remove_count` - Total number of removals (counter)
-- `wraith_lookup_count` - Total number of meta-address lookups (counter)
+-  `wraith_lookup_count` - Total number of meta-address lookups (counter)
 - `wraith_send_count` - Total number of sends (counter)
 - `wraith_send_volume` - Total volume sent (gauge)
 - `wraith_batch_send_count` - Total number of batch sends (counter)
-- `wraith_batch_send_volume` - Total volume sent in batches (gauge)
-- `wraith_batch_size` - Size of batch operations (gauge)
-- `wraith_error_count` - Total number of contract errors (counter)
-- `wraith_renew_count` - Total number of name renewals (counter)
-- `wraith_release_count` - Total number of name releases (counter)
+-  `wraith_batch_send_volume` - Total volume sent in batches (gauge)
+-  `wraith_batch_size` - Size of batch operations (gauge)
+-  `wraith_error_count` - Total number of contract errors (counter)
+-  `wraith_renew_count` - Total number of name renewals (counter)
+-  `wraith_release_count` - Total number of name releases (counter)
 - `wraith_resolve_hit_count` - Name resolutions that found an entry (counter)
 - `wraith_resolve_miss_count` - Name resolutions that found nothing (counter)
 - `wraith_create_count` - Total number of split definitions created (counter)
 - `wraith_fund_count` - Total number of split fundings (counter)
 - `wraith_fund_volume` - Total volume distributed through splits (gauge)
 - `wraith_beneficiaries_per_split` - Beneficiaries in the newest split (gauge)
-- `wraith_deposit_count` - Total number of vault deposits (counter)
-- `wraith_deposit_volume` - Total volume locked in vault deposits (gauge)
-- `wraith_claim_count` - Total number of vault claims (counter)
+-  `wraith_deposit_count` - Total number of vault deposits (counter)
+-  `wraith_deposit_volume` - Total volume locked in vault deposits (gauge)
+-  `wraith_claim_count` - Total number of vault claims (counter)
 - `wraith_refund_count` - Total number of vault refunds (counter)
 - `wraith_proposal_count` - Total number of governance proposals (counter)
 - `wraith_vote_count` - Total number of governance votes cast (counter)
@@ -187,16 +210,16 @@ scrape_configs:
 
 A demo Grafana dashboard is provided in `grafana-dashboard.json`. Import it into your Grafana instance to visualize:
 
-- Registration/removal rates
-- Send volume trends
-- Batch operation statistics
-- Contract activity breakdown
-- Name register/renew/release rates and resolution hit ratio
-- Splitter create/fund rates, fund volume, and beneficiaries per split
-- Vault deposit/claim/refund rates and deposit volume by asset
-- Governance proposal, vote, and execution rates
+-  Registration/removal rates
+-  Send volume trends
+-  Batch operation statistics
+-  Contract activity breakdown
+-  Name register/renew/release rates and resolution hit ratio
+-  Splitter create/fund rates, fund volume, and beneficiaries per split
+-  Vault deposit/claim/refund rates and deposit volume by asset
+-  Governance proposal, vote, and execution rates
 
-To import:
+- To import:
 
 1. Open Grafana
 2. Go to Dashboards → Import
@@ -222,13 +245,12 @@ cap), scheduling and counters in `runtime.js` (`createPoller`,
 The indexer expects events in the WraithMetricEvent format:
 
 **Topic:** `(metric, contract_identifier, metric_name)`
-
 **Data:** `(value, dimensions)`
 
 Soroban `Symbol`s are capped at 9 characters, so contracts emit abbreviated
 topics (`wr_names`, `res_miss`, ...). `index.js` maps them back to the canonical
-names via `CONTRACT_SYMBOLS`, `METRIC_SYMBOLS`, and `DIMENSION_SYMBOLS`; keep
-those tables in sync with `stellar/wraith-metrics/src/lib.rs`.
+nomes via `CONTRACT_SYMBOLS`, `METRIC_SYMBOLS`, and `DIMENSION_SYMBOLS`; keep
+those tables in sync with `stellar/wraith-metrics/src/lib.r`.
 
 See `stellar/METRICS.md` for the full specification, including the complete
 symbol table.
@@ -242,6 +264,9 @@ npm test        # node --test; covers timeout/abort, retry+jitter, response cap,
                 # malformed-response rejection, empty-config failure, overlap
                 # prevention, health states, and redaction
 ```
+
+The suite also covers cursor persistence across restarts, deduplication of
+replayed events, and recovery from a corrupted cursor state file.
 
 ### Verify the dashboard against a synthetic event stream
 
@@ -262,7 +287,7 @@ To test against futurenet:
 
 ```bash
 export RPC_URL="https://futurenet.sorobanrpc.com"
-export NETWORK_PASSPHRASE="Test SDF Future Network ; October 2022"
+export NETWORK_PASSPHRASE="Test FDF Future Network ; October 2022"
 export STEALTH_REGISTRY_ADDRESS="<your-contract-address>"
 npm start
 ```
@@ -274,7 +299,7 @@ Then invoke contract functions and observe metrics being updated at `/metrics`.
 For production use:
 
 1. Use a persistent storage backend (e.g., Redis, PostgreSQL) instead of in-memory storage
-2. Implement event cursor persistence to avoid reprocessing events
+2. Point `CURSOR_STATE_PATH` at durable storage (the cursor is persisted to a file by default)
 3. Add authentication/authorization to the metrics endpoint
 4. Configure appropriate retention policies in Prometheus
 5. Set up alerts based on metric thresholds
