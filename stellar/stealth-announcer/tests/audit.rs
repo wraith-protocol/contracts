@@ -3,8 +3,8 @@ use soroban_sdk::{
     contract, contractimpl, symbol_short, vec, Address, Bytes, BytesN, Env, FromVal, IntoVal, Val,
 };
 use stealth_announcer::{
-    StealthAnnouncerContract, StealthAnnouncerContractClient, METADATA_KIND_VIEW_TAG,
-    STELLAR_V2_SCHEME_ID,
+    AnnouncerError, StealthAnnouncerContract, StealthAnnouncerContractClient,
+    MAX_METADATA_LEN, METADATA_KIND_VIEW_TAG, STELLAR_V2_SCHEME_ID,
 };
 
 fn audit_env() -> Env {
@@ -57,28 +57,74 @@ fn wa_ann_01_v2_payload_uses_stealth_address_not_caller() {
     assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
 }
 
-#[test]
-fn wa_ann_02_oversized_metadata_is_accepted() {
+fn announce_with_metadata_len(metadata_len: u32) -> Env {
     let env = audit_env();
     let contract_id = env.register(StealthAnnouncerContract, ());
     let client = StealthAnnouncerContractClient::new(&env, &contract_id);
 
-    let stealth_address = Address::generate(&env);
-    let ephemeral_pub_key = BytesN::from_array(&env, &[0x19u8; 32]);
-    let metadata = Bytes::from_array(&env, &[7u8; 4096]);
+    let metadata = Bytes::from_slice(&env, &std::vec![7u8; metadata_len as usize]);
 
     client.announce(
         &STELLAR_V2_SCHEME_ID,
-        &stealth_address,
+        &Address::generate(&env),
+        &BytesN::from_array(&env, &[0x19u8; 32]),
+        &metadata,
+    );
+
+    env
+}
+
+#[test]
+fn wa_ann_02_metadata_at_and_below_limit_is_accepted() {
+    for metadata_len in [MAX_METADATA_LEN - 1, MAX_METADATA_LEN] {
+        let env = announce_with_metadata_len(metadata_len);
+        assert_eq!(env.events().all().len(), 1);
+    }
+}
+
+#[test]
+fn wa_ann_02_metadata_above_limit_returns_stable_error() {
+    let env = audit_env();
+    let contract_id = env.register(StealthAnnouncerContract, ());
+    let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+    let metadata = Bytes::from_slice(&env, &std::vec![7u8; (MAX_METADATA_LEN + 1) as usize]);
+
+    let result = client.try_announce(
+        &STELLAR_V2_SCHEME_ID,
+        &Address::generate(&env),
+        &BytesN::from_array(&env, &[0x19u8; 32]),
+        &metadata,
+    );
+
+    assert_eq!(result, Err(Ok(AnnouncerError::MetadataTooLong)));
+    assert!(env.events().all().is_empty());
+}
+
+#[test]
+fn wa_ann_02_metadata_limit_stays_within_measured_resource_budget() {
+    let env = audit_env();
+    env.cost_estimate().budget().reset_unlimited();
+    let contract_id = env.register(StealthAnnouncerContract, ());
+    let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+    let metadata = Bytes::from_slice(&env, &std::vec![7u8; MAX_METADATA_LEN as usize]);
+    let ephemeral_pub_key = BytesN::from_array(&env, &[0x19u8; 32]);
+
+    client.announce(
+        &STELLAR_V2_SCHEME_ID,
+        &Address::generate(&env),
         &ephemeral_pub_key,
         &metadata,
     );
 
-    let events = env.events().all();
-    let event = events.last().unwrap();
-    let actual_value: (Address, BytesN<32>, Bytes) = FromVal::from_val(&env, &event.2);
+    let resources = env.cost_estimate().resources();
 
-    assert_eq!(actual_value, (stealth_address, ephemeral_pub_key, metadata));
+    assert!(resources.instructions <= 16_000, "{} instructions", resources.instructions);
+    assert!(resources.mem_bytes <= 2_000, "{} memory bytes", resources.mem_bytes);
+    assert!(
+        resources.contract_events_size_bytes <= 1_280,
+        "{} event bytes",
+        resources.contract_events_size_bytes
+    );
 }
 
 #[test]
