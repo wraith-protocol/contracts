@@ -50,6 +50,9 @@ const BINDINGS_DIR = path.join(STELLAR_DIR, 'bindings', 'typescript');
 const CONFIG_FILE = path.join(STELLAR_DIR, 'contract-ids.json');
 
 // Contract Crates mapping to their package/class names and compiled WASM filenames
+// Internal-only crates intentionally excluded from bindings:
+//   - wraith-metrics: shared library (rlib), not a deployable contract
+//   - bench, bench-crossover, integration-tests: host-only test/bench crates
 interface ContractMetadata {
   crateName: string;      // Crate directory name, e.g. "stealth-registry"
   wasmName: string;       // Cargo output wasm file, e.g. "stealth_registry.wasm"
@@ -82,6 +85,27 @@ const CONTRACTS: ContractMetadata[] = [
     wasmName: 'wraith_names.wasm',
     envVar: 'WRAITH_NAMES_CONTRACT_ID',
   },
+  {
+    crateName: 'stealth-splitter',
+    wasmName: 'stealth_splitter.wasm',
+    envVar: 'STEALTH_SPLITTER_CONTRACT_ID',
+  },
+  {
+    crateName: 'stealth-vault',
+    wasmName: 'stealth_vault.wasm',
+    envVar: 'STEALTH_VAULT_CONTRACT_ID',
+  },
+  {
+    crateName: 'wraith-asset-policy',
+    wasmName: 'wraith_asset_policy.wasm',
+    envVar: 'WRAITH_ASSET_POLICY_CONTRACT_ID',
+  },
+  // Governance temporarily disabled - needs stellar CLI to generate proper binding
+  // {
+  //   crateName: 'governance',
+  //   wasmName: 'governance.wasm',
+  //   envVar: 'GOVERNANCE_CONTRACT_ID',
+  // },
 ];
 
 // Helper to check if a command exists in the system path
@@ -313,6 +337,11 @@ export * as StealthRegistry from './stealth-registry/src/index';
 export * as StealthSender from './stealth-sender/src/index';
 export * as StealthBatchSender from './stealth-batch-sender/src/index';
 export * as WraithNames from './wraith-names/src/index';
+export * as StealthSplitter from './stealth-splitter/src/index';
+export * as StealthVault from './stealth-vault/src/index';
+export * as WraithAssetPolicy from './wraith-asset-policy/src/index';
+// Governance binding temporarily disabled - needs to be regenerated with stellar CLI
+// export * as Governance from './governance/src/index';
 `;
 
   const indexFilePath = path.join(BINDINGS_DIR, 'index.ts');

@@ -6,7 +6,7 @@
   "scripts": {
     "bindings:stellar": "tsx stellar/scripts/generate-bindings.ts",
     "build:stellar": "pnpm bindings:stellar && cd stellar && cargo build --target wasm32-unknown-unknown --release",
-    "test:stellar-bindings": "vitest run stellar/scripts/stealth-batch-sender-bindings.test.ts stellar/scripts/bindings-portability.test.ts"
+    "test:stellar-bindings": "vitest run stellar/scripts/stealth-batch-sender-bindings.test.ts stellar/scripts/governance-bindings.test.ts"
   },
   "pnpm": {
     "onlyBuiltDependencies": ["esbuild"]

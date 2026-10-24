@@ -8,7 +8,7 @@ echo "Building contracts..."
 cargo build --target wasm32-unknown-unknown --release
 
 echo "Extracting ABI snapshots..."
-for contract in stealth_announcer stealth_registry stealth_sender stealth_batch_sender wraith_names; do
+for contract in stealth_announcer stealth_registry stealth_sender stealth_batch_sender wraith_names stealth_splitter stealth_vault wraith_asset_policy; do
     stellar contract info interface \
         --wasm "target/wasm32-unknown-unknown/release/${contract}.wasm" \
         --output json-formatted > "abi/${contract}.json"
