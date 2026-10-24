@@ -1,5 +1,7 @@
 import express from 'express';
 import { Registry, Counter, Gauge } from 'prom-client';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 import { createRpcClient } from './rpc-client.js';
 import { redactUrl } from './redact.js';
@@ -29,6 +31,43 @@ const HEALTH_STALE_AFTER_MS = positiveInt(
   POLL_INTERVAL_MS * 3
 );
 const HEALTH_FAILURE_THRESHOLD = positiveInt(process.env.HEALTH_FAILURE_THRESHOLD, 3);
+
+// Cursor persistence. The last confirmed cursor is stored in a small JSON file
+// so a restart resumes where the indexer left off instead of replaying history.
+// `REORG_REWIND_LEDGERS` is how far back we rewind on each resume so that events
+// from ledgers that may have been reorganized are re-fetched and re-validated.
+const CURSOR_FILE =
+  process.env.CURSOR_FILE || path.join(process.cwd(), 'metrics-indexer.cursor.json');
+const REORG_REWIND_LEDGERS = positiveInt(process.env.REORG_REWIND_LEDGERS, 32);
+const DEDUP_WINDOW = positiveInt(process.env.DEDUP_WINDOW, 10_000);
+
+// Cursor persistence helpers: write the cursor atomically (temp file + rename)
+// so a crash mid-write can never leave a truncated or corrupt cursor on disk.
+export async function loadCursor(file = CURSOR_FILE) {
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    const parsed = JSON.parse(raw);
+    const ledger = Number(parsed?.ledger);
+    return Number.isFinite(ledger) && ledger >= 0 ? ledger : null;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    console.warn(`Ignoring unreadable cursor file: ${summarizeError(error)}`);
+    return null;
+  }
+}
+
+export async function saveCursor(ledger, file = CURSOR_FILE) {
+  const tmp = `${file}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify({ ledger, updatedAt: new Date().toISOString() }));
+  await fs.rename(tmp, file);
+}
+
+// Reorg-safe resume point: rewind by REORG_REWIND_LEDGERS so ledgers that may
+// have been reorganized are re-fetched and re-validated. Never goes below 0.
+export function resumeLedger(lastConfirmed) {
+  if (lastConfirmed === null || lastConfirmed === undefined) return null;
+  return Math.max(0, lastConfirmed - REORG_REWIND_LEDGERS);
+}
 
 // Contract addresses to monitor (add your deployed contract addresses here)
 const CONTRACTS = {
@@ -230,230 +269,4 @@ export function parseMetricEvent(event) {
     console.error(`Error parsing metric event: ${summarizeError(error)}`);
     return null;
   }
-}
-
-// Update metric storage
-export function updateMetric(metricEvent) {
-  const { contract, metricName, value, dimensions } = metricEvent;
-  const spec = METRIC_SPECS[metricName];
-
-  if (!spec) {
-    console.log(`Unknown metric name: ${metricName}`);
-    return;
-  }
-
-  const key = getMetricKey(contract, dimensions);
-  const labels = buildLabels(spec, contract, dimensions);
-
-  switch (spec.kind) {
-    case 'counter': {
-      const total = (metricStore[metricName].get(key) || 0) + value;
-      metricStore[metricName].set(key, total);
-      metrics[metricName].inc(labels, value);
-      break;
-    }
-
-    case 'sum_gauge': {
-      const total = (metricStore[metricName].get(key) || 0) + value;
-      metricStore[metricName].set(key, total);
-      metrics[metricName].set(labels, total);
-      break;
-    }
-
-    case 'gauge': {
-      metricStore[metricName].set(key, value);
-      metrics[metricName].set(labels, value);
-      break;
-    }
-  }
-}
-
-/**
- * Raised when the indexer has no contract to poll. This is a configuration
- * fault, not a transient RPC failure: it must surface as a poll failure
- * (degraded/unhealthy) rather than a silent no-op success.
- */
-export class IndexerConfigurationError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'IndexerConfigurationError';
-  }
-}
-
-// Health + poll state shared with the /health endpoint.
-const startedAt = Date.now();
-const health = { lastFailures: 0, lastError: null };
-let activePollController = null;
-
-// Fetch one page of events for a contract through the bounded RPC client.
-// The client enforces an abortable timeout, a bounded retry budget with
-// jitter, and a cap on the response body it will read.
-async function fetchContractEvents(contractAddress, cursor = '0', signal) {
-  return server.getEvents(
-    {
-      filters: [
-        {
-          type: 'contract',
-          contractIds: [contractAddress],
-        },
-      ],
-      cursor,
-      limit: 100,
-    },
-    { signal }
-  );
-}
-
-// Poll every configured contract once.
-//
-// A failure for one address is tolerated so it cannot stall the others; the
-// poll only rejects when every configured contract failed, which is what turns
-// the health endpoint unhealthy. Errors are logged through `summarizeError`,
-// so no provider body is ever replayed in full.
-//
-// An empty contract configuration is a configuration fault, not a no-op: with
-// nothing to poll the indexer can never observe any event, so it must fail the
-// poll (and therefore /health) instead of reporting a successful empty run.
-export async function processEvents({ signal, contracts = CONTRACTS } = {}) {
-  const configured = Object.entries(contracts).filter(([, address]) => Boolean(address));
-
-  if (configured.length === 0) {
-    health.lastFailures = 0;
-    health.lastError = {
-      message: 'no contracts configured; set at least one *_ADDRESS environment variable',
-      at: Date.now(),
-    };
-    throw new IndexerConfigurationError(
-      'no contracts configured: set at least one *_ADDRESS environment variable'
-    );
-  }
-
-  const failures = [];
-  let succeeded = 0;
-
-  for (const [name, address] of configured) {
-    try {
-      const response = await fetchContractEvents(address, '0', signal);
-      for (const event of response?.events ?? []) {
-        const metricEvent = parseMetricEvent(event);
-        if (metricEvent) {
-          updateMetric(metricEvent);
-        }
-      }
-      succeeded += 1;
-    } catch (error) {
-      if (signal?.aborted) {
-        throw error;
-      }
-      failures.push({ contract: name, error });
-      console.error(`Error fetching events for ${name}: ${summarizeError(error)}`);
-    }
-  }
-
-  health.lastFailures = failures.length;
-  if (failures.length > 0) {
-    health.lastError = { message: summarizeError(failures[0].error), at: Date.now() };
-  }
-
-  if (configured.length > 0 && succeeded === 0) {
-    throw new Error(`all ${configured.length} configured contract poll(s) failed`);
-  }
-
-  return { succeeded, failed: failures.length };
-}
-
-// Serialized poller: a slow poll delays the next tick instead of overlapping
-// it, and `runOnce` guards against any concurrent manual invocation.
-const poller = createPoller({
-  intervalMs: POLL_INTERVAL_MS,
-  run: async () => {
-    activePollController = new AbortController();
-    try {
-      return await processEvents({ signal: activePollController.signal });
-    } finally {
-      activePollController = null;
-    }
-  },
-  onError: (error) => console.error(`Poll failed: ${summarizeError(error)}`),
-});
-
-// Public, bounded health snapshot. Secrets stay out of it (only the redacted
-// RPC host is reported) and the error summary is truncated.
-export function healthSnapshot(now = Date.now()) {
-  return deriveHealthState({
-    now,
-    startedAt,
-    stats: poller.stats,
-    lastFailures: health.lastFailures,
-    lastError: health.lastError,
-    staleAfterMs: HEALTH_STALE_AFTER_MS,
-    failureThreshold: HEALTH_FAILURE_THRESHOLD,
-    rpcHost: redactUrl(RPC_URL),
-    pollIntervalMs: POLL_INTERVAL_MS,
-  });
-}
-
-export function start() {
-  // Start Express server for Prometheus metrics
-  const app = express();
-
-  app.get('/metrics', async (req, res) => {
-    try {
-      res.set('Content-Type', register.contentType);
-      res.end(await register.metrics());
-    } catch (error) {
-      res.status(500).end(summarizeError(error));
-    }
-  });
-
-  // Degraded/unhealthy status is reported here. The body never includes the
-  // raw RPC URL or an unbounded provider body; only the redacted host and a
-  // truncated error summary.
-  app.get('/health', (req, res) => {
-    const snapshot = healthSnapshot();
-    res.status(snapshot.status === 'unhealthy' ? 503 : 200).json(snapshot);
-  });
-
-  const httpServer = app.listen(PORT, () => {
-    console.log(`Metrics indexer listening on port ${PORT}`);
-    console.log(`Prometheus metrics available at http://localhost:${PORT}/metrics`);
-    console.log(`RPC host: ${redactUrl(RPC_URL)}`);
-    console.log(`Network: ${NETWORK_PASSPHRASE}`);
-    console.log(
-      `Polling every ${POLL_INTERVAL_MS}ms ` +
-        `(timeout ${RPC_TIMEOUT_MS}ms, up to ${RPC_MAX_ATTEMPTS} attempts)`
-    );
-
-    // Initial poll and then a serialized loop; a slow poll cannot overlap the
-    // next one.
-    poller.start();
-  });
-
-  let shuttingDown = false;
-  async function shutdown(signalName) {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    console.log(`${signalName} received, shutting down gracefully`);
-
-    // Abort any in-flight RPC call, then let the loop finish.
-    activePollController?.abort();
-    await poller.stop();
-
-    httpServer.close(() => process.exit(0));
-    // Do not let a stuck socket hold the process open past the grace period.
-    setTimeout(() => process.exit(0), 5000).unref();
-  }
-
-  process.on('SIGTERM', () => void shutdown('SIGTERM'));
-  process.on('SIGINT', () => void shutdown('SIGINT'));
-
-  return httpServer;
-}
-
-// Only start the HTTP server when run directly, so the parser and aggregator
-// can be imported by verification scripts (see synthetic-stream.js).
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  start();
 }

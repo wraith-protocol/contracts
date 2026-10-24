@@ -86,6 +86,7 @@ describe('metrics indexer poll wiring', () => {
     const health = index.healthSnapshot();
     assert.notEqual(health.status, 'healthy');
     assert.ok(health.lastError);
+    assert.equal(health.status, 'degraded');
   });
 
   it('never exposes the raw RPC URL or its secrets in health output', async () => {

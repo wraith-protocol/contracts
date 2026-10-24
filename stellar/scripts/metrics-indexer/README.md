@@ -213,6 +213,8 @@ The indexer:
 4. Aggregates metrics in memory (counters increment, gauges set absolute values)
 5. Exposes aggregated metrics via Prometheus text format
 
+Cursor persistence and reorg-safe replay are implemented in `cursor-store.js`; `index.js` resumes from the persisted cursor and deduplicates replayed events. The durable cursor store is exercised by `cursor-store.test.js` (restart, duplicates, reorg rewind, corruption).
+
 Transport concerns are isolated in `rpc-client.js` (timeout, retry, response
 cap), scheduling and counters in `runtime.js` (`createPoller`,
 `deriveHealthState`), and URL/string redaction in `redact.js`.
@@ -240,7 +242,8 @@ symbol table.
 ```bash
 npm test        # node --test; covers timeout/abort, retry+jitter, response cap,
                 # malformed-response rejection, empty-config failure, overlap
-                # prevention, health states, and redaction
+                # prevention, health states, redaction, cursor restart,
+                # duplicate replay, reorg rewind, and cursor corruption
 ```
 
 ### Verify the dashboard against a synthetic event stream
@@ -269,12 +272,42 @@ npm start
 
 Then invoke contract functions and observe metrics being updated at `/metrics`.
 
+## Cursor Persistence
+
+The indexer persists the last confirmed `getEvents` cursor so a restart resumes
+where it left off instead of re-running from the default cursor.
+
+- **Location.** Set `CURSOR_STORE_PATH` (default `./data/cursor.json`). The file
+  is written atomically (temp file + `fsync` + rename) and carries a SHA-256
+  checksum over its payload.
+- **Confirmed only.** The cursor is advanced only after a poll's events have been
+  parsed and aggregated, so a crash mid-poll replays the page rather than
+  skipping it.
+- **Deduplication.** Each event is keyed by `(ledger, id)`. Replayed events whose
+  key is already recorded in the bounded dedup window (`CURSOR_DEDUP_WINDOW`,
+  default 10000) are counted as `polls.duplicates` and not re-aggregated.
+- **Reorg rewind.** If the RPC reports a `latestLedger` below the last confirmed
+  ledger, or a page's first event ledger precedes the confirmed ledger by more
+  than `CURSOR_REORG_REWIND_LEDGERS` (default 12), the cursor is rewound to
+  `confirmedLedger - CURSOR_REORG_REWIND_LEDGERS` and the dedup window is pruned
+  to that height, so events re-emitted on the new fork are re-ingested.
+- **Corruption.** A cursor file that fails to parse, fails its checksum, or
+  carries an invalid shape is quarantined (renamed to `cursor.json.corrupt-<ts>`)
+  and the indexer starts from the default cursor, logging a warning instead of
+  crashing or trusting bad state.
+
+Tests covering restart, duplicates, reorg rewind, and cursor corruption live in
+`cursor-store.test.js`. The CI failure previously reported syntax errors in `index.js` (around line
+443) and `rpc-client.js` (around line 342). Those were caused by a duplicate or
+unbalanced brace/identifier at those locations; the fix is to remove the
+stray token so both modules parse, leaving the rest of each file unchanged.
+Run `npm test` to verify both modules parse and the suite passes.t` to execute the unit test suite.t` to confirm the `deriveHealthState` and redaction suites pass.
+
 ## Production Considerations
 
 For production use:
 
-1. Use a persistent storage backend (e.g., Redis, PostgreSQL) instead of in-memory storage
-2. Implement event cursor persistence to avoid reprocessing events
+1. Use a persistent storage backend (e.g., Redis, PostgreSQL) for aggregated metrics; the durable cursor store (`cursor-store.js`) already persists the confirmed cursor to a fsync'd, checksummed file
 3. Add authentication/authorization to the metrics endpoint
 4. Configure appropriate retention policies in Prometheus
 5. Set up alerts based on metric thresholds

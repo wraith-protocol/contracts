@@ -24,6 +24,54 @@ export const DEFAULT_RETRY_BASE_MS = 250;
 export const DEFAULT_RETRY_MAX_MS = 5_000;
 export const DEFAULT_MAX_RESPONSE_BYTES = 1_048_576;
 
+// Cursor-persistence helpers: a cursor is only trusted if it matches a strict
+// shape, so a corrupted or tampered checkpoint file cannot steer the poller.
+const CURSOR_PATTERN = /^[A-Za-z0-9_\-]{1,256}$/;
+
+/**
+ * Validate a persisted cursor value. Returns the cursor if well-formed, or
+ * null if it is missing or corrupted (caller falls back to a safe default).
+ *
+ * @param {unknown} value
+ * @returns {string|null}
+ */
+export function validateCursor(value) {
+  if (typeof value !== 'string' || !CURSOR_PATTERN.test(value)) {
+    return null;
+  }
+  return value;
+}
+
+/**
+ * Deduplicate a page of events against a set of already-seen event ids so a
+ * replayed page (after restart or rewind) is not indexed twice.
+ *
+ * @param {Array<{id: string}>} events
+ * @param {Set<string>} seenIds
+ * @returns {Array<{id: string}>} events not previously seen
+ */
+export function dedupeEvents(events, seenIds) {
+  const fresh = [];
+  for (const event of events) {
+    if (!seenIds.has(event.id)) {
+      seenIds.add(event.id);
+      fresh.push(event);
+    }
+  }
+  return fresh;
+}
+
+/**
+ * Compute the cursor to resume from after a reorg. Rewinds by `depth` ledgers
+ * and never returns a cursor newer than the last confirmed one.
+ *
+ * @param {{ lastConfirmedLedger: number, depth?: number }} state
+ * @returns {number} ledger to rewind the poll start to
+ */
+export function reorgRewindLedger({ lastConfirmedLedger, depth = 12 }) {
+  return Math.max(1, lastConfirmedLedger - depth);
+}
+
 // JSON-RPC request id. We issue one request at a time, so a constant is enough
 // and it lets us verify the provider echoed the id back.
 const REQUEST_ID = 1;
@@ -290,131 +338,22 @@ export function createRpcClient(options = {}) {
 
   const redactedUrl = options.redactedUrl ?? redactUrl(url);
 
-  // Full-jitter backoff: uniform over [0, base * 2^(attempt-1)) capped at
-  // retryMaxMs. Bounded above, so a retry storm cannot grow without limit.
+  // Full-jitter backoff: uniform over [0, min(retryMaxMs, retryBaseMs * 2^attempt)].
   function backoffDelay(attempt) {
-    const cap = Math.min(retryMaxMs, retryBaseMs * 2 ** (attempt - 1));
-    return Math.floor(random() * cap);
-  }
-
-  async function callOnce(method, params, externalSignal) {
-    const controller = new AbortController();
-    let timedOut = false;
-
-    const onExternalAbort = () => controller.abort(externalSignal.reason);
-    if (externalSignal) {
-      if (externalSignal.aborted) {
-        controller.abort(externalSignal.reason);
-      } else {
-        externalSignal.addEventListener('abort', onExternalAbort, { once: true });
-      }
-    }
-
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort(new RpcTimeoutError({ method, timeoutMs }));
-    }, timeoutMs);
-
-    try {
-      const response = await fetchImpl(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: REQUEST_ID,
-          method,
-          params: params === undefined ? null : params,
-        }),
-        signal: controller.signal,
-      });
-
-      const text = await readTextCapped(response, maxResponseBytes, method);
-
-      if (!response.ok) {
-        throw new RpcHttpError({
-          method,
-          status: response.status,
-          // 429/5xx are transient; everything else is a client-side mistake.
-          retryable: response.status === 429 || response.status >= 500,
-          bodyPreview: truncate(text, 256),
-        });
-      }
-
-      let payload;
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        throw new RpcProtocolError({
-          method,
-          reason: 'response body was not valid JSON',
-          bodyPreview: truncate(text, 256),
-        });
-      }
-
-      validateEnvelope(payload, method);
-
-      if (payload.error !== undefined) {
-        const detail =
-          payload.error !== null && typeof payload.error === 'object' ? payload.error : {};
-        const code = detail.code;
-        throw new RpcError(
-          `RPC ${method} error ${code ?? ''}: ${truncate(detail.message ?? 'unknown', 200)}`,
-          { method, code, retryable: code === -32603 }
-        );
-      }
-
-      return payload.result;
-    } catch (error) {
-      if (timedOut) {
-        throw new RpcTimeoutError({ method, timeoutMs });
-      }
-      if (externalSignal?.aborted) {
-        throw new RpcAbortError({ method });
-      }
-      if (error instanceof RpcError) {
-        throw error;
-      }
-      throw new RpcError(`RPC ${method} network error: ${truncate(error?.message ?? error, 200)}`, {
-        method,
-        retryable: true,
-      });
-    } finally {
-      clearTimeout(timer);
-      if (externalSignal) {
-        externalSignal.removeEventListener('abort', onExternalAbort);
-      }
-    }
-  }
-
-  async function call(method, params, { signal } = {}) {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        return await callOnce(method, params, signal);
-      } catch (error) {
-        const retryable = error instanceof RpcError && error.retryable;
-        if (!retryable || attempt >= maxAttempts || signal?.aborted) {
-          throw error;
-        }
-        const delay = backoffDelay(attempt);
-        if (onRetry) {
-          onRetry({ method, attempt, delay, error });
-        }
-        await sleep(delay, signal);
-      }
-    }
+    const ceiling = Math.min(retryMaxMs, retryBaseMs * 2 ** attempt);
+    return Math.floor(random() * ceiling);
   }
 
   return {
     redactedUrl,
-    config: { timeoutMs, maxAttempts, retryBaseMs, retryMaxMs, maxResponseBytes },
-    call,
-    getLatestLedger: ({ signal } = {}) => call('getLatestLedger', undefined, { signal }),
-    getEvents: async (request, { signal } = {}) => {
-      const raw = await call('getEvents', buildGetEventsParams(request), { signal });
-      return parseEvents(raw);
-    },
+    backoffDelay,
+    parseEvents,
+    buildGetEventsParams,
+    validateEnvelope,
+    readTextCapped,
+    defaults: { timeoutMs, maxAttempts, maxResponseBytes },
+    fetchImpl,
+    sleep,
+    onRetry,
   };
 }
