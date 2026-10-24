@@ -7,6 +7,26 @@
   - **Reason**: Scales with number of registered names; must survive contract upgrades
   - **TTL**: Extended on each access (resolve, update, release)
   
+- **Subdomains**: `NameEntry.parent` holds the parent's name hash and
+  `NameEntry.era` ties a subdomain to one registration of that parent.
+  - **Subdomain era (Name Hash → u64)**: `DataKey::SubdomainEra` is created at
+    0 when a top-level name gets its first subdomain and incremented every time
+    that name is released. It is never decremented or deleted, so an era value
+    is never reused for the same parent, even across re-registrations in the
+    same ledger.
+  - A subdomain stores the parent's era at registration and is live only while
+    the two match. Releasing a parent therefore retires all of its subdomains
+    without iterating over them: their entries are no longer renewed and
+    expire, and registering the same subdomain name again replaces the dead
+    entry (and its stale reverse lookup).
+  - **Cost**: names that never have a subdomain get no era entry, and top-level
+    entries store `era: None`. The counter is read only by subdomain
+    operations and written only on release, so registering and resolving a
+    top-level name do not touch it.
+  - **TTL**: Extended with the parent whenever a subdomain is resolved or
+    renewed, and on every write. If it is archived, subdomain operations and
+    releasing the parent need it restored first, like any archived entry.
+
 - **Reverse Lookup (Meta-Address Hash → Name Hash)**: Maps stealth meta-address hash to name hash
   - **Reason**: Lookup data that scales with registry size; durable
   - **TTL**: Extended alongside name entry

@@ -92,11 +92,11 @@ Code	Name	Meaning	Introduced in
 wraith-names
 Code	Name	Meaning	Introduced in
 1	NamesError::NameTaken	Name is already registered.	pre-catalog
-2	NamesError::NameTooShort	Name is shorter than the minimum length.	pre-catalog
+2	NamesError::NameTooShort	Name, or one of its dot-separated labels, is shorter than the minimum length.	pre-catalog
 3	NamesError::NameTooLong	Name exceeds the maximum length.	pre-catalog
 4	NamesError::InvalidNameCharacter	Name contains a character outside the allowed set.	pre-catalog
 5	NamesError::InvalidMetaAddress	Stealth meta-address is invalid, usually not 64 bytes.	pre-catalog
-6	NamesError::NameNotFound	Name or reverse lookup entry was not found.	pre-catalog
+6	NamesError::NameNotFound	Name or reverse lookup entry was not found, or the name is a subdomain whose parent was released.	pre-catalog
 7	NamesError::NotOwner	Caller is not authorized as owner or parent owner.	pre-catalog
 8	NamesError::SignatureExpired	On-behalf signature expiry ledger has passed.	pre-catalog
 9	NamesError::SignatureReplay	On-behalf signature was already used.	pre-catalog

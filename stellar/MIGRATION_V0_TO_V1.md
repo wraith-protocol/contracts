@@ -98,16 +98,20 @@ Cutting v1 contracts expands contract state to support persistent rent isolation
       - `stealth_meta_address`: `Bytes` (64 bytes)
       - `owner`: `Address`
       - `parent`: `Option<BytesN<32>>` *(NEW: Hierarchical subdomains, `None` for root names)*
+      - `era`: `Option<u64>` *(NEW: `None` for root names; a subdomain stores its parent's `SubdomainEra` at registration and is live only while it matches)*
     - `DataKey::Reverse(BytesN<32>)` -> `BytesN<32>`
     - `DataKey::Replay(BytesN<32>)` -> `bool` *(NEW: Replay protection for gasless `on-behalf` transactions)*
     - `DataKey::Guardians(BytesN<32>)` -> `GuardianConfig { guardians: Vec<Address>, threshold: u32 }` *(NEW: Multisig social recovery configuration)*
     - `DataKey::Recovery(BytesN<32>)` -> `RecoveryProposal { new_owner: Address, new_meta_address: Bytes, proposed_at: u32, approvals: Vec<Address> }` *(NEW: Active recovery proposal)*
     - `DataKey::Paused` -> `bool` *(NEW: Pausable circuit breaker state)*
     - `DataKey::Admin` -> `Address` *(NEW: Timelock & pause authority)*
+    - `DataKey::SubdomainEra(BytesN<32>)` -> `u64` *(NEW: Per-parent counter, incremented on every release of the parent; never reused)*
 - **Diff Details:**
   | Field / DataKey | v0 Type | v1 Type | Purpose |
   |---|---|---|---|
   | `NameEntry.parent` | N/A | `Option<BytesN<32>>` | Identifies parent label hash for subdomain ownership enforcement (`sub.domain.wraith`) |
+  | `NameEntry.era` | N/A | `Option<u64>` | Ties a subdomain to one registration of its parent, so releasing the parent retires it |
+  | `DataKey::SubdomainEra` | N/A | `u64` | Non-repeating per-parent era, advanced on every release of the parent |
   | `DataKey::Replay` | N/A | `BytesN<32>` | Prevents replay attacks on off-chain signed name registrations |
   | `DataKey::Guardians` | N/A | `GuardianConfig` | Configures M-of-N guardians for social recovery |
   | `DataKey::Recovery` | N/A | `RecoveryProposal` | Tracks pending ownership recovery proposals |
