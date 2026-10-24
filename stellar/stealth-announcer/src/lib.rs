@@ -2,7 +2,7 @@
 
 mod ed25519;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Address, Bytes, BytesN, Env};
 
 /// Stellar v2 deployment scheme id.
 ///
@@ -21,6 +21,18 @@ pub const STELLAR_V2_SCHEME_ID: u32 = 2;
 /// encodings must reserve a new `metadata_kind` value instead of changing this
 /// interpretation.
 pub const METADATA_KIND_VIEW_TAG: u32 = 1;
+
+/// Maximum metadata payload size. The 1 KiB cap measures 1,216 event bytes,
+/// 15,096 instructions, and 1,610 memory bytes in the Soroban resource baseline.
+pub const MAX_METADATA_LEN: u32 = 1024;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum AnnouncerError {
+    /// Metadata exceeds the protocol maximum.
+    MetadataTooLong = 1,
+}
 
 /// Derives the indexed view-tag bucket for v2 announcement topics.
 ///
@@ -62,14 +74,17 @@ impl StealthAnnouncerContract {
     /// * `scheme_id` - Must be `2` for the v2 Stellar announcer deployment.
     /// * `stealth_address` - The one-time stealth address that received funds.
     /// * `ephemeral_pub_key` - The ephemeral public key used to derive the stealth address.
-    /// * `metadata` - Non-empty metadata whose first byte is the view tag.
+    /// * `metadata` - Non-empty metadata whose first byte is the view tag, up to 1,024 bytes.
     pub fn announce(
         env: Env,
         scheme_id: u32,
         stealth_address: Address,
         ephemeral_pub_key: BytesN<32>,
         metadata: Bytes,
-    ) {
+    ) -> Result<(), AnnouncerError> {
+        if metadata.len() > MAX_METADATA_LEN {
+            return Err(AnnouncerError::MetadataTooLong);
+        }
         assert_eq!(scheme_id, STELLAR_V2_SCHEME_ID);
         assert!(
             ed25519::is_valid_ed25519_public_key(&ephemeral_pub_key.to_array()),
@@ -88,6 +103,7 @@ impl StealthAnnouncerContract {
             ),
             (stealth_address, ephemeral_pub_key, metadata),
         );
+        Ok(())
     }
 }
 
