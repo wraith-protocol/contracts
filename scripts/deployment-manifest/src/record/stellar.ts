@@ -10,6 +10,7 @@ const LEDGER_ENTRY_CONTRACT_DATA = 6;
 const SC_ADDRESS_CONTRACT = 1;
 const SCV_LEDGER_KEY_CONTRACT_INSTANCE = 20;
 const DURABILITY_PERSISTENT = 1;
+const CONTRACT_EXECUTABLE_WASM = 0;
 
 const i32be = (n: number) =>
   Uint8Array.of((n >>> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff);
@@ -33,7 +34,7 @@ export function wasmHashFromInstanceEntry(xdrBase64: string): string | null {
   // type(4) ext(4) SCAddress(4+32) key(4) durability(4) SCVal type(4) executable type(4) hash(32)
   if (bytes.length < 92) return null;
   const executableType = (bytes[56] << 24) | (bytes[57] << 16) | (bytes[58] << 8) | bytes[59];
-  if (executableType !== 0) return null;
+  if (executableType !== CONTRACT_EXECUTABLE_WASM) return null;
   return `0x${Buffer.from(bytes.subarray(60, 92)).toString('hex')}`;
 }
 
@@ -68,10 +69,22 @@ export async function recordStellarContract(
   const entry = await stellarInstance(rpc, target.contractId);
   if (!entry) throw new Error(`${target.name}: no instance entry for ${target.contractId}`);
 
+  const onChainWasmHash = wasmHashFromInstanceEntry(entry.xdr);
+  if (!onChainWasmHash) {
+    throw new Error(`${target.name}: instance entry is not a WASM executable`);
+  }
+
+  const localWasmHash = `0x${sha256Hex(fs.readFileSync(target.wasmPath))}`;
+  if (onChainWasmHash.toLowerCase() !== localWasmHash.toLowerCase()) {
+    throw new Error(
+      `${target.name}: on-chain WASM hash ${onChainWasmHash} does not match local artifact ${localWasmHash}`,
+    );
+  }
+
   return {
     name: target.name,
     id: target.contractId,
-    artifactHash: { algorithm: 'sha256', value: sha256Hex(fs.readFileSync(target.wasmPath)) },
+    artifactHash: { algorithm: 'sha256', value: localWasmHash },
     deployment: {
       height: entry.lastModifiedLedgerSeq,
       txHash: null,

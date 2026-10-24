@@ -155,6 +155,24 @@
       ]
     },
     {
+      "chain": "stellar",
+      "network": "stellar-testnet",
+      "networkId": "Test SDF Network ; September 2015",
+      "rpcUrl": "https://soroban-testnet.stellar.org",
+      "recordedBy": "chain-query",
+      "contracts": [],
+      "undeployed": [
+        {
+          "name": "WraithSender",
+          "reason": "Stellar testnet contract ID, WASM hash, deployment ledger, and governance fields have not been recorded in this manifest yet; requires verified SDK/docs source data before entry."
+        }
+      ],
+      "verification": {
+        "status": "pending",
+        "reason": "Manifest verification must compare Stellar IDs, WASM hashes, deployment ledgers, and governance fields against SDK and docs before this record is accepted."
+      }
+    },
+    {
       "chain": "ckb",
       "network": "ckb-testnet",
       "networkId": "0x10639e0895502b5688a6be8cf69460d76541bfa4821629d86d62ba0aae3f9606",

@@ -73,7 +73,10 @@
         {
           "if": { "properties": { "chain": { "const": "stellar" } } },
           "then": {
-            "properties": { "contracts": { "items": { "$ref": "#/$defs/stellarContract" } } }
+            "properties": {
+              "networkId": { "minLength": 1 },
+              "contracts": { "items": { "$ref": "#/$defs/stellarContract" } }
+            }
           }
         },
         {
