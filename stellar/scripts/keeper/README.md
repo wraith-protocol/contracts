@@ -8,11 +8,22 @@ Soroban contract storage entries have a TTL (Time-To-Live). Entries that aren't 
 
 ## How It Works
 
-1. **Enumerate Names**: Queries the Wraith Names contract to find all registered names
-2. **Check TTLs**: Reads the remaining TTL for each name entry
-3. **Identify At-Risk Names**: Filters names with TTL below the threshold
-4. **Extend TTLs**: Calls `extend_name_ttl()` for names needing extension
-5. **Monitor Results**: Logs events and statistics
+1. **Enumerate names.** The contract keeps no on-chain name list, so the keeper rebuilds it from the contract's `register`, `update` and `release` events (Soroban RPC `getEvents`, starting at `--start-ledger`) and/or from an off-chain index file (`--index-file`, a JSON array of names, e.g. exported from `examples/indexer`). Both sources are merged.
+2. **Read TTLs.** For each name it reads the persistent `Name(sha256(name))` ledger entry via `getLedgerEntries` and computes `liveUntilLedgerSeq - latestLedger`.
+3. **Extend.** Names with remaining TTL below `--threshold` get a real `extend_name_ttl(name, extend-to)` transaction (simulated, signed, submitted and polled to completion).
+
+## Fails closed
+
+The keeper exits with status 1 (and prints `keeper failed [stage]: ...`) when:
+
+- no name source is configured, or the RPC no longer retains events back to `--start-ledger` (history would be incomplete);
+- event enumeration or the latest-ledger read fails;
+- any TTL read fails, or a listed name has no live ledger entry (released, expired or archived);
+- any `extend_name_ttl` submission fails.
+
+`--dry-run` performs the same enumeration and TTL reads and fails the same way, but submits nothing.
+
+Public RPC nodes keep only a few days of events. For a long-lived deployment, either run the keeper often enough, point it at a longer-retention RPC, or pass an index file.
 
 ## Permissionless Design
 
@@ -32,7 +43,8 @@ pnpm install
 ```bash
 tsx scripts/keeper/keeper.ts extend \
   --network testnet \
-  --contract CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4
+  --contract CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4 \
+  --start-ledger 1234567
 ```
 
 ### With Custom Thresholds
@@ -41,8 +53,9 @@ tsx scripts/keeper/keeper.ts extend \
 tsx scripts/keeper/keeper.ts extend \
   --network testnet \
   --contract CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4 \
-  --threshold 1000 \
-  --extend-to 500000
+  --start-ledger 1234567 \
+  --threshold 17280 \
+  --extend-to 518400
 ```
 
 ### Dry-Run Mode
@@ -53,6 +66,8 @@ Preview what would be done without submitting transactions:
 tsx scripts/keeper/keeper.ts extend \
   --network testnet \
   --contract CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4 \
+  --start-ledger 1234567 \
+  --index-file names.json \
   --dry-run
 ```
 
@@ -70,12 +85,13 @@ tsx scripts/keeper/keeper.ts cost-estimate --names-count 1000
 |--------|---------|-------------|
 | `--network` | testnet | Stellar network (testnet or mainnet) |
 | `--contract` | - | Wraith Names contract ID (required) |
-| `--threshold` | 1000 | TTL threshold in ledgers (~7 minutes) |
-| `--extend-to` | 500000 | Target TTL in ledgers (~33 days) |
+| `--start-ledger` | - | First ledger to scan events from (deployment ledger) |
+| `--index-file` | - | JSON array of names from an off-chain index |
+| `--threshold` | 17280 | Extend when remaining TTL is below this (ledgers, ~1 day) |
+| `--extend-to` | 518400 | TTL in ledgers from now to extend to (~30 days). Passed to the contract as a relative TTL, so the name ends up live until `current ledger + extend-to` (capped by the network max entry TTL) |
 | `--secret-key` | - | Keeper account secret key |
 | `--dry-run` | false | Show actions without executing |
-| `--rpc-url` | - | Custom Soroban RPC URL |
-| `--horizon-url` | - | Custom Horizon URL |
+| `--rpc-url` | network default | Custom Soroban RPC URL |
 
 ## Environment Variables
 
@@ -105,7 +121,7 @@ Topics:
   - symbol: "extend"
   - name_hash: BytesN<32>
 Data:
-  - extend_to_ledger: u32
+  - extend_to: u32   // TTL in ledgers from the ledger the call ran in, not a ledger sequence
 ```
 
 These events can be monitored to track Keeper activity.
@@ -123,28 +139,12 @@ The Keeper logs:
 Example output:
 
 ```
-🔧 Wraith Names TTL Keeper
-   Network: testnet
-   Contract: CAAAA...ABSC4
-   TTL Threshold: 1000 ledgers
-   Extend To: 500000 ledgers
-   Dry Run: No
-
-📊 Current ledger: 123456
-
-📖 Enumerating registered names...
-   Found 42 registered names
-
-⏱️  Checking TTLs...
-   15/42 names at risk or need extension
-
-🔄 Extending TTLs...
-   - alice
-   - bob
-   - carol
-   ... (12 more)
-
-✅ Done!
+latest ledger 123456
+found 42 registered name(s)
+15/42 below threshold 17280
+extended "alice" by 518400 ledgers, live until ~ledger 641856 (tx 9f1c...)
+...
+done: 42 names, 15 below threshold, 15 extended
 ```
 
 ## Running as a Service
@@ -177,7 +177,7 @@ User=keeper
 WorkingDirectory=/opt/keeper
 Environment="WRAITH_KEEPER_SECRET=SBXXXXXXXX..."
 Environment="WRAITH_NAMES_CONTRACT_ID=CAAAAAAA..."
-ExecStart=/usr/bin/node /opt/keeper/keeper.ts extend --network testnet
+ExecStart=/usr/bin/node /opt/keeper/keeper.ts extend --network testnet --start-ledger <n>
 StandardOutput=journal
 StandardError=journal
 ```
@@ -211,15 +211,14 @@ systemctl status wraith-keeper.timer
 
 ```bash
 # Run every 6 hours
-0 */6 * * * /usr/bin/tsx /opt/keeper/scripts/keeper/keeper.ts extend --network testnet >> /var/log/wraith-keeper.log 2>&1
+0 */6 * * * /usr/bin/tsx /opt/keeper/scripts/keeper/keeper.ts extend --network testnet --start-ledger <n> >> /var/log/wraith-keeper.log 2>&1
 ```
 
 ## Performance Notes
 
-- **Throughput**: Extend ~100 names per transaction batch
+- **Throughput**: one `extend_name_ttl` transaction per name, submitted sequentially
 - **Cost**: ~0.00002 XLM per name (base fee + Soroban resource fees)
 - **Frequency**: Recommend running every 6-24 hours
-- **Latency**: Typically completes in 5-30 seconds for 1000 names
 
 ## Troubleshooting
 
@@ -239,29 +238,27 @@ Verify the contract is deployed and ID is correct:
 soroban contract info --network testnet --id CAAAA...
 ```
 
-### "Names not found"
+### "no live ledger entry for N name(s)"
 
-- Verify names are actually registered in the contract
-- Check that you're querying the correct network
-- Ensure the contract ID is correct
+The name was released, expired or archived. Remove it from the index file, or restore the entry first.
+
+### "RPC event history starts at ledger ..."
+
+The RPC has pruned events older than `--start-ledger`. Use a longer-retention RPC or pass `--index-file`.
 
 ### "extend_name_ttl failed"
 
-- Verify `extend_to_ledger` is in the future
-- Check keeper account has enough XLM for fees
-- Ensure the name exists in the contract
+- Check the keeper account has enough XLM for fees
+- Check the contract is not paused
 
 ## Testing
 
-Run the keeper tests:
-
 ```bash
-# Unit tests (requires vitest)
+cd stellar
 pnpm test scripts/keeper
-
-# Integration test with local contract
-cargo test --workspace --manifest-path stellar/Cargo.toml
 ```
+
+The tests use an in-memory fake RPC (no network), plus CLI runs that check the nonzero exit codes. The real Soroban RPC client (`keeper-rpc.ts`) is exercised only by hand against testnet.
 
 ## Cost Model
 

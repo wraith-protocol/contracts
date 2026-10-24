@@ -490,7 +490,7 @@ It covers:
 | 16 | ThresholdNotMet | Guardian approvals < threshold |
 | 17 | TooManyGuardians | >max guardians |
 | 18 | InvalidThreshold | Guardian threshold invalid |
-| 19 | InvalidExtendLedger | `extend_to ≤ current_ledger` |
+| 19 | InvalidExtendLedger | `extend_to == 0` (TTL in ledgers from now) |
 | 20 | ParentNotFound | Subdomain parent missing |
 | 32 | Paused | Contract paused |
 | 21 | MultisigNotInitialized | `init_multisig` not called |

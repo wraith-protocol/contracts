@@ -33,8 +33,8 @@ fn test_extend_name_ttl_happy_path() {
 
     register_name(&env, &client, &owner, "alice", &meta);
 
-    // Extend to ledger 10000
-    let extend_to = u32::try_from(env.ledger().sequence() + 10000).unwrap();
+    // Extend to 10000 ledgers from now
+    let extend_to = 10000;
     let result = client.try_extend_name_ttl(&name, &extend_to);
     assert_eq!(result, Ok(Ok(())));
 }
@@ -51,7 +51,7 @@ fn test_extend_name_ttl_permissionless() {
     register_name(&env, &client, &owner, "bob", &meta);
 
     // Other party extends the TTL
-    let extend_to = u32::try_from(env.ledger().sequence() + 5000).unwrap();
+    let extend_to = 5000;
     let result = client.try_extend_name_ttl(&name, &extend_to);
     assert_eq!(result, Ok(Ok(())));
 }
@@ -67,7 +67,7 @@ fn test_extend_name_ttl_idempotent() {
     register_name(&env, &client, &owner, "carol", &meta);
 
     // First extend
-    let extend_to = u32::try_from(env.ledger().sequence() + 7000).unwrap();
+    let extend_to = 7000;
     let result1 = client.try_extend_name_ttl(&name, &extend_to);
     assert_eq!(result1, Ok(Ok(())));
 
@@ -82,12 +82,12 @@ fn test_extend_name_ttl_nonexistent_name_rejected() {
     let (env, client) = setup();
     let name = String::from_str(&env, "ghost");
 
-    let extend_to = u32::try_from(env.ledger().sequence() + 5000).unwrap();
+    let extend_to = 5000;
     let result = client.try_extend_name_ttl(&name, &extend_to);
     assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
 }
 
-/// 5. Invalid extend_to_ledger: extending to current ledger or past is rejected.
+/// 5. Invalid extend_to: a zero TTL is rejected.
 #[test]
 fn test_extend_name_ttl_invalid_extend_ledger() {
     let (env, client) = setup();
@@ -97,17 +97,7 @@ fn test_extend_name_ttl_invalid_extend_ledger() {
 
     register_name(&env, &client, &owner, "dave", &meta);
 
-    let current_ledger = env.ledger().sequence();
-
-    // Try to extend to current ledger
-    let result = client.try_extend_name_ttl(&name, &u32::try_from(current_ledger).unwrap());
-    assert_eq!(result, Err(Ok(NamesError::InvalidExtendLedger)));
-
-    // Try to extend to past ledger
-    let result = client.try_extend_name_ttl(
-        &name,
-        &u32::try_from(current_ledger.saturating_sub(1)).unwrap_or(0),
-    );
+    let result = client.try_extend_name_ttl(&name, &0);
     assert_eq!(result, Err(Ok(NamesError::InvalidExtendLedger)));
 }
 
@@ -125,8 +115,8 @@ fn test_extend_name_ttl_multiple_names() {
     register_name(&env, &client, &owner, "frank", &meta);
 
     // Extend both names to different ledgers
-    let extend_to1 = u32::try_from(env.ledger().sequence() + 3000).unwrap();
-    let extend_to2 = u32::try_from(env.ledger().sequence() + 8000).unwrap();
+    let extend_to1 = 3000;
+    let extend_to2 = 8000;
 
     let result1 = client.try_extend_name_ttl(&name1, &extend_to1);
     assert_eq!(result1, Ok(Ok(())));
@@ -150,7 +140,7 @@ fn test_extend_name_ttl_after_update() {
     client.update(&owner, &name, &meta2);
 
     // Extend the updated name
-    let extend_to = u32::try_from(env.ledger().sequence() + 4000).unwrap();
+    let extend_to = 4000;
     let result = client.try_extend_name_ttl(&name, &extend_to);
     assert_eq!(result, Ok(Ok(())));
 
@@ -175,7 +165,7 @@ fn test_extend_name_ttl_after_release_and_reregister() {
     register_name(&env, &client, &owner, "henry", &meta);
 
     // Extend the re-registered name
-    let extend_to = u32::try_from(env.ledger().sequence() + 6000).unwrap();
+    let extend_to = 6000;
     let result = client.try_extend_name_ttl(&name, &extend_to);
     assert_eq!(result, Ok(Ok(())));
 }
@@ -190,11 +180,11 @@ fn test_extend_name_ttl_emits_event() {
 
     register_name(&env, &client, &owner, "ivy", &meta);
 
-    let extend_to = u32::try_from(env.ledger().sequence() + 9000).unwrap();
+    let extend_to = 9000;
     client.extend_name_ttl(&name, &extend_to);
 
     // Check that an event was published (test framework should capture this)
-    // The event should contain the name hash and extend_to_ledger
+    // The event should contain the name hash and extend_to
     let events = env.events().all();
     assert!(!events.is_empty(), "extend_name_ttl should emit an event");
 }

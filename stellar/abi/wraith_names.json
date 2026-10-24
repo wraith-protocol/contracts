@@ -394,7 +394,7 @@
   },
   {
     "function_v0": {
-      "doc": "Renew (extend TTL for) multiple names in a single atomic transaction.\\n\\nAll names must exist. If any name is not found, the entire operation\\nreverts.",
+      "doc": "Renew (extend TTL for) multiple names in a single atomic transaction.\\n\\n`extend_to` is a TTL in ledgers counted from the current ledger, not a\\nledger sequence. Each name ends up live for at least `extend_to` more\\nledgers (capped by the network's max entry TTL).\\n\\nAll names must exist. If any name is not found, the entire operation\\nreverts.",
       "name": "bulk_renew",
       "inputs": [
         {
@@ -408,7 +408,7 @@
         },
         {
           "doc": "",
-          "name": "extend_to_ledger",
+          "name": "extend_to",
           "type_": "u32"
         }
       ],
@@ -1056,7 +1056,7 @@
   },
   {
     "function_v0": {
-      "doc": "Extend TTL for persistent storage entries only.\\nExtend the TTL of a registered name to a future ledger.\\nThis is a permissionless function that anyone can call.\\nIdempotent: calling twice in the same ledger has no additional effect.",
+      "doc": "Extend the TTL of a registered name (its entry, reverse entry and the\\ncontract instance) so it stays live for at least `extend_to` more ledgers.\\n\\n`extend_to` is a TTL in ledgers counted from the current ledger, not a\\nledger sequence, and is capped by the network's max entry TTL. Entries\\nthat already have at least that much TTL left are left untouched.\\nThis is a permissionless function that anyone can call.",
       "name": "extend_name_ttl",
       "inputs": [
         {
@@ -1066,7 +1066,7 @@
         },
         {
           "doc": "",
-          "name": "extend_to_ledger",
+          "name": "extend_to",
           "type_": "u32"
         }
       ],

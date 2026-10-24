@@ -16,6 +16,20 @@ When adding features that deliberately increase instruction or resource usage pa
 3. Re-run `cargo bench -p wraith-stellar-bench --bench gas -- --format json --out results.json`.
 4. Commit the new `stellar/bench/baseline.json` and updated `stellar/PERF.md`.
 
+### Names TTL extension is relative (issue #228)
+
+`wraith-names::extend_name_ttl` and `bulk_renew` take `extend_to` as a TTL in
+ledgers from now. Before, the contract passed the current ledger as the
+`extend_ttl` threshold, so in the bench the contract instance top-up was skipped.
+It is now performed, because the threshold is `extend_to`. `extend_name_ttl::existing` goes from 61,349 to
+63,741 instructions (+3.9%) and from 5,506 to 6,354 memory bytes (+15.4%, about
+850 bytes). Ledger entries, read/write bytes and event bytes are unchanged, and
+no other benched op moves, including `bulk_renew` (which does not extend the
+instance). Dropping the instance top-up brings the op down to 57,407
+instructions and 5,118 bytes, but then the keeper would extend names while the
+contract itself could expire, so the cost is the extension doing the work it
+was meant to do.
+
 ### Received-amount check (issue #227)
 
 `stealth-sender::send`, `stealth-sender::batch_send` and
@@ -101,7 +115,7 @@ ownership checks.
 ## Current Numbers
 
 <!-- BENCH:CURRENT:START -->
-These are the harness results auto-updated from `develop` (measured 2026-10-16, commit `71bdd4edb2ee`).
+These are the harness results auto-updated from `develop` (measured 2026-10-21, commit `198cedc001f1`).
 
 | Contract | Function | Parameters | Instructions | Mem bytes | Read entries | Write entries | Read bytes | Write bytes | Event bytes |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -134,7 +148,7 @@ These are the harness results auto-updated from `develop` (measured 2026-10-16, 
 | wraith-names | bulk_renew | count=5 | 351158 | 25489 | 11 | 0 | 2584 | 0 | 1032 |
 | wraith-names | bulk_renew | count=10 | 718431 | 51559 | 21 | 0 | 5064 | 0 | 1812 |
 | wraith-names | bulk_renew | count=20 | 1511175 | 111799 | 41 | 0 | 10024 | 0 | 3372 |
-| wraith-names | extend_name_ttl | existing | 61349 | 5506 | 4 | 0 | 656 | 0 | 264 |
+| wraith-names | extend_name_ttl | existing | 63741 | 6354 | 4 | 0 | 656 | 0 | 264 |
 | stealth-splitter | create_split | beneficiaries=5 | 121823 | 14396 | 1 | 2 | 180 | 1300 | 544 |
 | stealth-splitter | create_split | beneficiaries=15 | 230548 | 38036 | 1 | 2 | 180 | 2700 | 544 |
 | stealth-splitter | create_split | beneficiaries=25 | 343273 | 77676 | 1 | 2 | 180 | 4100 | 544 |

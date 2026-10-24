@@ -453,20 +453,19 @@ impl WraithNamesContract {
 
     /// Renew (extend TTL for) multiple names in a single atomic transaction.
     ///
+    /// `extend_to` is a TTL in ledgers counted from the current ledger, not a
+    /// ledger sequence. Each name ends up live for at least `extend_to` more
+    /// ledgers (capped by the network's max entry TTL).
+    ///
     /// All names must exist. If any name is not found, the entire operation
     /// reverts.
-    pub fn bulk_renew(
-        env: Env,
-        names: Vec<String>,
-        extend_to_ledger: u32,
-    ) -> Result<(), NamesError> {
+    pub fn bulk_renew(env: Env, names: Vec<String>, extend_to: u32) -> Result<(), NamesError> {
         let count = names.len();
         if count > BULK_LIMIT {
             return Err(NamesError::BulkLimitExceeded);
         }
 
-        let current_ledger = env.ledger().sequence();
-        if extend_to_ledger <= current_ledger {
+        if extend_to == 0 {
             return Err(NamesError::InvalidExtendLedger);
         }
 
@@ -493,13 +492,13 @@ impl WraithNamesContract {
 
             env.storage()
                 .persistent()
-                .extend_ttl(&name_key, current_ledger, extend_to_ledger);
+                .extend_ttl(&name_key, extend_to, extend_to);
             env.storage()
                 .persistent()
-                .extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+                .extend_ttl(&reverse_key, extend_to, extend_to);
 
             env.events()
-                .publish((symbol_short!("extend"), name_hash), extend_to_ledger);
+                .publish((symbol_short!("extend"), name_hash), extend_to);
         }
 
         let mut name_hashes: Vec<BytesN<32>> = Vec::new(&env);
@@ -507,10 +506,8 @@ impl WraithNamesContract {
             let n = names.get(ni).unwrap();
             name_hashes.push_back(Self::hash_name(&env, &n));
         }
-        env.events().publish(
-            (symbol_short!("blk_renew"),),
-            (name_hashes, extend_to_ledger),
-        );
+        env.events()
+            .publish((symbol_short!("blk_renew"),), (name_hashes, extend_to));
 
         // Emit metric event — one renewal per name in the batch.
         emit_metric(
@@ -849,19 +846,16 @@ impl WraithNamesContract {
         Ok(entry.name)
     }
 
-    /// Extend TTL for persistent storage entries only.
-    /// Extend the TTL of a registered name to a future ledger.
+    /// Extend the TTL of a registered name (its entry, reverse entry and the
+    /// contract instance) so it stays live for at least `extend_to` more ledgers.
+    ///
+    /// `extend_to` is a TTL in ledgers counted from the current ledger, not a
+    /// ledger sequence, and is capped by the network's max entry TTL. Entries
+    /// that already have at least that much TTL left are left untouched.
     /// This is a permissionless function that anyone can call.
-    /// Idempotent: calling twice in the same ledger has no additional effect.
-    pub fn extend_name_ttl(
-        env: Env,
-        name: String,
-        extend_to_ledger: u32,
-    ) -> Result<(), NamesError> {
+    pub fn extend_name_ttl(env: Env, name: String, extend_to: u32) -> Result<(), NamesError> {
         Self::require_not_paused(&env)?;
-        // Validate that extend_to_ledger is in the future
-        let current_ledger = env.ledger().sequence();
-        if extend_to_ledger <= current_ledger {
+        if extend_to == 0 {
             return Err(NamesError::InvalidExtendLedger);
         }
 
@@ -882,20 +876,18 @@ impl WraithNamesContract {
         );
         let reverse_key = DataKey::Reverse(meta_hash);
 
-        // Extend TTLs to the specified ledger
+        // Top up to `extend_to` ledgers from now; no-op if already above it.
         env.storage()
             .persistent()
-            .extend_ttl(&name_key, current_ledger, extend_to_ledger);
+            .extend_ttl(&name_key, extend_to, extend_to);
         env.storage()
             .persistent()
-            .extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
-        env.storage()
-            .instance()
-            .extend_ttl(current_ledger, extend_to_ledger);
+            .extend_ttl(&reverse_key, extend_to, extend_to);
+        env.storage().instance().extend_ttl(extend_to, extend_to);
 
         // Emit extend event for observability
         env.events()
-            .publish((symbol_short!("extend"), name_hash), extend_to_ledger);
+            .publish((symbol_short!("extend"), name_hash), extend_to);
 
         // Emit metric event.
         emit_metric(
@@ -1796,7 +1788,7 @@ mod test {
         client.register(&owner, &name2, &Bytes::from_slice(&env, &[2u8; 64]));
 
         let names = soroban_sdk::vec![&env, name1.clone(), name2.clone()];
-        let extend_to = env.ledger().sequence() + 10000;
+        let extend_to = 10000u32;
         let result = client.try_bulk_renew(&names, &extend_to);
         assert_eq!(result, Ok(Ok(())));
     }
@@ -1821,7 +1813,7 @@ mod test {
             String::from_str(&env, "exists"),
             String::from_str(&env, "ghost"),
         ];
-        let extend_to = env.ledger().sequence() + 10000;
+        let extend_to = 10000u32;
         let result = client.try_bulk_renew(&names, &extend_to);
         assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
     }
@@ -1838,7 +1830,7 @@ mod test {
         for i in 0..21 {
             names_vec.push_back(String::from_str(&env, &format!("name{}", i)));
         }
-        let extend_to = env.ledger().sequence() + 10000;
+        let extend_to = 10000u32;
         let result = client.try_bulk_renew(&names_vec, &extend_to);
         assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
     }
@@ -2089,7 +2081,7 @@ mod test {
         client.pause(&admin);
 
         // extend_name_ttl should be rejected
-        let extend_to = env.ledger().sequence() + 1000;
+        let extend_to = 1000u32;
         let result = client.try_extend_name_ttl(&name, &extend_to);
         assert_eq!(result, Err(Ok(NamesError::Paused)));
     }
