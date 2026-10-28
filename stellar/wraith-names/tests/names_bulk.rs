@@ -246,7 +246,7 @@ fn test_bulk_renew_all_succeed() {
             String::from_str(&env, "beta"),
         ],
     );
-    let extend_to = env.ledger().sequence() + 10000;
+    let extend_to = 10000u32;
 
     let result = client.try_bulk_renew(&names, &extend_to);
     assert_eq!(result, Ok(Ok(())));
@@ -277,7 +277,7 @@ fn test_bulk_renew_atomic_revert_on_missing() {
             String::from_str(&env, "ghost"),
         ],
     );
-    let extend_to = env.ledger().sequence() + 10000;
+    let extend_to = 10000u32;
 
     let result = client.try_bulk_renew(&names, &extend_to);
     assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
@@ -292,13 +292,13 @@ fn test_bulk_renew_exceeds_limit() {
     for i in 0..21 {
         names.push_back(String::from_str(&env, &format!("n{}", i)));
     }
-    let extend_to = env.ledger().sequence() + 10000;
+    let extend_to = 10000u32;
 
     let result = client.try_bulk_renew(&names, &extend_to);
     assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
 }
 
-/// 11. bulk_renew with invalid extend_to_ledger (past) is rejected.
+/// 11. bulk_renew with a zero TTL is rejected.
 #[test]
 fn test_bulk_renew_invalid_extend_ledger() {
     let (env, client) = setup();
@@ -311,8 +311,7 @@ fn test_bulk_renew_invalid_extend_ledger() {
     );
 
     let names = Vec::from_array(&env, [String::from_str(&env, "test")]);
-    let current = env.ledger().sequence();
-    let result = client.try_bulk_renew(&names, &current);
+    let result = client.try_bulk_renew(&names, &0);
     assert_eq!(result, Err(Ok(NamesError::InvalidExtendLedger)));
 }
 
@@ -340,7 +339,7 @@ fn test_bulk_renew_emits_per_name_events() {
             String::from_str(&env, "beta"),
         ],
     );
-    let extend_to = env.ledger().sequence() + 10000;
+    let extend_to = 10000u32;
     client.bulk_renew(&names, &extend_to);
 
     let events = env.events().all();

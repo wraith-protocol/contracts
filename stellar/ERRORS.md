@@ -109,7 +109,7 @@ Code	Name	Meaning	Introduced in
 16	NamesError::ThresholdNotMet	Recovery guardian threshold has not been met.	pre-catalog
 17	NamesError::TooManyGuardians	Guardian set exceeds the supported size.	pre-catalog
 18	NamesError::InvalidThreshold	Guardian or multisig threshold is invalid.	pre-catalog
-19	NamesError::InvalidExtendLedger	Requested TTL extension ledger is not in the future.	pre-catalog
+19	NamesError::InvalidExtendLedger	Requested TTL extension (`extend_to`, in ledgers from now) is zero.	pre-catalog
 20	NamesError::ParentNotFound	Subdomain parent name does not exist.	pre-catalog
 21	NamesError::MultisigNotInitialized	Protocol governance multisig has not been initialized.	pre-catalog
 22	NamesError::MultisigAlreadyInitialized	Protocol governance multisig initialization was attempted more than once.	pre-catalog

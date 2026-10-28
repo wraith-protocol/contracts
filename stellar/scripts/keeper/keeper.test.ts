@@ -1,217 +1,298 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import { spawnSync } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import {
+  DecodedEvent,
+  EventPage,
+  KeeperError,
+  KeeperRpc,
+  loadIndexFile,
+  nameHash,
+  runKeeper,
+} from './keeper-core';
 
-/**
- * Keeper Bot Integration Tests
- *
- * These tests verify that the keeper bot correctly:
- * 1. Connects to the Stellar network
- * 2. Enumerates registered names
- * 3. Checks TTLs
- * 4. Extends names that need extension
- * 5. Handles idempotency correctly
- */
+const LATEST = 1_000_000;
 
-describe('Wraith Names TTL Keeper Bot', () => {
-  describe('Configuration', () => {
-    it('should validate network parameter', () => {
-      // Keeper should accept testnet and mainnet
-      expect(['testnet', 'mainnet']).toContain('testnet');
+/** Deterministic in-memory RPC. Entries map name -> liveUntil (absent = no live entry). */
+function fakeRpc(opts: {
+  pages?: EventPage[];
+  liveUntil?: Record<string, number>;
+  oldestLedger?: number;
+  failTtlFor?: string;
+  failExtendFor?: string;
+  failEvents?: boolean;
+  failLatest?: boolean;
+}) {
+  const extendCalls: { name: string; to: number }[] = [];
+  // Mutable so the fake can model the contract: extend_name_ttl(name, to) takes a TTL
+  // relative to the current ledger and tops the entry up to LATEST + to.
+  const ttlByHash = new Map(
+    Object.entries(opts.liveUntil ?? {}).map(([n, v]) => [nameHash(n), v] as const),
+  );
+  const pages = opts.pages ?? [];
+  let pageIdx = 0;
+  const rpc: KeeperRpc = {
+    getLatestLedger: async () => {
+      if (opts.failLatest) throw new Error('rpc down');
+      return LATEST;
+    },
+    getNameEvents: async () => {
+      if (opts.failEvents) throw new Error('getEvents unavailable');
+      const p = pages[pageIdx++] ?? { events: [], oldestLedger: 0, latestLedger: LATEST };
+      return { ...p, oldestLedger: opts.oldestLedger ?? p.oldestLedger };
+    },
+    getNameLiveUntil: async (h) => {
+      if (opts.failTtlFor && nameHash(opts.failTtlFor) === h) throw new Error('getLedgerEntries 503');
+      return ttlByHash.has(h) ? (ttlByHash.get(h) as number) : null;
+    },
+    extendName: async (name, to) => {
+      if (opts.failExtendFor === name) throw new Error('tx failed');
+      extendCalls.push({ name, to });
+      const h = nameHash(name);
+      const current = ttlByHash.get(h) ?? 0;
+      if (current - LATEST < to) ttlByHash.set(h, LATEST + to);
+      return `tx-${name}`;
+    },
+  };
+  return { rpc, extendCalls, liveUntilOf: (n: string) => ttlByHash.get(nameHash(n)) };
+}
+
+const ev = (kind: 'register' | 'update' | 'release', name: string): DecodedEvent => ({ ledger: 10, kind, name });
+const page = (events: DecodedEvent[], cursor?: string): EventPage => ({
+  events,
+  cursor,
+  oldestLedger: 0,
+  latestLedger: LATEST,
+});
+const base = { threshold: 1000, extendTo: 500_000, dryRun: false, startLedger: 1 };
+
+describe('enumeration', () => {
+  it('replays register/update/release events across pages', async () => {
+    const { rpc } = fakeRpc({
+      pages: [
+        page([ev('register', 'alice'), ev('register', 'bob')], 'c1'),
+        page([ev('release', 'bob'), ev('update', 'alice'), ev('register', 'carol')]),
+      ],
+      liveUntil: { alice: LATEST + 10, carol: LATEST + 10 },
     });
+    const report = await runKeeper(rpc, { ...base, dryRun: true });
+    expect(report.total).toBe(2);
+  });
 
-    it('should require contract ID', () => {
-      // Keeper should require a valid contract ID
-      const contractId = 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4';
-      expect(contractId).toBeDefined();
-      expect(contractId.startsWith('C')).toBe(true);
+  it('merges an index file with events and de-duplicates', async () => {
+    const { rpc } = fakeRpc({
+      pages: [page([ev('register', 'alice')])],
+      liveUntil: { alice: LATEST + 10, dave: LATEST + 10 },
     });
+    const report = await runKeeper(rpc, { ...base, dryRun: true, indexedNames: ['alice', 'dave'] });
+    expect(report.total).toBe(2);
+  });
 
-    it('should support dry-run mode', () => {
-      // Keeper should have a --dry-run flag
-      const dryRun = true;
-      expect(dryRun).toBe(true);
+  it('works from an index file alone', async () => {
+    const { rpc } = fakeRpc({ liveUntil: { dave: LATEST + 10 } });
+    const report = await runKeeper(rpc, {
+      threshold: 1000,
+      extendTo: 500_000,
+      dryRun: true,
+      indexedNames: ['dave'],
     });
+    expect(report.total).toBe(1);
+  });
 
-    it('should support configurable threshold', () => {
-      const threshold = 1000;
-      expect(threshold).toBeGreaterThan(0);
-    });
-
-    it('should support configurable extend-to ledger', () => {
-      const extendTo = 500_000;
-      expect(extendTo).toBeGreaterThan(0);
+  it('fails closed when event history is truncated before --start-ledger', async () => {
+    const { rpc } = fakeRpc({ pages: [page([ev('register', 'alice')])], oldestLedger: 500 });
+    await expect(runKeeper(rpc, { ...base, startLedger: 100 })).rejects.toMatchObject({
+      stage: 'enumeration',
     });
   });
 
-  describe('Operations', () => {
-    it('should get current ledger', () => {
-      // In real test, would call actual Horizon API
-      const currentLedger = 123456;
-      expect(currentLedger).toBeGreaterThan(0);
-    });
-
-    it('should enumerate registered names', () => {
-      // Would query contract storage
-      const names = ['alice', 'bob', 'carol'];
-      expect(names).toHaveLength(3);
-    });
-
-    it('should check TTL for each name', () => {
-      // Would query contract TTL state
-      const ttl = 10_000;
-      const threshold = 1000;
-      expect(ttl).toBeGreaterThan(threshold);
-    });
-
-    it('should filter names needing extension', () => {
-      const names = [
-        { name: 'alice', ttl: 500 },
-        { name: 'bob', ttl: 2000 },
-        { name: 'carol', ttl: 100 },
-      ];
-      const threshold = 1000;
-
-      const needsExtension = names.filter((n) => n.ttl < threshold);
-      expect(needsExtension).toHaveLength(2);
-      expect(needsExtension.map((n) => n.name)).toEqual(['alice', 'carol']);
-    });
-
-    it('should extend names idempotently', () => {
-      // First call
-      const result1 = { success: true, namesExtended: 5 };
-      // Second call in same ledger
-      const result2 = { success: true, namesExtended: 0 };
-
-      expect(result1.namesExtended).toBeGreaterThan(0);
-      expect(result2.namesExtended).toEqual(0); // Idempotent in same ledger
-    });
-
-    it('should batch extend operations', () => {
-      const namesPerBatch = 10;
-      const totalNames = 50;
-      const expectedBatches = Math.ceil(totalNames / namesPerBatch);
-
-      expect(expectedBatches).toEqual(5);
-    });
+  it('fails closed when the events RPC is unavailable', async () => {
+    const { rpc, extendCalls } = fakeRpc({ failEvents: true });
+    await expect(runKeeper(rpc, base)).rejects.toMatchObject({ stage: 'enumeration' });
+    expect(extendCalls).toHaveLength(0);
   });
 
-  describe('Error Handling', () => {
-    it('should handle network errors gracefully', () => {
-      const networkError = new Error('Connection failed');
-      expect(() => {
-        throw networkError;
-      }).toThrow('Connection failed');
-    });
-
-    it('should handle non-existent names gracefully', () => {
-      const names = ['alice', 'bob'];
-      const nameToExtend = 'ghost';
-
-      expect(names.includes(nameToExtend)).toBe(false);
-    });
-
-    it('should handle invalid extend-to ledger', () => {
-      const currentLedger = 100_000;
-      const invalidExtendTo = 50_000;
-
-      expect(invalidExtendTo).toBeLessThan(currentLedger);
-    });
-
-    it('should validate secret key format', () => {
-      const validSecret = 'SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
-      const invalidSecret = 'invalid';
-
-      expect(validSecret.length).toBeGreaterThan(10);
-      expect(invalidSecret).toHaveLength(7);
-    });
+  it('fails closed when the latest ledger cannot be read', async () => {
+    const { rpc } = fakeRpc({ failLatest: true });
+    await expect(runKeeper(rpc, base)).rejects.toMatchObject({ stage: 'enumeration' });
   });
 
-  describe('Cost Estimation', () => {
-    it('should calculate per-name cost', () => {
-      const baseFeeXLM = 0.00001;
-      const resourceFeeXLM = 0.00001;
-      const costPerName = baseFeeXLM + resourceFeeXLM;
+  it('refuses to run with no name source configured', async () => {
+    const { rpc } = fakeRpc({});
+    await expect(
+      runKeeper(rpc, { threshold: 1000, extendTo: 500_000, dryRun: true }),
+    ).rejects.toMatchObject({ stage: 'config' });
+  });
+});
 
-      expect(costPerName).toBeCloseTo(0.00002, 8);
+describe('ttl reads and extension', () => {
+  it('extends only names below the threshold, passing extendTo as a relative TTL', async () => {
+    const { rpc, extendCalls } = fakeRpc({
+      pages: [page([ev('register', 'alice'), ev('register', 'bob'), ev('register', 'carol')])],
+      liveUntil: { alice: LATEST + 500, bob: LATEST + 5000, carol: LATEST + 999 },
     });
-
-    it('should estimate annual cost for 1000 names', () => {
-      const namesCount = 1000;
-      const costPerName = 0.00002;
-      const extensionsPerYear = 10;
-
-      const annualCost = namesCount * costPerName * extensionsPerYear;
-      expect(annualCost).toBeCloseTo(0.2, 1);
-    });
-
-    it('should scale cost estimate linearly', () => {
-      const costPerName = 0.00002;
-      const cost1000 = 1000 * costPerName;
-      const cost10000 = 10000 * costPerName;
-
-      expect(cost10000).toEqual(cost1000 * 10);
-    });
+    const report = await runKeeper(rpc, base);
+    expect(extendCalls).toEqual([
+      { name: 'alice', to: 500_000 },
+      { name: 'carol', to: 500_000 },
+    ]);
+    expect(report.atRisk).toBe(2);
+    expect(report.extended.map((e) => e.txHash)).toEqual(['tx-alice', 'tx-carol']);
   });
 
-  describe('Observability', () => {
-    it('should log operation start', () => {
-      const log = 'Starting keeper service...';
-      expect(log).toContain('keeper');
+  it('the resulting liveUntil is latest + extendTo, not latest counted twice', async () => {
+    const { rpc, extendCalls, liveUntilOf } = fakeRpc({
+      pages: [page([ev('register', 'alice')])],
+      liveUntil: { alice: LATEST + 500 },
     });
-
-    it('should log number of names found', () => {
-      const namesCount = 42;
-      const log = `Found ${namesCount} registered names`;
-
-      expect(log).toContain('42');
-      expect(log).toContain('registered');
-    });
-
-    it('should log number of names extended', () => {
-      const namesExtended = 15;
-      const log = `Extended ${namesExtended} names`;
-
-      expect(log).toContain('15');
-    });
-
-    it('should log events for each extended name', () => {
-      const names = ['alice', 'bob', 'carol'];
-      names.forEach((name) => {
-        const log = `Extending "${name}"`;
-        expect(log).toContain(name);
-      });
-    });
+    await runKeeper(rpc, base);
+    const sent = extendCalls[0].to;
+    expect(sent).toBe(base.extendTo);
+    expect(sent).toBeLessThan(LATEST); // a relative TTL, never an absolute ledger
+    expect(liveUntilOf('alice')! - LATEST).toBe(base.extendTo);
   });
 
-  describe('Idempotency', () => {
-    it('should be safe to call multiple times', () => {
-      let callCount = 0;
-      const mockExtend = () => {
-        callCount++;
-        return { success: true };
-      };
+  it('treats remaining == threshold as healthy', async () => {
+    const { rpc, extendCalls } = fakeRpc({
+      pages: [page([ev('register', 'alice')])],
+      liveUntil: { alice: LATEST + 1000 },
+    });
+    await runKeeper(rpc, base);
+    expect(extendCalls).toHaveLength(0);
+  });
 
-      mockExtend();
-      mockExtend();
-      mockExtend();
+  it('does nothing and succeeds when every name is healthy', async () => {
+    const { rpc, extendCalls } = fakeRpc({
+      pages: [page([ev('register', 'alice')])],
+      liveUntil: { alice: LATEST + 10_000 },
+    });
+    const report = await runKeeper(rpc, base);
+    expect(report.atRisk).toBe(0);
+    expect(extendCalls).toHaveLength(0);
+  });
 
-      expect(callCount).toEqual(3);
+  it('fails when a TTL read errors', async () => {
+    const { rpc, extendCalls } = fakeRpc({
+      pages: [page([ev('register', 'alice'), ev('register', 'bob')])],
+      liveUntil: { alice: LATEST + 1, bob: LATEST + 1 },
+      failTtlFor: 'bob',
+    });
+    await expect(runKeeper(rpc, base)).rejects.toMatchObject({ stage: 'ttl-read' });
+    expect(extendCalls).toHaveLength(0); // nothing submitted on partial knowledge
+  });
+
+  it('fails when a name has no live ledger entry', async () => {
+    const { rpc } = fakeRpc({
+      pages: [page([ev('register', 'alice')])],
+      liveUntil: {},
+    });
+    await expect(runKeeper(rpc, base)).rejects.toMatchObject({ stage: 'ttl-read' });
+  });
+
+  it('fails with a submission error and reports prior progress', async () => {
+    const { rpc, extendCalls } = fakeRpc({
+      pages: [page([ev('register', 'alice'), ev('register', 'bob')])],
+      liveUntil: { alice: LATEST + 1, bob: LATEST + 1 },
+      failExtendFor: 'bob',
+    });
+    const err = await runKeeper(rpc, base).catch((e) => e);
+    expect(err).toBeInstanceOf(KeeperError);
+    expect(err.stage).toBe('submission');
+    expect(err.message).toContain('after 1 successful');
+    expect(extendCalls.map((c) => c.name)).toEqual(['alice']);
+  });
+});
+
+describe('dry run', () => {
+  it('reads TTLs and logs, but submits nothing', async () => {
+    const { rpc, extendCalls } = fakeRpc({
+      pages: [page([ev('register', 'alice')])],
+      liveUntil: { alice: LATEST + 5 },
+    });
+    const log = vi.fn();
+    const report = await runKeeper(rpc, { ...base, dryRun: true }, log);
+    expect(extendCalls).toHaveLength(0);
+    expect(report.atRisk).toBe(1);
+    expect(report.extended).toHaveLength(0);
+    expect(log.mock.calls.some((c) => String(c[0]).includes('[dry-run] would extend "alice"'))).toBe(true);
+  });
+
+  it('still fails closed on unreadable TTLs', async () => {
+    const { rpc } = fakeRpc({ pages: [page([ev('register', 'alice')])], liveUntil: {} });
+    await expect(runKeeper(rpc, { ...base, dryRun: true })).rejects.toMatchObject({ stage: 'ttl-read' });
+  });
+});
+
+describe('option validation', () => {
+  it.each([
+    [{ ...base, threshold: 0 }],
+    [{ ...base, threshold: Number.NaN }],
+    [{ ...base, extendTo: 1000 }],
+    [{ ...base, extendTo: 10 }],
+  ])('rejects %j', async (opts) => {
+    const { rpc } = fakeRpc({});
+    await expect(runKeeper(rpc, opts)).rejects.toMatchObject({ stage: 'config' });
+  });
+});
+
+describe('index file', () => {
+  const tmp = (content: string) => {
+    const p = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'keeper-')), 'names.json');
+    fs.writeFileSync(p, content);
+    return p;
+  };
+  it('loads a JSON array of names', () => {
+    expect(loadIndexFile(tmp('["alice","bob"]'))).toEqual(['alice', 'bob']);
+  });
+  it('rejects malformed content', () => {
+    expect(() => loadIndexFile(tmp('{"a":1}'))).toThrow(KeeperError);
+    expect(() => loadIndexFile(tmp('not json'))).toThrow(KeeperError);
+    expect(() => loadIndexFile('/nonexistent/names.json')).toThrow(KeeperError);
+  });
+});
+
+describe('nameHash', () => {
+  it('is sha256 of the utf8 name (matches contract hash_name)', () => {
+    expect(nameHash('alice')).toBe(
+      '2bd806c97f0e00af1a1fc3328fa763a9269723c8db8fac4f93af71db186d6e90',
+    );
+  });
+});
+
+describe('cli exit codes', () => {
+  const cli = path.resolve(__dirname, 'keeper.ts');
+  const run = (args: string[], env: Record<string, string> = {}) =>
+    spawnSync('npx', ['tsx', cli, 'extend', ...args], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH as string, HOME: process.env.HOME as string, ...env },
+      timeout: 60_000,
     });
 
-    it('should not double-extend in same ledger', () => {
-      const ledger = 100_000;
-      const namesExtended = new Set();
+  it('exits nonzero without a contract id', () => {
+    const r = run(['--dry-run', '--start-ledger', '1']);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('[config]');
+  });
 
-      // First call
-      namesExtended.add('alice');
-      namesExtended.add('bob');
+  it('exits nonzero when the RPC is unreachable (dry run, no network needed)', () => {
+    const r = run([
+      '--contract', 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM',
+      '--rpc-url', 'http://127.0.0.1:1',
+      '--start-ledger', '1',
+      '--dry-run',
+    ]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('keeper failed');
+  });
 
-      // Second call in same ledger
-      const secondCallNames = new Set();
-      secondCallNames.add('alice'); // Already extended
-      secondCallNames.add('bob'); // Already extended
-
-      // Idempotency means no additional work
-      expect(secondCallNames.size).toEqual(namesExtended.size);
-    });
+  it('exits nonzero when not dry-run and no secret key is set', () => {
+    const r = run([
+      '--contract', 'CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM',
+      '--start-ledger', '1',
+    ]);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('[config]');
   });
 });

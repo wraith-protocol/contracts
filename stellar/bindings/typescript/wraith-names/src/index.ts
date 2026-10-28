@@ -393,10 +393,14 @@ export interface Client {
    * Construct and simulate a bulk_renew transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Renew (extend TTL for) multiple names in a single atomic transaction.
    * 
+   * `extend_to` is a TTL in ledgers counted from the current ledger, not a
+   * ledger sequence. Each name ends up live for at least `extend_to` more
+   * ledgers (capped by the network's max entry TTL).
+   * 
    * All names must exist. If any name is not found, the entire operation
    * reverts.
    */
-  bulk_renew: ({names, extend_to_ledger}: {names: Array<string>, extend_to_ledger: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  bulk_renew: ({names, extend_to}: {names: Array<string>, extend_to: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a claim_name transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -481,12 +485,15 @@ export interface Client {
 
   /**
    * Construct and simulate a extend_name_ttl transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
-   * Extend TTL for persistent storage entries only.
-   * Extend the TTL of a registered name to a future ledger.
+   * Extend the TTL of a registered name (its entry, reverse entry and the
+   * contract instance) so it stays live for at least `extend_to` more ledgers.
+   * 
+   * `extend_to` is a TTL in ledgers counted from the current ledger, not a
+   * ledger sequence, and is capped by the network's max entry TTL. Entries
+   * that already have at least that much TTL left are left untouched.
    * This is a permissionless function that anyone can call.
-   * Idempotent: calling twice in the same ledger has no additional effect.
    */
-  extend_name_ttl: ({name, extend_to_ledger}: {name: string, extend_to_ledger: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
+  extend_name_ttl: ({name, extend_to}: {name: string, extend_to: u32}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
 
   /**
    * Construct and simulate a pending_rotation transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
@@ -623,7 +630,7 @@ export class Client extends ContractClient {
         "AAAAAAAAACdSZXR1cm5zIHRydWUgaWYgdGhlIGNvbnRyYWN0IGlzIHBhdXNlZC4AAAAACWlzX3BhdXNlZAAAAAAAAAAAAAABAAAAAQ==",
         "AAAAAAAAADNDdXJyZW50IHByb3RvY29sLWxldmVsIGdvdmVybmFuY2UgcXVvcnVtIHRocmVzaG9sZC4AAAAACXRocmVzaG9sZAAAAAAAAAAAAAABAAAABA==",
         "AAAAAgAAAA1TdG9yYWdlIGtleXMuAAAAAAAAAAAAAAdEYXRhS2V5AAAAAAsAAAABAAAAKU1hcHMgbmFtZSBoYXNoIChCeXRlc048MzI+KSB0byBOYW1lRW50cnkuAAAAAAAABE5hbWUAAAABAAAD7gAAACAAAAABAAAAPlJldmVyc2UgbG9va3VwOiBtZXRhLWFkZHJlc3MgaGFzaCAoQnl0ZXNOPDMyPikgdG8gbmFtZSBzdHJpbmcuAAAAAAAHUmV2ZXJzZQAAAAABAAAD7gAAACAAAAABAAAALVJlcGxheSBwcm90ZWN0aW9uIGZvciBzaWduZWQgb24tYmVoYWxmIGNhbGxzLgAAAAAAAAZSZXBsYXkAAAAAAAEAAAPuAAAAIAAAAAEAAAAbR3VhcmRpYW4gY29uZmlnIGZvciBhIG5hbWUuAAAAAAlHdWFyZGlhbnMAAAAAAAABAAAD7gAAACAAAAABAAAAJVBlbmRpbmcgcmVjb3ZlcnkgcHJvcG9zYWwgZm9yIGEgbmFtZS4AAAAAAAAIUmVjb3ZlcnkAAAABAAAD7gAAACAAAAAAAAAAFFBhdXNlIGFkbWluIGFkZHJlc3MuAAAABUFkbWluAAAAAAAAAAAAAB9XaGV0aGVyIHRoZSBjb250cmFjdCBpcyBwYXVzZWQuAAAAAAZQYXVzZWQAAAAAAAAAAAAuUHJvdG9jb2wtbGV2ZWwgZ292ZXJuYW5jZSBtdWx0aXNpZyBzaWduZXIgc2V0LgAAAAAAD011bHRpc2lnU2lnbmVycwAAAAAAAAAANFByb3RvY29sLWxldmVsIGdvdmVybmFuY2UgbXVsdGlzaWcgcXVvcnVtIHRocmVzaG9sZC4AAAARTXVsdGlzaWdUaHJlc2hvbGQAAAAAAAAAAAAAOFBlbmRpbmcgcHJvdG9jb2wtbGV2ZWwgc2lnbmVyLXJvdGF0aW9uIHByb3Bvc2FsLCBpZiBhbnkuAAAAD1BlbmRpbmdSb3RhdGlvbgAAAAAAAAAAMFBlbmRpbmcgYXVjdGlvbi1hZG1pbiByb3RhdGlvbiBwcm9wb3NhbCwgaWYgYW55LgAAABtQZW5kaW5nQXVjdGlvbkFkbWluUm90YXRpb24A",
-        "AAAAAAAAAJRSZW5ldyAoZXh0ZW5kIFRUTCBmb3IpIG11bHRpcGxlIG5hbWVzIGluIGEgc2luZ2xlIGF0b21pYyB0cmFuc2FjdGlvbi4KCkFsbCBuYW1lcyBtdXN0IGV4aXN0LiBJZiBhbnkgbmFtZSBpcyBub3QgZm91bmQsIHRoZSBlbnRpcmUgb3BlcmF0aW9uCnJldmVydHMuAAAACmJ1bGtfcmVuZXcAAAAAAAIAAAAAAAAABW5hbWVzAAAAAAAD6gAAABAAAAAAAAAAEGV4dGVuZF90b19sZWRnZXIAAAAEAAAAAQAAA+kAAAPtAAAAAAAAB9AAAAAKTmFtZXNFcnJvcgAA",
+        "AAAAAAAAAVNSZW5ldyAoZXh0ZW5kIFRUTCBmb3IpIG11bHRpcGxlIG5hbWVzIGluIGEgc2luZ2xlIGF0b21pYyB0cmFuc2FjdGlvbi4KCmBleHRlbmRfdG9gIGlzIGEgVFRMIGluIGxlZGdlcnMgY291bnRlZCBmcm9tIHRoZSBjdXJyZW50IGxlZGdlciwgbm90IGEKbGVkZ2VyIHNlcXVlbmNlLiBFYWNoIG5hbWUgZW5kcyB1cCBsaXZlIGZvciBhdCBsZWFzdCBgZXh0ZW5kX3RvYCBtb3JlCmxlZGdlcnMgKGNhcHBlZCBieSB0aGUgbmV0d29yaydzIG1heCBlbnRyeSBUVEwpLgoKQWxsIG5hbWVzIG11c3QgZXhpc3QuIElmIGFueSBuYW1lIGlzIG5vdCBmb3VuZCwgdGhlIGVudGlyZSBvcGVyYXRpb24KcmV2ZXJ0cy4AAAAACmJ1bGtfcmVuZXcAAAAAAAIAAAAAAAAABW5hbWVzAAAAAAAD6gAAABAAAAAAAAAACWV4dGVuZF90bwAAAAAAAAQAAAABAAAD6QAAA+0AAAAAAAAH0AAAAApOYW1lc0Vycm9yAAA=",
         "AAAAAAAAAFZDbGFpbSBhIHdvbiBhdWN0aW9uOiByZWdpc3RlcnMgdGhlIG5hbWUgdG8gdGhlIHdpbm5lciB3aXRoIHRoZWlyCnN0ZWFsdGggbWV0YS1hZGRyZXNzLgAAAAAACmNsYWltX25hbWUAAAAAAAMAAAAAAAAABndpbm5lcgAAAAAAEwAAAAAAAAAEbmFtZQAAABAAAAAAAAAAFHN0ZWFsdGhfbWV0YV9hZGRyZXNzAAAADgAAAAEAAAPpAAAD7QAAAAAAAAfQAAAADEF1Y3Rpb25FcnJvcg==",
         "AAAAAAAAAIdDb21taXQgYSBzZWFsZWQgYmlkLiBgY29tbWl0bWVudGAgaGlkZXMgdGhlIGJpZCBhbW91bnQ7IGBkZXBvc2l0YCBpcwp0cmFuc2ZlcnJlZCB0byB0aGUgY29udHJhY3QgYW5kIG11c3QgY292ZXIgdGhlIGJpZCByZXZlYWxlZCBsYXRlci4AAAAACmNvbW1pdF9iaWQAAAAAAAQAAAAAAAAABmJpZGRlcgAAAAAAEwAAAAAAAAAEbmFtZQAAABAAAAAAAAAACmNvbW1pdG1lbnQAAAAAA+4AAAAgAAAAAAAAAAdkZXBvc2l0AAAAAAsAAAABAAAD6QAAA+0AAAAAAAAH0AAAAAxBdWN0aW9uRXJyb3I=",
         "AAAAAAAAAERSZXZlYWwgYSBwcmV2aW91c2x5IGNvbW1pdHRlZCBiaWQgYnkgZGlzY2xvc2luZyB0aGUgYW1vdW50IGFuZCBzYWx0LgAAAApyZXZlYWxfYmlkAAAAAAAEAAAAAAAAAAZiaWRkZXIAAAAAABMAAAAAAAAABG5hbWUAAAAQAAAAAAAAAAZhbW91bnQAAAAAAAsAAAAAAAAABHNhbHQAAAPuAAAAIAAAAAEAAAPpAAAD7QAAAAAAAAfQAAAADEF1Y3Rpb25FcnJvcg==",
@@ -637,7 +644,7 @@ export class Client extends ContractClient {
         "AAAAAAAAAIhTdGFydCBhIHNlYWxlZC1iaWQgYXVjdGlvbiBmb3IgYSBwcmVtaXVtIG5hbWUgKDw9IDQgY2hhcnMsIHRvcC1sZXZlbCkuClBlcm1pc3Npb25sZXNzOiBhbnlvbmUgbWF5IG9wZW4gdGhlIGF1Y3Rpb24gZm9yIGFuIGVsaWdpYmxlIG5hbWUuAAAADXN0YXJ0X2F1Y3Rpb24AAAAAAAABAAAAAAAAAARuYW1lAAAAEAAAAAEAAAPpAAAD7QAAAAAAAAfQAAAADEF1Y3Rpb25FcnJvcg==",
         "AAAAAAAAAC9SZWFkIHRoZSBhdWN0aW9uIGNvbmZpZ3VyYXRpb24sIGlmIGluaXRpYWxpemVkLgAAAAAOYXVjdGlvbl9jb25maWcAAAAAAAAAAAABAAAD6AAAB9AAAAANQXVjdGlvbkNvbmZpZwAAAA==",
         "AAAAAAAAAMxTZXR0bGUgYW4gYXVjdGlvbiBhZnRlciB0aGUgcmV2ZWFsIHBoYXNlOiBwYXlzIHRoZSB3aW5uaW5nIGJpZCB0byB0aGUKdHJlYXN1cnkgYW5kIHJlZnVuZHMgdGhlIHdpbm5lcidzIGV4Y2VzcyBkZXBvc2l0LiBQZXJtaXNzaW9ubGVzcyBzbwpmdW5kcyBjYW4gbmV2ZXIgYmUgdHJhcHBlZCwgb3BlcmF0ZWQgYnkgdGhlIGFkbWluIHBlciB0aGUgcnVuYm9vay4AAAAOc2V0dGxlX2F1Y3Rpb24AAAAAAAEAAAAAAAAABG5hbWUAAAAQAAAAAQAAA+kAAAPtAAAAAAAAB9AAAAAMQXVjdGlvbkVycm9y",
-        "AAAAAAAAAOZFeHRlbmQgVFRMIGZvciBwZXJzaXN0ZW50IHN0b3JhZ2UgZW50cmllcyBvbmx5LgpFeHRlbmQgdGhlIFRUTCBvZiBhIHJlZ2lzdGVyZWQgbmFtZSB0byBhIGZ1dHVyZSBsZWRnZXIuClRoaXMgaXMgYSBwZXJtaXNzaW9ubGVzcyBmdW5jdGlvbiB0aGF0IGFueW9uZSBjYW4gY2FsbC4KSWRlbXBvdGVudDogY2FsbGluZyB0d2ljZSBpbiB0aGUgc2FtZSBsZWRnZXIgaGFzIG5vIGFkZGl0aW9uYWwgZWZmZWN0LgAAAAAAD2V4dGVuZF9uYW1lX3R0bAAAAAACAAAAAAAAAARuYW1lAAAAEAAAAAAAAAAQZXh0ZW5kX3RvX2xlZGdlcgAAAAQAAAABAAAD6QAAA+0AAAAAAAAH0AAAAApOYW1lc0Vycm9yAAA=",
+        "AAAAAAAAAZlFeHRlbmQgdGhlIFRUTCBvZiBhIHJlZ2lzdGVyZWQgbmFtZSAoaXRzIGVudHJ5LCByZXZlcnNlIGVudHJ5IGFuZCB0aGUKY29udHJhY3QgaW5zdGFuY2UpIHNvIGl0IHN0YXlzIGxpdmUgZm9yIGF0IGxlYXN0IGBleHRlbmRfdG9gIG1vcmUgbGVkZ2Vycy4KCmBleHRlbmRfdG9gIGlzIGEgVFRMIGluIGxlZGdlcnMgY291bnRlZCBmcm9tIHRoZSBjdXJyZW50IGxlZGdlciwgbm90IGEKbGVkZ2VyIHNlcXVlbmNlLCBhbmQgaXMgY2FwcGVkIGJ5IHRoZSBuZXR3b3JrJ3MgbWF4IGVudHJ5IFRUTC4gRW50cmllcwp0aGF0IGFscmVhZHkgaGF2ZSBhdCBsZWFzdCB0aGF0IG11Y2ggVFRMIGxlZnQgYXJlIGxlZnQgdW50b3VjaGVkLgpUaGlzIGlzIGEgcGVybWlzc2lvbmxlc3MgZnVuY3Rpb24gdGhhdCBhbnlvbmUgY2FuIGNhbGwuAAAAAAAAD2V4dGVuZF9uYW1lX3R0bAAAAAACAAAAAAAAAARuYW1lAAAAEAAAAAAAAAAJZXh0ZW5kX3RvAAAAAAAABAAAAAEAAAPpAAAD7QAAAAAAAAfQAAAACk5hbWVzRXJyb3IAAA==",
         "AAAAAAAAAC1UaGUgcGVuZGluZyBzaWduZXItcm90YXRpb24gcHJvcG9zYWwsIGlmIGFueS4AAAAAAAAQcGVuZGluZ19yb3RhdGlvbgAAAAAAAAABAAAD6AAAB9AAAAAQUm90YXRpb25Qcm9wb3NhbA==",
         "AAAAAAAAAEFVcGRhdGUgYSBuYW1lIG9uIGJlaGFsZiBvZiBhbiBvd25lciB1c2luZyBhIHNpZ25lZCBhdXRob3JpemF0aW9uLgAAAAAAABB1cGRhdGVfb25fYmVoYWxmAAAABQAAAAAAAAAFb3duZXIAAAAAAAATAAAAAAAAAARuYW1lAAAAEAAAAAAAAAAQbmV3X21ldGFfYWRkcmVzcwAAAA4AAAAAAAAACXNpZ25hdHVyZQAAAAAAA+4AAABAAAAAAAAAAAZleHBpcnkAAAAAAAYAAAABAAAD6QAAA+0AAAAAAAAH0AAAAApOYW1lc0Vycm9yAAA=",
         "AAAAAQAAACJHdWFyZGlhbiBjb25maWd1cmF0aW9uIGZvciBhIG5hbWUuAAAAAAAAAAAADkd1YXJkaWFuQ29uZmlnAAAAAAACAAAAAAAAAAlndWFyZGlhbnMAAAAAAAPqAAAAEwAAAAAAAAAJdGhyZXNob2xkAAAAAAAABA==",

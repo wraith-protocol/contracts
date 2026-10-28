@@ -258,7 +258,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
                 for i in 0..count {
                     client.register(&owner, &names.get(i).unwrap(), &metas.get(i).unwrap());
                 }
-                client.bulk_renew(&names, &(env.ledger().sequence() + 10_000));
+                client.bulk_renew(&names, &10_000);
             },
         ));
     }
@@ -273,7 +273,7 @@ pub fn collect_rows() -> std::vec::Vec<Row> {
             let client = WraithNamesContractClient::new(env, &contract_id);
             let n = SorobanString::from_str(env, "alice");
             client.register(&Address::generate(env), &n, &bytes(env, 64, 9));
-            client.extend_name_ttl(&n, &(env.ledger().sequence() + 10_000));
+            client.extend_name_ttl(&n, &10_000);
         },
     ));
 

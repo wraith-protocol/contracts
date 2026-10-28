@@ -86,7 +86,7 @@ fn extend_name_ttl_emits_renew_count_metric() {
     let name = String::from_str(&env, "alice");
 
     client.register(&owner, &name, &meta(&env, 1));
-    let extend_to = env.ledger().sequence() + 10_000;
+    let extend_to = 10_000u32;
     client.extend_name_ttl(&name, &extend_to);
 
     let (topics, data) = only_metric_event(&env);
@@ -105,7 +105,7 @@ fn bulk_renew_emits_renew_count_metric_carrying_batch_size() {
         String::from_str(&env, "alpha"),
         String::from_str(&env, "beta"),
     ];
-    let extend_to = env.ledger().sequence() + 10_000;
+    let extend_to = 10_000u32;
     client.bulk_renew(&names, &extend_to);
 
     let (topics, data) = only_metric_event(&env);

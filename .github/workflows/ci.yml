@@ -147,6 +147,10 @@ jobs:
         run: pnpm test:stellar-bindings
         working-directory: .
 
+      - name: Test names TTL keeper
+        run: pnpm test:stellar-keeper
+        working-directory: .
+
       # The metrics indexer is a standalone Node package with its own lockfile
       # (like evm/ and solana/). Install and test it so its RPC/health
       # guarantees stay enforced; the root pnpm install does not cover it.
