@@ -25,12 +25,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it, vi } from 'vitest';
-import {
-  CLI_BUFFER_SHIM,
-  RUNTIME_NEUTRAL_BUFFER_SHIM,
-  normalizeBufferRuntimeSource,
-} from './generate-bindings.js';
+import { afterAll, beforeAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BINDINGS_ROOT = path.resolve(SCRIPTS_DIR, '..', 'bindings', 'typescript');
@@ -49,6 +44,27 @@ const bundleWorkdir = path.join(
   os.tmpdir(),
   `wraith-bindings-portability-${process.pid}-${Date.now()}`,
 );
+
+// `generate-bindings.ts` runs its CLI entrypoint (`main().catch(... process.exit(1))`)
+// as a module side effect. Importing it for the pure helpers must not let that
+// entrypoint terminate the Vitest worker, so we guard process.exit while loading.
+let CLI_BUFFER_SHIM: string;
+let RUNTIME_NEUTRAL_BUFFER_SHIM: string;
+let normalizeBufferRuntimeSource: (source: string) => string;
+
+beforeAll(async () => {
+  const originalExit = process.exit;
+  const exitSpy = vi.fn((code?: number) => undefined as never);
+  process.exit = exitSpy as unknown as typeof process.exit;
+  try {
+    const mod = await import('./generate-bindings.js');
+    CLI_BUFFER_SHIM = mod.CLI_BUFFER_SHIM;
+    RUNTIME_NEUTRAL_BUFFER_SHIM = mod.RUNTIME_NEUTRAL_BUFFER_SHIM;
+    normalizeBufferRuntimeSource = mod.normalizeBufferRuntimeSource;
+  } finally {
+    process.exit = originalExit;
+  }
+});
 
 afterAll(() => {
   vi.resetModules();
