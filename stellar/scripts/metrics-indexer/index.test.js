@@ -1,4 +1,4 @@
-import { after, before, describe, it } from 'node:test';
+import { after, before, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 const ADDRESS_A = 'C'.repeat(55) + 'A';
@@ -25,7 +25,7 @@ globalThis.fetch = async (url, init) => {
   }
 
   if (mode === 'malformed') {
-    // The maintainer's reproducer: a 200 envelope with no `result`/`error`.
+    // A 200 envelope with neither `result` nor `error`.
     return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1 }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -43,6 +43,11 @@ let index;
 describe('metrics indexer poll wiring', () => {
   before(async () => {
     index = await import('./index.js');
+  });
+
+  beforeEach(() => {
+    // Reset shared health state so each case observes only its own outcome.
+    index.resetHealthForTests?.();
   });
 
   after(() => {
@@ -89,8 +94,11 @@ describe('metrics indexer poll wiring', () => {
   });
 
   it('never exposes the raw RPC URL or its secrets in health output', async () => {
-    const serialized = JSON.stringify(index.healthSnapshot());
-    assert.equal(index.healthSnapshot().rpcHost, 'https://rpc.example.com');
+    mode = 'both-ok';
+    await index.processEvents();
+    const snapshot = index.healthSnapshot();
+    const serialized = JSON.stringify(snapshot);
+    assert.equal(snapshot.rpcHost, 'https://rpc.example.com');
     assert.ok(!serialized.includes('supersecret'));
     assert.ok(!serialized.includes('topsecret'));
     assert.ok(!serialized.includes('user:secret'));
