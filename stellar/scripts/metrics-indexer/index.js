@@ -41,6 +41,43 @@ const CURSOR_FILE =
 const REORG_REWIND_LEDGERS = positiveInt(process.env.REORG_REWIND_LEDGERS, 32);
 const DEDUP_WINDOW = positiveInt(process.env.DEDUP_WINDOW, 10_000);
 
+// Cursor persistence helpers: write the cursor atomically (temp file + rename)
+// so a crash mid-write can never leave a truncated or corrupt cursor on disk.
+export async function loadCursor(file = CURSOR_FILE) {
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    const parsed = JSON.parse(raw);
+    const ledger = Number(parsed?.ledger);
+    return Number.isFinite(ledger) && ledger >= 0 ? ledger : null;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    console.warn(`Ignoring unreadable cursor file: ${summarizeError(error)}`);
+    return null;
+  }
+}
+
+export async function saveCursor(ledger, file = CURSOR_FILE) {
+  const tmp = `${file}.tmp`;
+  const payload = JSON.stringify({ ledger, updatedAt: new Date().toISOString() });
+  const handle = await fs.open(tmp, 'w');
+  try {
+    await handle.writeFile(payload);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await fs.rename(tmp, file);
+}
+
+// Reorg-safe resume point: rewind by REORG_REWIND_LEDGERS so ledgers that may
+// have been reorganized are re-fetched and re-validated. Never goes below 0.
+export function resumeLedger(lastConfirmed) {
+  if (lastConfirmed === null || lastConfirmed === undefined) return null;
+  const confirmed = Number(lastConfirmed);
+  if (!Number.isFinite(confirmed) || confirmed < 0) return null;
+  return Math.max(0, Math.floor(confirmed) - REORG_REWIND_LEDGERS);
+}
+
 // Contract addresses to monitor (add your deployed contract addresses here)
 const CONTRACTS = {
   stealthRegistry: process.env.STEALTH_REGISTRY_ADDRESS,
@@ -229,222 +266,14 @@ export function parseMetricEvent(event) {
       }
     }
 
-    const metricValue = Number(value[0]);
-
     return {
       contract,
       metricName,
-      value: metricValue,
+      value: value ? value[0] : 0,
       dimensions,
     };
   } catch (error) {
-    console.error(`Error parsing metric event: ${summarizeError(error)}`);
+    console.error('Failed to parse metric event:', error);
     return null;
   }
 }
-
-// Update metric storage
-export function updateMetric(metricEvent) {
-  const { contract, metricName, value, dimensions } = metricEvent;
-  const spec = METRIC_SPECS[metricName];
-
-  if (!spec) {
-    console.log(`Unknown metric name: ${metricName}`);
-    return;
-  }
-
-  const key = getMetricKey(contract, dimensions);
-  const labels = buildLabels(spec, contract, dimensions);
-
-  switch (spec.kind) {
-    case 'counter': {
-      const total = (metricStore[metricName].get(key) || 0) + value;
-      metricStore[metricName].set(key, total);
-      metrics[metricName].inc(labels, value);
-      break;
-    }
-
-    case 'sum_gauge': {
-      const total = (metricStore[metricName].get(key) || 0) + value;
-      metricStore[metricName].set(key, total);
-      metrics[metricName].set(labels, total);
-      break;
-    }
-
-    case 'gauge': {
-      metricStore[metricName].set(key, value);
-      metrics[metricName].set(labels, value);
-      break;
-    }
-  }
-}
-
-/**
- * Raised when the indexer has no contract to poll. This is a configuration
- * fault, not a transient RPC failure: it must surface as a poll failure
- * (degraded/unhealthy) rather than a silent no-op success.
- */
-export class IndexerConfigurationError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'IndexerConfigurationError';
-  }
-}
-
-/**
- * Raised when the persisted cursor file exists but cannot be trusted.
- */
-export class CursorCorruptionError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'CursorCorruptionError';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Cursor persistence
-// ---------------------------------------------------------------------------
-
-/**
- * Validate a parsed cursor record. Returns the normalized record or throws.
- */
-export function validateCursorRecord(record) {
-  if (!record || typeof record !== 'object' || Array.isArray(record)) {
-    throw new CursorCorruptionError('cursor record is not an object');
-  }
-  if (record.version !== 1) {
-    throw new CursorCorruptionError(`unsupported cursor version: ${record.version}`);
-  }
-  if (typeof record.cursor !== 'string' || record.cursor.length === 0) {
-    throw new CursorCorruptionError('cursor field missing or empty');
-  }
-  if (!/^\d+$/.test(record.cursor)) {
-    throw new CursorCorruptionError('cursor is not a numeric string');
-  }
-  if (
-    !Number.isSafeInteger(record.ledger) ||
-    record.ledger < 0
-  ) {
-    throw new CursorCorruptionError('ledger field missing or invalid');
-  }
-  if (typeof record.network !== 'string' || record.network.length === 0) {
-    throw new CursorCorruptionError('network field missing');
-  }
-  return {
-    version: 1,
-    cursor: record.cursor,
-    ledger: record.ledger,
-    network: record.network,
-    updatedAt: typeof record.updatedAt === 'string' ? record.updatedAt : null,
-  };
-}
-
-/**
- * Load the last confirmed cursor. Returns null if no cursor file exists.
- * A present but unreadable/invalid file is a hard error: silently falling back
- * to the default cursor would replay history and double-count metrics.
- */
-export async function loadCursor({ file = CURSOR_FILE, network = NETWORK_PASSPHRASE } = {}) {
-  let raw;
-  try {
-    raw = await fs.readFile(file, 'utf8');
-  } catch (error) {
-    if (error && error.code === 'ENOENT') return null;
-    throw new CursorCorruptionError(`cannot read cursor file: ${summarizeError(error)}`);
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    throw new CursorCorruptionError('cursor file is not valid JSON');
-  }
-
-  const record = validateCursorRecord(parsed);
-  if (record.network !== network) {
-    throw new CursorCorruptionError(
-      'cursor was recorded for a different network passphrase'
-    );
-  }
-  return record;
-}
-
-/**
- * Atomically persist the last confirmed cursor (write temp file, then rename).
- */
-export async function saveCursor(
-  { cursor, ledger },
-  { file = CURSOR_FILE, network = NETWORK_PASSPHRASE, now = () => new Date() } = {}
-) {
-  const record = {
-    version: 1,
-    cursor: String(cursor),
-    ledger: Number(ledger),
-    network,
-    updatedAt: now().toISOString(),
-  };
-  validateCursorRecord(record);
-  const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(record), 'utf8');
-  await fs.rename(tmp, file);
-  return record;
-}
-
-/**
- * Compute the cursor to resume from. Rewinds by REORG_REWIND_LEDGERS so events
- * near the tip that may have been reorganized are re-fetched; duplicates from
- * the overlap are removed by `createEventDeduper`.
- */
-export function resumeCursorFrom(record, rewindLedgers = REORG_REWIND_LEDGERS) {
-  if (!record) return '0';
-  const rewound = Math.max(0, record.ledger - rewindLedgers);
-  // A rewound ledger number is the safe lower bound; using '0' preserves the
-  // original default behavior when the rewind would go below genesis.
-  return rewound === 0 ? '0' : String(rewound);
-}
-
-/**
- * Bounded-memory deduplicator keyed by event id. Replayed events (from the
- * reorg rewind window or a restart) are ignored.
- */
-export function createEventDeduper(capacity = DEDUP_WINDOW) {
-  const seen = new Set();
-  const order = [];
-  return {
-    /** Returns true if the id is new and records it. */
-    accept(id) {
-      if (typeof id !== 'string' || id.length === 0) return true;
-      if (seen.has(id)) return false;
-      seen.add(id);
-      order.push(id);
-      if (order.length > capacity) {
-        seen.delete(order.shift());
-      }
-      return true;
-    },
-    size() {
-      return seen.size;
-    },
-  };
-}
-
-// Health + poll state shared with the /health endpoint.
-const startedAt = Date.now();
-const health = { lastFailures: 0, lastError: null };
-let activePollController = null;
-
-const deduper = createEventDeduper();
-let confirmedCursor = null; // { cursor, ledger } last successfully processed
-
-// Fetch one page of events for a contract through the bounded RPC client.
-// The client enforces an abortable timeout, a bounded retry budget with
-// jitter, and a cap on the response body it will read.
-async function fetchContractEvents(contractAddress, cursor = '0', signal) {
-  const response = await server.getEvents({
-    filters: [{ type: 'contract', contractIds: [contractAddress] }],
-    startLedger: cursor === '0' ? undefined : Number(cursor),
-    signal,
-  });
-  return (response && response.events) || [];
-}
-

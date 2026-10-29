@@ -43,6 +43,37 @@ export function validateCursor(value) {
 }
 
 /**
+ * Derive the health state of the poller from its last success and failures.
+ *
+ * @param {{ lastSuccessAt?: number|null, failureCount?: number, now?: number,
+ *           staleAfterMs?: number, failureThreshold?: number,
+ *           partialFailure?: boolean }} input
+ * @returns {'healthy'|'degraded'|'unhealthy'}
+ */
+export function deriveHealthState({
+  lastSuccessAt = null,
+  failureCount = 0,
+  now = Date.now(),
+  staleAfterMs = 60_000,
+  failureThreshold = 5,
+  partialFailure = false,
+} = {}) {
+  if (failureCount >= failureThreshold) {
+    return 'unhealthy';
+  }
+  if (lastSuccessAt === null || lastSuccessAt === undefined) {
+    return 'degraded';
+  }
+  if (now - lastSuccessAt > staleAfterMs) {
+    return 'degraded';
+  }
+  if (partialFailure || failureCount > 0) {
+    return 'degraded';
+  }
+  return 'healthy';
+}
+
+/**
  * Deduplicate a page of events against a set of already-seen event ids so a
  * replayed page (after restart or rewind) is not indexed twice.
  *
@@ -312,48 +343,145 @@ function parseEvents(raw) {
  * @param {number} [options.maxResponseBytes] Hard cap on response bytes read.
  * @param {typeof fetch} [options.fetchImpl] Injectable transport (tests).
  * @param {(ms: number, signal?: AbortSignal) => Promise<void>} [options.sleep]
- * @param {() => number} [options.random] Injectable RNG (tests).
+ * @param {() => number} [options.random] Injectable RNG for jitter (tests).
  * @param {(info: object) => void} [options.onRetry] Retry observer.
  */
-export function createRpcClient(options = {}) {
-  const {
-    url,
-    timeoutMs = DEFAULT_TIMEOUT_MS,
-    maxAttempts = DEFAULT_MAX_ATTEMPTS,
-    retryBaseMs = DEFAULT_RETRY_BASE_MS,
-    retryMaxMs = DEFAULT_RETRY_MAX_MS,
-    maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
-    fetchImpl = globalThis.fetch,
-    sleep = defaultSleep,
-    random = Math.random,
-    onRetry,
-  } = options;
-
+export function createRpcClient({
+  url,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  maxAttempts = DEFAULT_MAX_ATTEMPTS,
+  retryBaseMs = DEFAULT_RETRY_BASE_MS,
+  retryMaxMs = DEFAULT_RETRY_MAX_MS,
+  maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
+  fetchImpl = globalThis.fetch,
+  sleep = defaultSleep,
+  random = Math.random,
+  onRetry,
+} = {}) {
   if (typeof url !== 'string' || url.length === 0) {
     throw new TypeError('createRpcClient requires a url');
   }
-  if (typeof fetchImpl !== 'function') {
-    throw new TypeError('createRpcClient requires a fetch implementation');
+
+  const rpcHost = redactUrl(url);
+
+  async function attemptOnce(method, params, callerSignal) {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    const onCallerAbort = () => controller.abort();
+    if (callerSignal) {
+      if (callerSignal.aborted) {
+        clearTimeout(timer);
+        throw new RpcAbortError({ method });
+      }
+      callerSignal.addEventListener('abort', onCallerAbort, { once: true });
+    }
+
+    try {
+      const response = await fetchImpl(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: REQUEST_ID, method, params }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const bodyPreview = truncate(await response.text().catch(() => ''), 120);
+        const retryable = response.status === 429 || response.status >= 500;
+        throw new RpcHttpError({ method, status: response.status, retryable, bodyPreview });
+      }
+
+      const text = await readTextCapped(response, maxResponseBytes, method);
+
+      let payload;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        throw new RpcProtocolError({
+          method,
+          reason: 'response body was not valid JSON',
+          bodyPreview: truncate(text, 120),
+        });
+      }
+
+      validateEnvelope(payload, method);
+
+      if (Object.prototype.hasOwnProperty.call(payload, 'error')) {
+        const rpcError = payload.error ?? {};
+        const code = Number.isFinite(rpcError.code) ? rpcError.code : undefined;
+        // -32603 (internal error) and similar server-side codes are transient.
+        const retryable = code === -32603;
+        throw new RpcError(
+          `RPC ${method} returned error${code !== undefined ? ` ${code}` : ''}: ${truncate(String(rpcError.message ?? 'unknown'), 160)}`,
+          { method, retryable, code }
+        );
+      }
+
+      return payload.result;
+    } catch (error) {
+      if (error instanceof RpcError) {
+        throw error;
+      }
+      if (timedOut) {
+        throw new RpcTimeoutError({ method, timeoutMs });
+      }
+      if (callerSignal?.aborted) {
+        throw new RpcAbortError({ method });
+      }
+      // Network-level failure (DNS, reset, etc.): transient.
+      throw new RpcError(`RPC ${method} network error: ${truncate(error?.message ?? error, 160)}`, {
+        method,
+        retryable: true,
+      });
+    } finally {
+      clearTimeout(timer);
+      if (callerSignal) {
+        callerSignal.removeEventListener('abort', onCallerAbort);
+      }
+    }
   }
 
-  const redactedUrl = options.redactedUrl ?? redactUrl(url);
-
-  // Full-jitter backoff: uniform over [0, min(retryMaxMs, retryBaseMs * 2^attempt)].
-  function backoffMs(attempt) {
-    const ceiling = Math.min(retryMaxMs, retryBaseMs * 2 ** attempt);
-    return Math.floor(random() * ceiling);
+  async function call(method, params, { signal } = {}) {
+    let lastError;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await attemptOnce(method, params, signal);
+      } catch (error) {
+        lastError = error;
+        const retryable = error instanceof RpcError && error.retryable;
+        if (!retryable || attempt >= maxAttempts) {
+          throw error;
+        }
+        // Full-jitter exponential backoff, capped at retryMaxMs.
+        const ceiling = Math.min(retryMaxMs, retryBaseMs * 2 ** (attempt - 1));
+        const delay = Math.floor(random() * ceiling);
+        if (onRetry) {
+          onRetry({ method, attempt, delay, error });
+        }
+        await sleep(delay, signal);
+      }
+    }
+    throw lastError;
   }
 
   return {
-    url,
-    redactedUrl,
-    timeoutMs,
-    maxAttempts,
-    maxResponseBytes,
-    backoffMs,
-    sleep,
-    onRetry,
-    fetchImpl,
-    parseEvents,
+    rpcHost,
+    /**
+     * Fetch one page of contract events, decoded to native JS.
+     *
+     * @param {object} request
+     * @param {Array<object>} [request.filters]
+     * @param {string} [request.cursor]
+     * @param {number} [request.limit]
+     * @param {number} [request.startLedger]
+     * @param {{ signal?: AbortSignal }} [options]
+     */
+    async getEvents(request, options) {
+      const raw = await call('getEvents', buildGetEventsParams(request), options);
+      return parseEvents(raw);
+    },
   };
 }

@@ -213,7 +213,7 @@ The indexer:
 4. Aggregates metrics in memory (counters increment, gauges set absolute values)
 5. Exposes aggregated metrics via Prometheus text format
 
-Cursor persistence and reorg-safe replay are implemented in `cursor-store.js`; `index.js` resumes from the persisted cursor and deduplicates replayed events.
+Cursor persistence and reorg-safe replay are implemented in `cursor-store.js`; `index.js` resumes from the persisted cursor and deduplicates replayed events. The durable cursor store is exercised by `cursor-store.test.js` (restart, duplicates, reorg rewind, corruption).
 
 Transport concerns are isolated in `rpc-client.js` (timeout, retry, response
 cap), scheduling and counters in `runtime.js` (`createPoller`,
@@ -297,9 +297,8 @@ where it left off instead of re-running from the default cursor.
   crashing or trusting bad state.
 
 Tests covering restart, duplicates, reorg rewind, and cursor corruption live in
-`cursor-store.test.js`. The syntax errors reported in `index.js` (line 443) and
-`rpc-client.js` (line 342) must be fixed by removing the duplicate or unbalanced
-brace/identifier at those locations; the rest of each file is left unchanged.
+`cursor-store.test.js`. Run `npm test` to execute the full suite, including the
+`deriveHealthState` and redaction suites.
 
 ## Production Considerations
 

@@ -39,7 +39,7 @@ export function summarizeError(error, maxLength = DEFAULT_ERROR_LENGTH) {
   }
   const name = error.name || 'Error';
   const message = error.message === undefined ? String(error) : String(error.message);
-  return `${name}: ${truncate(message, maxLength)}`;
+  return truncate(`${name}: ${message}`, maxLength);
 }
 
 /**
@@ -63,13 +63,17 @@ export function deriveHealthState({
   rpcHost,
   pollIntervalMs,
 }) {
-  const hasSucceeded = Number.isFinite(stats.lastSuccessAt);
-  const stale = !hasSucceeded || now - stats.lastSuccessAt > staleAfterMs;
+  const safeStats = stats ?? {};
+  const consecutiveFailures = Number.isFinite(safeStats.consecutiveFailures) ? safeStats.consecutiveFailures : 0;
+  const hasSucceeded = typeof safeStats.lastSuccessAt === 'number' && Number.isFinite(safeStats.lastSuccessAt);
+  const failures = Number.isFinite(lastFailures) ? lastFailures : 0;
+  const stale = !hasSucceeded || now - safeStats.lastSuccessAt >= (Number.isFinite(staleAfterMs) ? staleAfterMs : 0);
+  const lastPollFailed = consecutiveFailures > 0;
 
   let status = 'healthy';
-  if (stats.consecutiveFailures >= failureThreshold) {
+  if (consecutiveFailures >= failureThreshold) {
     status = 'unhealthy';
-  } else if (stats.consecutiveFailures > 0 || lastFailures > 0 || stale) {
+  } else if (lastPollFailed || failures > 0 || stale) {
     status = 'degraded';
   }
 
@@ -79,14 +83,14 @@ export function deriveHealthState({
     uptimeMs: Math.max(0, now - startedAt),
     pollIntervalMs,
     rpcHost,
-    lastSuccessAt: hasSucceeded ? stats.lastSuccessAt : null,
+    lastSuccessAt: hasSucceeded ? safeStats.lastSuccessAt : null,
     lastError: lastError ?? null,
-    consecutiveFailures: stats.consecutiveFailures,
+    consecutiveFailures,
     polls: {
-      total: stats.polls,
-      failed: stats.failures,
-      skipped: stats.skipped,
-      lastDurationMs: stats.lastDurationMs,
+      total: safeStats.polls ?? 0,
+      failed: safeStats.failures ?? 0,
+      skipped: safeStats.skipped ?? 0,
+      lastDurationMs: safeStats.lastDurationMs ?? null,
     },
   };
 }
@@ -233,6 +237,7 @@ export function createPoller({ intervalMs, run, now = () => Date.now(), sleep, o
     lastDurationMs: null,
     lastSuccessAt: null,
     lastErrorAt: null,
+    lastError: null,
   };
 
   let inFlight = false;
@@ -278,9 +283,13 @@ export function createPoller({ intervalMs, run, now = () => Date.now(), sleep, o
       return sleep(ms);
     }
     return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
+      const timer = setTimeout(() => {
+        wakeUp = null;
+        resolve();
+      }, ms);
       wakeUp = () => {
         clearTimeout(timer);
+        wakeUp = null;
         resolve();
       };
     });
