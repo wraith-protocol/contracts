@@ -307,6 +307,12 @@ const stellarContractIds: Consumer = {
   name: CONTRACT_IDS,
   check(manifest) {
     if (!exists(CONTRACT_IDS)) return [`${CONTRACT_IDS}: missing (run \`npm run build\`)`];
+    const deployment = findDeployment(manifest, 'stellar', STELLAR_BINDINGS_NETWORK);
+    if (!deployment) return [`${CONTRACT_IDS}: no ${STELLAR_BINDINGS_NETWORK} deployment in the manifest`];
+    const empty = EXPECTED_CONTRACTS.stellar.filter(
+      (n) => !deployment.contracts.some((c) => c.name === n && c.id),
+    );
+    if (empty.length) return [`${CONTRACT_IDS}: manifest is missing IDs for ${empty.join(', ')}`];
     return read(CONTRACT_IDS).trimEnd() === renderContractIds(manifest).trimEnd()
       ? []
       : [

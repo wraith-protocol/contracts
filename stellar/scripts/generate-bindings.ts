@@ -188,6 +188,7 @@ async function main() {
 
   // Verify CLI tool presence
   let cliCmd = 'stellar';
+  const CONTRACT_ID_PLACEHOLDER = 'CONTRACT_ID_REQUIRED';
   if (!checkCommandExists('stellar')) {
     if (checkCommandExists('soroban')) {
       console.log('ℹ️ "stellar" CLI not found. Falling back to legacy "soroban" CLI.');
@@ -229,7 +230,7 @@ async function main() {
   let needsLocalCompilation = false;
   for (const contract of CONTRACTS) {
     const contractId = process.env[contract.envVar] || config[contract.crateName];
-    if (!contractId) {
+    if (!contractId || contractId === CONTRACT_ID_PLACEHOLDER) {
       needsLocalCompilation = true;
       break;
     }
@@ -264,7 +265,8 @@ async function main() {
 
   // Generate bindings for each contract
   for (const contract of CONTRACTS) {
-    const contractId = process.env[contract.envVar] || config[contract.crateName];
+    const rawContractId = process.env[contract.envVar] || config[contract.crateName];
+    const contractId = rawContractId && rawContractId !== CONTRACT_ID_PLACEHOLDER ? rawContractId : undefined;
     const outputDir = path.join(BINDINGS_DIR, contract.crateName);
 
     // Clean existing bindings output folder
@@ -306,27 +308,15 @@ async function main() {
   // Keep this byte-for-byte deterministic: CI regenerates the bindings and
   // fails the PR on any diff, so a timestamp here would make every run look
   // like drift.
-  const indexContent = `// Auto-generated Stellar TypeScript bindings re-exports
-
-export * as StealthAnnouncer from './stealth-announcer/src/index';
-export * as StealthRegistry from './stealth-registry/src/index';
-export * as StealthSender from './stealth-sender/src/index';
-export * as StealthBatchSender from './stealth-batch-sender/src/index';
-export * as WraithNames from './wraith-names/src/index';
-`;
-
-  const indexFilePath = path.join(BINDINGS_DIR, 'index.ts');
-  fs.writeFileSync(indexFilePath, indexContent, 'utf8');
-  console.log(`📝 Generated top-level index.ts: ${path.relative(STELLAR_DIR, indexFilePath)}`);
-
-  console.log('\n🎉 All bindings generated and post-processed successfully!');
+  const indexContent = `// Auto-generated Stellar TypeScript bindings re-exports\n\nexport * as StealthAnnouncer from './stealth-announcer/src/index';\nexport * as StealthRegistry from './stealth-registry/src/index';\nexport * as StealthSender from './stealth-sender/src/index';\nexport * as StealthBatchSender from './stealth-batch-sender/src/index';\nexport * as WraithNames from './wraith-names/src/index';\n`;
+  fs.writeFileSync(path.join(BINDINGS_DIR, 'index.ts'), indexContent, 'utf8');
+  console.log('📝 Wrote bindings index.ts');
 }
 
-// Run only when executed directly; importing this module from tests must not
-// regenerate anything.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Only run when executed directly, not when imported by tests.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   main().catch((err) => {
-    console.error('❌ Script failed with error:', err);
+    console.error(err);
     process.exit(1);
   });
 }

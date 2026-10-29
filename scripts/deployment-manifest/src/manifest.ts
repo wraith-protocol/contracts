@@ -77,6 +77,7 @@ export interface Contract {
     cellDep: { txHash: string; index: number; depType: 'code' | 'dep_group' };
   };
   solana?: { programData: string; upgradeAuthority: string | null };
+  stellar?: { wasmHash: string; governance: { admin: string; upgradeable: boolean } };
 }
 
 export interface Undeployed {

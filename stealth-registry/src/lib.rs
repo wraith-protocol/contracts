@@ -1,6 +1,8 @@
 mod pausable;
 use pausable::{pause, unpause, is_paused, require_not_paused, set_admin};
 
+// Contract IDs for CI are resolved from stellar/contract-ids.json.
+
 // In the trait
 fn pause(env: Env, admin: Address);
 fn unpause(env: Env, admin: Address);
