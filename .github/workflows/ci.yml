@@ -73,7 +73,7 @@ jobs:
       - run: npm run validate-subgraph
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
 
@@ -102,7 +102,7 @@ jobs:
 
       - name: Upload Slither SARIF
         if: always() && hashFiles('evm/results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: evm/results.sarif
           category: slither
@@ -506,7 +506,7 @@ jobs:
         run: python3 bench/update_perf_md.py PERF.md bench/results.json
 
       - name: Commit PERF.md if changed
-        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.2.1
         with:
           commit_message: 'chore(perf): auto-update Stellar PERF.md bench table'
           file_pattern: stellar/PERF.md
@@ -613,7 +613,7 @@ jobs:
           retention-days: 90
 
       - name: Commit rotated baseline.json
-        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.2.1
         with:
           commit_message: 'chore(perf): rotate Stellar gas bench baseline'
           file_pattern: stellar/bench/baseline.json
