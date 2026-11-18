@@ -18,6 +18,7 @@ import {
 } from './manifest.js';
 import { MANIFEST_PATH, REPO_ROOT, recordPath, repoPath } from './paths.js';
 import { SourceSession, candidateCommits, dirtyFiles, resolveSourceCommit } from './provenance.js';
+import { DeploymentJournalManager } from './journal.js';
 import { ckbNetworkId, recordCkbScript } from './record/ckb.js';
 import { evmNetworkId, recordEvmContract } from './record/evm.js';
 import { recordSolanaProgram, solanaNetworkId } from './record/solana.js';
@@ -543,12 +544,118 @@ async function attest(chain: Chain, argv: string[]): Promise<void> {
   build();
 }
 
+async function journalCommand(argv: string[]): Promise<void> {
+  const [subcommand, ...args] = argv;
+  const { values } = parseArgs({
+    args,
+    options: {
+      file: { type: 'string' },
+      network: { type: 'string' },
+      rpc: { type: 'string' },
+      'source-commit': { type: 'string' },
+      deployer: { type: 'string' },
+      contract: { type: 'string', multiple: true },
+      wasm: { type: 'string', multiple: true },
+      name: { type: 'string' },
+      id: { type: 'string' },
+      height: { type: 'string' },
+    },
+  });
+
+  if (!values.file) {
+    throw new Error('--file <path> is required for journal commands');
+  }
+  const journalFile = userPath(values.file);
+  const manager = new DeploymentJournalManager(journalFile);
+
+  if (subcommand === 'init') {
+    if (!values.network || !values.rpc || !values['source-commit'] || !values.deployer) {
+      throw new Error('journal init requires --file, --network, --rpc, --source-commit, and --deployer');
+    }
+    const networkId = await stellarNetworkId(values.rpc);
+    const resolvedCommit = resolveSourceCommit(values['source-commit']);
+    const j = manager.initialize(values.network, networkId, resolvedCommit, values.deployer);
+    console.log(`✓ Initialized journal at ${path.relative(REPO_ROOT, journalFile)} (networkId: ${j.networkId})`);
+    return;
+  }
+
+  if (subcommand === 'validate') {
+    if (!values.network || !values.rpc || !values['source-commit'] || !values.deployer) {
+      throw new Error('journal validate requires --file, --network, --rpc, --source-commit, and --deployer');
+    }
+    const networkId = await stellarNetworkId(values.rpc);
+    const resolvedCommit = resolveSourceCommit(values['source-commit']);
+    const wasmMap: Record<string, string> = {};
+    for (const [name, p] of pairs(values.wasm, '--wasm')) {
+      wasmMap[name] = userPath(p);
+    }
+    const res = await manager.validateResume(
+      values.network,
+      networkId,
+      resolvedCommit,
+      values.deployer,
+      wasmMap,
+      values.rpc,
+    );
+    if (!res.valid) {
+      console.error('Journal resume validation failed:');
+      for (const m of res.mismatches) {
+        console.error(`  ✗ ${m}`);
+      }
+      process.exit(1);
+    }
+    console.log('✓ Journal validated successfully for resume');
+    return;
+  }
+
+  if (subcommand === 'plan') {
+    const contracts = values.contract ?? [];
+    if (!contracts.length) {
+      throw new Error('journal plan requires at least one --contract <name>');
+    }
+    const plan = manager.plan(contracts);
+    console.log('=== Deployment Plan ===');
+    for (const action of plan) {
+      if (action.action === 'reuse') {
+        console.log(`[REUSE] ${action.contract} (id: ${action.existingId}) - ${action.reason}`);
+      } else {
+        console.log(`[DEPLOY] ${action.contract} - ${action.reason}`);
+      }
+    }
+    return;
+  }
+
+  if (subcommand === 'record-step') {
+    if (!values.name || !values.id || !values.wasm) {
+      throw new Error('journal record-step requires --file, --name, --id, and --wasm name=path');
+    }
+    const wasmMap = pairs(values.wasm, '--wasm');
+    const wasmPath = wasmMap.get(values.name);
+    if (!wasmPath) {
+      throw new Error(`No wasm path provided for contract "${values.name}"`);
+    }
+    const height = values.height ? parseInt(values.height, 10) : undefined;
+    manager.recordContractStep(values.name, values.id, userPath(wasmPath), height, true);
+    console.log(`✓ Recorded step for ${values.name} (${values.id}) in journal`);
+    return;
+  }
+
+  if (subcommand === 'complete') {
+    manager.markComplete();
+    console.log(`✓ Marked journal complete at ${path.relative(REPO_ROOT, journalFile)}`);
+    return;
+  }
+
+  throw new Error(`Unknown journal subcommand: ${subcommand}`);
+}
+
 async function main(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   if (command === 'build') return build();
   if (command === 'check') return check();
   if (command === 'verify') return verify();
   if (command === 'verify-source') return verifySource(rest);
+  if (command === 'journal') return journalCommand(rest);
   if (command === 'attest' && ['evm', 'stellar', 'solana', 'ckb'].includes(rest[0])) {
     return attest(rest[0] as Chain, rest.slice(1));
   }
