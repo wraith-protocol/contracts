@@ -44,6 +44,22 @@ is the deployable set. The host-only members (`bench`, `bench-crossover`,
 default target set so that the wasm build stays clean; add `--workspace` to run
 them too.
 
+### End-to-end lifecycle
+
+`integration-tests/tests/lifecycle.rs` runs one full payment through the core
+contracts in a local Soroban test environment, from fixed seeds: register a
+meta-address, send a Stellar Asset Contract token through `stealth-sender`,
+check the announcement, scan it back to the stealth key, withdraw with a real
+signature from that key, then register, resolve and release a name. A failure
+reports the step that broke.
+
+```bash
+cargo test --package integration-tests --test lifecycle
+```
+
+CI runs it as part of `cargo test --workspace` in the `stellar` job, on the
+toolchain pinned in `.github/workflows/ci.yml`.
+
 ## Audits & Formal Verification
 
 Per-contract audit write-ups for the contracts that custody user funds:
