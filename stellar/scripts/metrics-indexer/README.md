@@ -41,6 +41,11 @@ export RPC_MAX_RESPONSE_BYTES=1048576 # hard cap on response bytes read
 export HEALTH_STALE_AFTER_MS=15000   # default: 3 * POLL_INTERVAL_MS
 export HEALTH_FAILURE_THRESHOLD=3    # consecutive total failures -> unhealthy
 
+# Durable cursor + aggregate checkpoint (see "Cursor persistence")
+export INDEXER_STATE_PATH=./metrics-indexer-state.json
+export MAX_REWIND_LEDGERS=120        # how far a lagging provider may be behind
+export CURSOR_STALL_POLLS=3          # full pages that move nothing -> stalled
+
 # Contract addresses to monitor
 export STEALTH_REGISTRY_ADDRESS="CC..."
 export STEALTH_SENDER_ADDRESS="CC..."
@@ -103,12 +108,22 @@ The health endpoint reports `healthy`, `degraded`, or `unhealthy`:
   "lastSuccessAt": 1699999999999,
   "lastError": { "message": "RpcTimeoutError: RPC getEvents timed out after 10000ms", "at": 1700000000000 },
   "consecutiveFailures": 1,
-  "polls": { "total": 12, "failed": 3, "skipped": 0, "lastDurationMs": 82 }
+  "polls": { "total": 12, "failed": 3, "skipped": 0, "lastDurationMs": 82 },
+  "cursors": {
+    "stealthRegistry": {
+      "scannedLedger": 51234,
+      "lastEventId": "0000220046018723840-0000000001",
+      "lastAdvancedAt": 1699999999999,
+      "duplicatesSkipped": 0,
+      "stalled": false
+    }
+  }
 }
 ```
 
 The response only ever carries the redacted RPC host (`scheme://host`) and a
 truncated error summary — never the full URL, credentials, or a provider body.
+`cursors` reports per-contract progress but not the opaque RPC cursor itself.
 
 ## Resilience
 
@@ -131,6 +146,42 @@ truncated error summary — never the full URL, credentials, or a provider body.
   `getEvents` result without a numeric `latestLedger` and an `events` array is
   rejected as a poll failure. A malformed response never becomes a successful
   empty page, so metrics cannot silently stop while `/health` stays healthy.
+
+## Cursor persistence
+
+The indexer resumes where it stopped instead of replaying from the RPC's
+default cursor. `cursor-store.js` keeps one checkpoint file
+(`INDEXER_STATE_PATH`) holding, together:
+
+- per contract: the last opaque RPC cursor, the ledger scanned through, and the
+  id of the last event counted;
+- every aggregate series and its running total.
+
+Each poll fetches one page per contract, folds its new events into a staged
+copy of the totals, and commits the whole checkpoint atomically (write a temp
+file, `fsync`, `rename`) **before** publishing anything to Prometheus. If the
+commit fails, neither the cursor nor any total moved, and the same page is
+counted once on the next poll. On restart the totals are restored from the
+checkpoint, so counters and running-total gauges continue from the same values.
+
+Replay and rewind policy:
+
+- **Deduplication.** Events at or below the last counted event id are replays
+  (restart, duplicated page, provider serving an older page) and are skipped.
+- **Bounded rewind.** A provider may lag behind the committed ledger by up to
+  `MAX_REWIND_LEDGERS`; its page is deduplicated and the committed cursor never
+  moves backward. A larger rollback is refused and reported, not applied.
+- **Retention gap.** If the provider's `oldestLedger` is past the committed
+  ledger, events in between may have been pruned. The page is refused instead
+  of silently skipping them.
+- **Unsafe pages.** An event without an id, or a page that is not strictly
+  ordered, cannot be deduplicated and is refused as a whole.
+- **Stalled cursor.** `CURSOR_STALL_POLLS` consecutive full pages that move
+  nothing mark the contract `stalled` in `/health` and fail its poll.
+- **Corrupt state fails closed.** An unreadable, unparsable, or schema-invalid
+  checkpoint fails every poll (so `/health` turns `degraded`, then
+  `unhealthy`) and is never overwritten. Inspect or remove the file to recover;
+  removing it re-indexes from the RPC's default cursor.
 
 ## Metrics Exported
 
@@ -210,12 +261,14 @@ The indexer:
 1. Polls the Stellar RPC for contract events at configured intervals
 2. Parses event topics to identify WraithMetricEvent format
 3. Extracts metric name, value, and dimensions from event data
-4. Aggregates metrics in memory (counters increment, gauges set absolute values)
+4. Aggregates metrics (counters increment, gauges set absolute values) and
+   commits the totals together with each contract's cursor
 5. Exposes aggregated metrics via Prometheus text format
 
 Transport concerns are isolated in `rpc-client.js` (timeout, retry, response
 cap), scheduling and counters in `runtime.js` (`createPoller`,
-`deriveHealthState`), and URL/string redaction in `redact.js`.
+`deriveHealthState`), checkpointing and the replay policy in `cursor-store.js`,
+and URL/string redaction in `redact.js`.
 
 ## Event Format
 
@@ -240,7 +293,9 @@ symbol table.
 ```bash
 npm test        # node --test; covers timeout/abort, retry+jitter, response cap,
                 # malformed-response rejection, empty-config failure, overlap
-                # prevention, health states, and redaction
+                # prevention, health states, redaction, and (cursor.test.js)
+                # restart, duplicate/partial page, rollback, retention gap,
+                # corrupt state, and stalled cursor through the poll loop
 ```
 
 ### Verify the dashboard against a synthetic event stream
@@ -273,12 +328,11 @@ Then invoke contract functions and observe metrics being updated at `/metrics`.
 
 For production use:
 
-1. Use a persistent storage backend (e.g., Redis, PostgreSQL) instead of in-memory storage
-2. Implement event cursor persistence to avoid reprocessing events
-3. Add authentication/authorization to the metrics endpoint
-4. Configure appropriate retention policies in Prometheus
-5. Set up alerts based on metric thresholds
-6. Use a production Stellar RPC endpoint (testnet or mainnet)
+1. Keep `INDEXER_STATE_PATH` on a persistent volume, and run one indexer per state file
+2. Add authentication/authorization to the metrics endpoint
+3. Configure appropriate retention policies in Prometheus
+4. Set up alerts based on metric thresholds
+5. Use a production Stellar RPC endpoint (testnet or mainnet)
 
 ## License
 
