@@ -1,0 +1,56 @@
+[package]
+name = "wraith-ckb-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+
+[lib]
+name = "wraith_ckb_fuzz"
+path = "src/lib.rs"
+
+[[bin]]
+name = "lock_witness_and_args"
+path = "fuzz_targets/lock_witness_and_args.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "names_type_script"
+path = "fuzz_targets/names_type_script.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ckb_auth_inputs"
+path = "fuzz_targets/ckb_auth_inputs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cell_deps_and_announcement"
+path = "fuzz_targets/cell_deps_and_announcement.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ckb_tx_layout"
+path = "fuzz_targets/ckb_tx_layout.rs"
+test = false
+doc = false
+bench = false
+
+# Detach from the parent CKB workspace: this host crate builds for the native
+# target (libFuzzer / cargo test), not riscv64imac-unknown-none-elf, and keeps
+# ckb/Cargo.lock frozen for the supply-chain lockfile check.
+[workspace]
