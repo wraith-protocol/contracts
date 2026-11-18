@@ -1,11 +1,15 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const ADDRESS_A = 'C'.repeat(55) + 'A';
 const ADDRESS_B = 'C'.repeat(55) + 'B';
 
 // Configure the module before importing it: index.js reads env and captures
 // `globalThis.fetch` at load time.
+process.env.INDEXER_STATE_PATH = join(mkdtempSync(join(tmpdir(), 'metrics-indexer-')), 'state.json');
 process.env.RPC_URL = 'https://user:secret@rpc.example.com/v1/topsecret?api_key=supersecret';
 process.env.STEALTH_REGISTRY_ADDRESS = ADDRESS_A;
 process.env.STEALTH_SENDER_ADDRESS = ADDRESS_B;
