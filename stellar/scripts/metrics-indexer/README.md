@@ -183,6 +183,21 @@ Replay and rewind policy:
   `unhealthy`) and is never overwritten. Inspect or remove the file to recover;
   removing it re-indexes from the RPC's default cursor.
 
+### Crash-consistency soak test
+
+The deterministic harness drives generated pages through the production polling
+path with an in-memory checkpoint store, and uses the file-backed store for
+process-kill cases. It kills workers immediately before and after atomic
+checkpoint writes, then restarts and verifies generated pages, replays, rewinds,
+empty pages, reordered duplicates, truncated state, and stalled cursors.
+
+```bash
+npm run test:crash-soak -- --seed 279 --pages 5000
+```
+
+The compact report records its seed and replay command. Use `--report <path>` to
+also write the report as JSON.
+
 ## Metrics Exported
 
 The indexer exports the following Prometheus metrics:

@@ -351,6 +351,29 @@ jobs:
       - run: cargo fmt --all --check
       - run: WRAITH_PROPTEST_CASES=16384 cargo test --workspace --test properties
 
+  metrics-indexer-crash-soak:
+    if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: stellar/scripts/metrics-indexer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm ci
+      - name: Run deterministic crash and replay soak
+        run: |
+          npm run test:crash-soak -- --seed 279 --pages 5000 \
+            --report "$RUNNER_TEMP/metrics-indexer-crash-soak-report.json" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: metrics-indexer-crash-soak-report
+          path: ${{ runner.temp }}/metrics-indexer-crash-soak-report.json
+          retention-days: 14
+
   stellar-deploy-dryrun:
     if: github.event_name == 'schedule' && github.event.schedule == '23 4 * * *'
     runs-on: ubuntu-24.04
