@@ -7,11 +7,40 @@ const MAX_NAME_LEN: usize = 32;
 /// PDA-based name registry mapping human-readable names to stealth
 /// meta-addresses. Names are validated as 3-32 chars, lowercase alphanumeric
 /// or hyphens. Ownership is tied to the registrant's Solana wallet.
+///
+/// # PDA Authority Model
+///
+/// Every `NameRecord` lives at a canonical PDA:
+///   seeds = [b"name", name.as_bytes()]
+///
+/// The `owner` field (a Pubkey stored inside the account) controls who may
+/// call `update` and `release`. Anchor's `has_one = owner` constraint on
+/// those instructions enforces this at the account-validation layer — before
+/// any instruction logic runs — so a substituted signer is rejected even if
+/// the instruction handler's own check is bypassed.
+///
+/// # Rent Recovery
+///
+/// Only the registered owner may close a `NameRecord` via `release`. The
+/// `close = owner` attribute transfers the full rent-exempt lamport balance to
+/// the `owner` account. The `owner` account must be a signer to prevent an
+/// attacker from redirecting lamports to an arbitrary destination: Anchor's
+/// account validation ensures the signer's key matches `name_record.owner`
+/// before the close happens.
+///
+/// | Account      | Writable | Signer | Closed by |
+/// |--------------|----------|--------|-----------|
+/// | name_record  | yes      | no     | release   |
+/// | owner        | yes      | yes    | —         |
 #[program]
 pub mod wraith_names {
     use super::*;
 
     /// Register a new `.wraith` name with a 64-byte stealth meta-address.
+    ///
+    /// The PDA is derived as `[b"name", name.as_bytes()]`. Anchor's `init`
+    /// constraint guarantees the account does not already exist, so duplicate
+    /// registration is impossible at the runtime level.
     pub fn register(
         ctx: Context<Register>,
         name: String,
@@ -37,7 +66,12 @@ pub mod wraith_names {
     }
 
     /// Update the meta-address for an existing name. Only the owner may call.
+    ///
+    /// The `has_one = owner` constraint verifies that `ctx.accounts.owner`
+    /// matches `name_record.owner` before entering this handler.
     pub fn update(ctx: Context<Update>, new_meta_address: [u8; 64]) -> Result<()> {
+        // has_one = owner already enforced by Anchor at the account-validation
+        // layer; this defensive check provides a second barrier.
         require!(
             ctx.accounts.name_record.owner == ctx.accounts.owner.key(),
             WraithError::NotOwner
@@ -47,7 +81,12 @@ pub mod wraith_names {
     }
 
     /// Release a name, closing the PDA account and returning rent to the owner.
+    ///
+    /// The `has_one = owner` constraint verifies ownership before the close.
+    /// The `close = owner` attribute transfers the full rent balance to the
+    /// signer, so the destination cannot be redirected by a third party.
     pub fn release(ctx: Context<Release>) -> Result<()> {
+        // has_one = owner already enforced by Anchor; kept for defense-in-depth.
         require!(
             ctx.accounts.name_record.owner == ctx.accounts.owner.key(),
             WraithError::NotOwner
@@ -68,6 +107,7 @@ pub struct NameRecord {
     /// 64-byte stealth meta-address: spending_pub || viewing_pub.
     pub meta_address: [u8; 64],
     /// The wallet that owns this name registration.
+    /// This field is enforced by `has_one = owner` on Update and Release.
     pub owner: Pubkey,
     /// Unix timestamp of registration.
     pub created_at: i64,
@@ -91,14 +131,21 @@ pub struct Register<'info> {
 
 #[derive(Accounts)]
 pub struct Update<'info> {
-    #[account(mut)]
+    /// The name record to update. The `has_one` constraint enforces that
+    /// `name_record.owner == owner.key()` before the instruction handler runs,
+    /// preventing owner-substitution attacks at the account-validation layer.
+    #[account(mut, has_one = owner @ WraithError::NotOwner)]
     pub name_record: Account<'info, NameRecord>,
     pub owner: Signer<'info>,
 }
 
 #[derive(Accounts)]
 pub struct Release<'info> {
-    #[account(mut, close = owner)]
+    /// The name record to close. `has_one` enforces the owner relationship;
+    /// `close = owner` transfers the rent-exempt lamports to the owner.
+    /// Because `owner` must be a signer, the rent destination cannot be
+    /// redirected to an arbitrary account.
+    #[account(mut, has_one = owner @ WraithError::NotOwner, close = owner)]
     pub name_record: Account<'info, NameRecord>,
     #[account(mut)]
     pub owner: Signer<'info>,
