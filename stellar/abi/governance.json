@@ -1,0 +1,579 @@
+[
+  {
+    "function_v0": {
+      "doc": "Initialise the governance contract.\\n\\nMust be called exactly once. After init the admin can create and cancel\\nproposals \\xe2\\x80\\x94 in production this role should be renounced or replaced by\\nthe governance process itself.\\n\\n# Arguments\\n* `admin`          \\xe2\\x80\\x94 Address with super-admin powers (PoC only).\\n* `token`          \\xe2\\x80\\x94 SAC token used for voting weight.\\n* `quorum`         \\xe2\\x80\\x94 Absolute minimum total tokens required for a valid vote.\\n* `voting_period`  \\xe2\\x80\\x94 Duration of voting window in ledgers.\\n* `timelock`       \\xe2\\x80\\x94 Delay after voting closes before execution (ledgers).",
+      "name": "init",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "token",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "quorum",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "voting_period",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "timelock",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cast a vote on an active proposal.\\n\\nVoting weight equals the voter's token balance at the time the vote is\\ncast. Each address may vote once per proposal.\\n\\n# Arguments\\n* `voter`       \\xe2\\x80\\x94 Address casting the vote (must auth).\\n* `proposal_id` \\xe2\\x80\\x94 Target proposal.\\n* `support`     \\xe2\\x80\\x94 `true` = for, `false` = against.",
+      "name": "vote",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "voter",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "proposal_id",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "support",
+          "type_": "bool"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Cancel a proposal.\\n\\nRules (PoC):\\n- During voting: only the admin may cancel.\\n- After voting, without quorum: anyone may cancel (failed proposal).\\n- After voting, with quorum: only the admin may cancel (emergency\\noverride \\xe2\\x80\\x94 a production system would remove this power).",
+      "name": "cancel",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "proposal_id",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A single vote cast by a token holder.",
+      "lib": "",
+      "name": "Vote",
+      "fields": [
+        {
+          "doc": "true = for, false = against.",
+          "name": "support",
+          "type_": "bool"
+        },
+        {
+          "doc": "Voting weight (token balance at vote time).",
+          "name": "weight",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Execute a proposal that has passed.\\n\\nConditions (all must hold):\\n1. Voting window has closed.\\n2. Timelock delay has elapsed since voting closed.\\n3. Total votes cast >= quorum.\\n4. `for_votes > against_votes`.\\n5. Not already executed or cancelled.",
+      "name": "execute",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "proposal_id",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Create a new governance proposal.\\n\\nAnyone may propose. The proposer must authorise the call.\\n\\n# Arguments\\n* `proposer`    \\xe2\\x80\\x94 Address creating the proposal (must auth).\\n* `target`      \\xe2\\x80\\x94 Contract to call on execution.\\n* `function`    \\xe2\\x80\\x94 Function name to invoke on the target.\\n* `args`        \\xe2\\x80\\x94 Raw argument bytes forwarded to the target.\\n* `description` \\xe2\\x80\\x94 Human-readable proposal description.\\n\\n# Returns\\nThe new proposal ID.",
+      "name": "propose",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "proposer",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "target",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "function",
+          "type_": "symbol"
+        },
+        {
+          "doc": "",
+          "name": "args",
+          "type_": "bytes"
+        },
+        {
+          "doc": "",
+          "name": "description",
+          "type_": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "u32",
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Return the vote record for a given voter on a proposal.",
+      "name": "get_vote",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "proposal_id",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "voter",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "udt": {
+                "name": "Vote"
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Admin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Token"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Quorum"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "VotingPeriod"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "Timelock"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "",
+            "name": "NextProposalId"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Proposal",
+            "type_": [
+              "u32"
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "",
+            "name": "Vote",
+            "type_": [
+              "u32",
+              "address"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Return the current governance configuration.",
+      "name": "get_config",
+      "inputs": [],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "udt": {
+                "name": "GovernanceConfig"
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A governance proposal.",
+      "lib": "",
+      "name": "Proposal",
+      "fields": [
+        {
+          "doc": "Total tokens voted against.",
+          "name": "against_votes",
+          "type_": "i128"
+        },
+        {
+          "doc": "Raw argument bytes forwarded to the target function.",
+          "name": "args",
+          "type_": "bytes"
+        },
+        {
+          "doc": "Whether the proposal has been cancelled.",
+          "name": "cancelled",
+          "type_": "bool"
+        },
+        {
+          "doc": "Human-readable description.",
+          "name": "description",
+          "type_": "string"
+        },
+        {
+          "doc": "Ledger at which voting closes.",
+          "name": "end_ledger",
+          "type_": "u32"
+        },
+        {
+          "doc": "Whether the proposal has been executed.",
+          "name": "executed",
+          "type_": "bool"
+        },
+        {
+          "doc": "Total tokens voted in favour.",
+          "name": "for_votes",
+          "type_": "i128"
+        },
+        {
+          "doc": "Function to call on the target.",
+          "name": "function",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Sequential proposal ID.",
+          "name": "id",
+          "type_": "u32"
+        },
+        {
+          "doc": "Address that created the proposal.",
+          "name": "proposer",
+          "type_": "address"
+        },
+        {
+          "doc": "Ledger at which voting opens.",
+          "name": "start_ledger",
+          "type_": "u32"
+        },
+        {
+          "doc": "Contract to call on execution.",
+          "name": "target",
+          "type_": "address"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Return a proposal by ID.",
+      "name": "get_proposal",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "proposal_id",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "udt": {
+                "name": "Proposal"
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "GovernanceError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "GovernanceError",
+      "cases": [
+        {
+          "doc": "",
+          "name": "AlreadyInitialized",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "NotAdmin",
+          "value": 3
+        },
+        {
+          "doc": "",
+          "name": "ProposalNotFound",
+          "value": 4
+        },
+        {
+          "doc": "",
+          "name": "AlreadyVoted",
+          "value": 5
+        },
+        {
+          "doc": "",
+          "name": "VotingNotActive",
+          "value": 6
+        },
+        {
+          "doc": "",
+          "name": "VotingStillActive",
+          "value": 7
+        },
+        {
+          "doc": "",
+          "name": "QuorumNotMet",
+          "value": 8
+        },
+        {
+          "doc": "",
+          "name": "ProposalDefeated",
+          "value": 9
+        },
+        {
+          "doc": "",
+          "name": "TimelockNotElapsed",
+          "value": 10
+        },
+        {
+          "doc": "",
+          "name": "AlreadyExecuted",
+          "value": 11
+        },
+        {
+          "doc": "",
+          "name": "AlreadyCancelled",
+          "value": 12
+        },
+        {
+          "doc": "",
+          "name": "ExecutionFailed",
+          "value": 13
+        },
+        {
+          "doc": "",
+          "name": "NoVotingPower",
+          "value": 14
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Read-only governance configuration.",
+      "lib": "",
+      "name": "GovernanceConfig",
+      "fields": [
+        {
+          "doc": "",
+          "name": "quorum",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "timelock",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "token",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "voting_period",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Wraith Protocol standard metric event schema.\\n\\nAll Wraith contracts emit metric events using this structure to enable\\nstandardized off-chain observability and monitoring.",
+      "lib": "",
+      "name": "WraithMetricEvent",
+      "fields": [
+        {
+          "doc": "Contract identifier (e.g., \"stealth-registry\", \"stealth-sender\")",
+          "name": "contract",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Optional dimensions for filtering/grouping (e.g., token_address, scheme_id)",
+          "name": "dimensions",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "tuple": {
+                  "value_types": [
+                    "symbol",
+                    "val"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "Metric name (e.g., \"register_count\", \"send_volume\")",
+          "name": "metric_name",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Numeric value of the metric",
+          "name": "value",
+          "type_": "i128"
+        }
+      ]
+    }
+  }
+]

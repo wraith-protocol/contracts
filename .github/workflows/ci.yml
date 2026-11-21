@@ -280,33 +280,13 @@ jobs:
       - name: Run Upgrade Authority Enforcement Tests
         run: cargo test upgrade_auth --workspace
 
-      - name: Generate Stellar TypeScript bindings
-        run: pnpm bindings:stellar
+      - name: Check all supported bindings and ABI snapshots
+        run: pnpm check:stellar-bindings
         working-directory: .
 
-      # Scoped to the generated artifacts: `cargo test --workspace` earlier in
-      # this job rewrites soroban test_snapshots, and that churn must not be
-      # attributed to the bindings.
-      - name: Check for bindings drift (diff detection)
+      - name: Build, type-check, pack and import all binding packages
+        run: pnpm validate:stellar-bindings
         working-directory: .
-        run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- stellar/bindings)" ]; then
-            git --no-pager status --short --untracked-files=all -- stellar/bindings
-            git --no-pager diff -- stellar/bindings
-            echo "Error: Stellar bindings are out of date. Run pnpm bindings:stellar and commit the result."
-            exit 1
-          fi
-
-      - name: Extract ABI snapshots
-        run: ./abi/update.sh
-      - name: Check ABI snapshots
-        run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- abi/)" ]; then
-            git --no-pager status --short --untracked-files=all -- abi/
-            git --no-pager diff --stat -- abi/
-            echo "Error: ABI snapshots are out of date. Run stellar/abi/update.sh and commit the result."
-            exit 1
-          fi
 
       - name: Test validate-deployment script (mocked CLI)
         run: bash scripts/validate-deployment.test.sh

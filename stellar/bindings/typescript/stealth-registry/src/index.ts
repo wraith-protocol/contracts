@@ -25,8 +25,8 @@ export * from "@stellar/stellar-sdk";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
 
-if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = Buffer;
+if (typeof Reflect.get(globalThis, "Buffer") === "undefined") {
+  Object.assign(globalThis, { Buffer });
 }
 
 
@@ -54,7 +54,7 @@ export const RegistryError = {
 
 /**
  * Wraith Protocol standard metric event schema.
- * 
+ *
  * All Wraith contracts emit metric events using this structure to enable
  * standardized off-chain observability and monitoring.
  */
@@ -81,7 +81,7 @@ export interface Client {
   /**
    * Construct and simulate a remove_keys transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Remove a previously registered stealth meta-address.
-   * 
+   *
    * # Arguments
    * * `registrant` - The address whose meta-address is being removed (must authorise).
    * * `scheme_id`  - The stealth address scheme identifier.
@@ -91,7 +91,7 @@ export interface Client {
   /**
    * Construct and simulate a register_keys transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Register or update a stealth meta-address.
-   * 
+   *
    * # Arguments
    * * `registrant` - The address whose meta-address is being set (must authorise).
    * * `scheme_id`  - The stealth address scheme identifier.
@@ -102,7 +102,7 @@ export interface Client {
   /**
    * Construct and simulate a stealth_meta_address_of transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Look up a previously registered stealth meta-address.
-   * 
+   *
    * # Arguments
    * * `registrant` - The address to look up.
    * * `scheme_id`  - The stealth address scheme identifier.

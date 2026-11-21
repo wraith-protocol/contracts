@@ -13,3 +13,5 @@ To update the ABI snapshots, run the update script from the `stellar` directory:
 ```
 
 This will compile the contracts and overwrite the `.json` snapshots in this directory. Make sure to commit the updated snapshots in your PR.
+
+The supported set comes from [`../bindings/contracts.json`](../bindings/contracts.json). It covers all nine application-facing contracts, including splitter, vault, asset policy and governance. Internal-only crates and their reasons are documented in the [bindings README](../bindings/README.md). `pnpm check:stellar-bindings` checks the full ABI/spec and package baseline without changing checked-in files.

@@ -31,17 +31,13 @@ import {
   RUNTIME_NEUTRAL_BUFFER_SHIM,
   normalizeBufferRuntimeSource,
 } from './generate-bindings.js';
+import { loadBindingInventory } from './bindings-inventory.js';
 
 const SCRIPTS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const BINDINGS_ROOT = path.resolve(SCRIPTS_DIR, '..', 'bindings', 'typescript');
 
-const PACKAGES = [
-  'stealth-announcer',
-  'stealth-registry',
-  'stealth-sender',
-  'stealth-batch-sender',
-  'wraith-names',
-] as const;
+const inventory = loadBindingInventory(path.resolve(SCRIPTS_DIR, '..'));
+const PACKAGES = inventory.contracts.map((contract) => contract.name);
 
 const nodeBuffer = Buffer;
 
@@ -65,6 +61,10 @@ describe('Node import', () => {
       await import('../bindings/typescript/stealth-sender/src/index.js'),
       await import('../bindings/typescript/stealth-batch-sender/src/index.js'),
       await import('../bindings/typescript/wraith-names/src/index.js'),
+      await import('../bindings/typescript/stealth-splitter/src/index.js'),
+      await import('../bindings/typescript/stealth-vault/src/index.js'),
+      await import('../bindings/typescript/wraith-asset-policy/src/index.js'),
+      await import('../bindings/typescript/governance/src/index.js'),
     ];
     for (const mod of imported) {
       expect(Object.keys(mod).some((name) => name.startsWith('Client'))).toBe(true);
@@ -74,7 +74,7 @@ describe('Node import', () => {
   it('imports the top-level barrel', async () => {
     const barrel = await import('../bindings/typescript/index.js');
     expect(Object.keys(barrel).sort()).toEqual(
-      ['StealthAnnouncer', 'StealthBatchSender', 'StealthRegistry', 'StealthSender', 'WraithNames'].sort(),
+      inventory.contracts.map((contract) => contract.exportName).sort(),
     );
   });
 
@@ -98,7 +98,9 @@ describe('Runtime-neutral Buffer guard (edge-style isolated runtime)', () => {
       context,
     );
     expect(result).toBe('function');
-    expect((vm.runInContext('globalThis.Buffer', context) as unknown as typeof Buffer)).toBe(nodeBuffer);
+    expect(vm.runInContext('globalThis.Buffer', context) as unknown as typeof Buffer).toBe(
+      nodeBuffer,
+    );
     expect(vm.runInContext('typeof window', context)).toBe('undefined');
   });
 
@@ -158,5 +160,5 @@ describe('Browser bundle', () => {
     expect(mod.Client).toBeTypeOf('function');
     // The module must not clobber a runtime that already provides Buffer.
     expect(globalThis.Buffer).toBe(nodeBuffer);
-  });
+  }, 30_000);
 });
