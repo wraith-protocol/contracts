@@ -57,6 +57,9 @@ the inventory's environment variables. This opt-in output is not the local CI ba
 
 ## Package consumers
 
+Packages require Node 22 or newer and pin Stellar SDK 16.4.1, which replaces
+the CLI template SDK's vulnerable `toml@3` dependency with `smol-toml`.
+
 Each package has `npm run build` and `npm run check`, publishes only `dist/`
 plus its package metadata/README, and exposes JS and declaration entry points.
 After installation, import `{ Client }` from the package name and pass the

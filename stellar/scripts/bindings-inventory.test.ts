@@ -97,7 +97,7 @@ describe('complete generated-artifact drift gate', () => {
     fs.writeFileSync(path.join(directory, '.gitignore'), 'node_modules\r\ndist\r\n');
     fs.writeFileSync(
       path.join(directory, 'package.json'),
-      '{"name":"temporary-name","version":"0.0.0","type":"module"}',
+      '{"name":"temporary-name","version":"0.0.0","type":"module","dependencies":{"@stellar/stellar-sdk":"^14.5.0"}}',
     );
     normalizePackage(directory, 'stealth-vault');
     const first = ['src/index.ts', 'package.json', 'tsconfig.json', 'README.md'].map((file) =>

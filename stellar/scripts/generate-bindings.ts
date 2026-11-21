@@ -29,6 +29,10 @@ export function normalizePackage(directory: string, name: string): void {
   const packagePath = path.join(directory, 'package.json');
   const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
   pkg.name = name;
+  // The CLI template's SDK 14 pulls vulnerable toml@3; pin the reviewed SDK
+  // that replaces it with smol-toml. Validate every generated API against it.
+  pkg.dependencies['@stellar/stellar-sdk'] = '16.4.1';
+  pkg.engines = { node: '>=22.0.0' };
   pkg.exports = { '.': { types: './dist/index.d.ts', import: './dist/index.js' } };
   pkg.files = ['dist'];
   pkg.scripts = { build: 'tsc', check: 'tsc --noEmit' };
