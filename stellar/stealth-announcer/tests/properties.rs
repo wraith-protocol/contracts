@@ -3,7 +3,7 @@ use soroban_sdk::testutils::{Address as _, EnvTestConfig, Events};
 use soroban_sdk::{symbol_short, vec, Address, Bytes, BytesN, Env, IntoVal, TryFromVal, Val};
 use stealth_announcer::{
     view_tag_bucket, StealthAnnouncerContract, StealthAnnouncerContractClient,
-    METADATA_KIND_VIEW_TAG, STELLAR_V2_SCHEME_ID,
+    METADATA_KIND_VIEW_TAG, STELLAR_V2_SCHEME_ID, MAX_METADATA_LEN,
 };
 
 fn cases() -> u32 {
@@ -16,6 +16,18 @@ fn cases() -> u32 {
 fn env() -> Env {
     Env::new_with_config(EnvTestConfig {
         capture_snapshot_at_drop: false,
+    }
+
+    #[test]
+    #[should_panic]
+    fn metadata_exceeds_max_is_rejected() {
+        let env = env();
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+        let stealth_address = Address::generate(&env);
+        // Create metadata larger than MAX_METADATA_LEN (4096)
+        let large_meta = Bytes::from_slice(&env, &vec![0u8; (MAX_METADATA_LEN as usize + 1)]);
+        client.announce(&STELLAR_V2_SCHEME_ID, &stealth_address, &bytes32(&env, &[0x06u8; 32]), &large_meta);
     })
 }
 
@@ -56,6 +68,18 @@ proptest! {
     }
 
     #[test]
+    #[should_panic]
+    fn metadata_exceeds_max_is_rejected() {
+        let env = env();
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+        let stealth_address = Address::generate(&env);
+        // Create metadata larger than MAX_METADATA_LEN (4096)
+        let large_meta = Bytes::from_slice(&env, &vec![0u8; (MAX_METADATA_LEN as usize + 1)]);
+        client.announce(&STELLAR_V2_SCHEME_ID, &stealth_address, &bytes32(&env, &[0x06u8; 32]), &large_meta);
+    }
+
+    #[test]
     fn v2_topics_include_scheme_view_tag_bucket_and_metadata_kind(epk in valid_epk(), metadata in prop::collection::vec(any::<u8>(), 1..128)) {
         let env = env();
         let contract_id = env.register(StealthAnnouncerContract, ());
@@ -78,6 +102,18 @@ proptest! {
     }
 
     #[test]
+    #[should_panic]
+    fn metadata_exceeds_max_is_rejected() {
+        let env = env();
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+        let stealth_address = Address::generate(&env);
+        // Create metadata larger than MAX_METADATA_LEN (4096)
+        let large_meta = Bytes::from_slice(&env, &vec![0u8; (MAX_METADATA_LEN as usize + 1)]);
+        client.announce(&STELLAR_V2_SCHEME_ID, &stealth_address, &bytes32(&env, &[0x06u8; 32]), &large_meta);
+    }
+
+    #[test]
     fn v2_payload_round_trips_without_caller(epk in valid_epk(), metadata in prop::collection::vec(any::<u8>(), 1..128)) {
         let env = env();
         let contract_id = env.register(StealthAnnouncerContract, ());
@@ -92,6 +128,18 @@ proptest! {
         let actual_value: (Address, BytesN<32>, Bytes) =
             <(Address, BytesN<32>, Bytes)>::try_from_val(&env, &event.2).unwrap();
         prop_assert_eq!(actual_value, (stealth_address, epk, metadata));
+    }
+
+    #[test]
+    #[should_panic]
+    fn metadata_exceeds_max_is_rejected() {
+        let env = env();
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+        let stealth_address = Address::generate(&env);
+        // Create metadata larger than MAX_METADATA_LEN (4096)
+        let large_meta = Bytes::from_slice(&env, &vec![0u8; (MAX_METADATA_LEN as usize + 1)]);
+        client.announce(&STELLAR_V2_SCHEME_ID, &stealth_address, &bytes32(&env, &[0x06u8; 32]), &large_meta);
     }
 
     #[test]
@@ -116,6 +164,18 @@ proptest! {
             METADATA_KIND_VIEW_TAG.into_val(&env),
         ];
         prop_assert_eq!(event.1, expected_topics);
+    }
+
+    #[test]
+    #[should_panic]
+    fn metadata_exceeds_max_is_rejected() {
+        let env = env();
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+        let stealth_address = Address::generate(&env);
+        // Create metadata larger than MAX_METADATA_LEN (4096)
+        let large_meta = Bytes::from_slice(&env, &vec![0u8; (MAX_METADATA_LEN as usize + 1)]);
+        client.announce(&STELLAR_V2_SCHEME_ID, &stealth_address, &bytes32(&env, &[0x06u8; 32]), &large_meta);
     }
 }
 

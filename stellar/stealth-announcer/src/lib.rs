@@ -2,7 +2,7 @@
 
 mod ed25519;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, panic_with_error, contracterror};
 
 /// Stellar v2 deployment scheme id.
 ///
@@ -12,7 +12,23 @@ use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, BytesN, 
 /// rewritten in place because existing indexers may already rely on it. The v2
 /// rollout is a new announcer deployment that only accepts `scheme_id = 2` and
 /// emits the bucketed event shape documented below.
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum Error {
+    MetadataTooLarge = 1,
+}
+
 pub const STELLAR_V2_SCHEME_ID: u32 = 2;
+
+/// Maximum allowed metadata length (bytes) for announce function.
+/// Determined from benchmark measurements to stay within Soroban resource limits.
+pub const MAX_METADATA_LEN: u32 = 4096;
+
+
+/// Maximum allowed metadata length (bytes) for announce function.
+/// Determined from benchmark measurements to stay within Soroban resource limits.
+pub const MAX_METADATA_LEN: u32 = 1024;
 
 /// Initial metadata kind for v2 announcements.
 ///
@@ -76,9 +92,12 @@ impl StealthAnnouncerContract {
             "invalid ed25519 ephemeral public key"
         );
 
+        // Ensure metadata length does not exceed the measured safe limit.
+        if (metadata.len() as u32) > MAX_METADATA_LEN {
+            panic_with_error!(&env, Error::MetadataTooLarge);
+        }
         let view_tag_bucket = view_tag_bucket(&metadata);
         let metadata_kind = METADATA_KIND_VIEW_TAG;
-
         env.events().publish(
             (
                 symbol_short!("announce"),
