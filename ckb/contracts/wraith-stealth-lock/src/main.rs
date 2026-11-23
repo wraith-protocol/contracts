@@ -38,6 +38,7 @@ pub enum Error {
     ArgsLengthNotEnough = 5,
     SignatureLengthNotEnough,
     AuthError,
+    UnexpectedSysError,
 }
 
 impl From<SysError> for Error {
@@ -47,8 +48,8 @@ impl From<SysError> for Error {
             SysError::ItemMissing => Self::ItemMissing,
             SysError::LengthNotEnough(_) => Self::LengthNotEnough,
             SysError::Encoding => Self::Encoding,
-            SysError::Unknown(err_code) => panic!("unexpected sys error {}", err_code),
-            _ => panic!("unreachable spawn related sys error"),
+            SysError::Unknown(_) => Self::UnexpectedSysError,
+            _ => Self::UnexpectedSysError,
         }
     }
 }
@@ -70,7 +71,7 @@ pub fn program_entry() -> i8 {
 
 fn auth() -> Result<(), Error> {
     // algorithm_id = 0 means secp256k1/blake160
-    let algorithm_id_str = CString::new(encode([0u8])).unwrap();
+    let algorithm_id_str = CString::new(encode([0u8])).map_err(|_| Error::Encoding)?;
 
     let signature_str = {
         let signature = {
@@ -85,12 +86,12 @@ fn auth() -> Result<(), Error> {
             }
             signature
         };
-        CString::new(encode(&signature[..])).unwrap()
+        CString::new(encode(&signature[..])).map_err(|_| Error::Encoding)?
     };
 
     let message_str = {
         let message = load_tx_hash()?;
-        CString::new(encode(message)).unwrap()
+        CString::new(encode(message)).map_err(|_| Error::Encoding)?
     };
 
     let pubkey_hash_str = {
@@ -104,7 +105,7 @@ fn auth() -> Result<(), Error> {
             hash.copy_from_slice(&script_args[33..53]);
             hash
         };
-        CString::new(encode(pubkey_hash)).unwrap()
+        CString::new(encode(pubkey_hash)).map_err(|_| Error::Encoding)?
     };
 
     let args = [

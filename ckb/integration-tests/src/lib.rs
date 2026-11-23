@@ -755,3 +755,261 @@ macro_rules! require_executable_vm {
 pub fn record_skip() {
     SKIPPED_ASSERTIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 }
+
+// ── Names Type Script Harness & Fuzz Helpers (Issue #281) ─────────────────────
+
+/// Binary name produced by the RISC-V release build of `wraith-names-type`.
+pub const NAMES_BINARY_NAME: &str = "wraith-names-type";
+/// Required length of `wraith-names-type` script args (`blake2b(name)[0..32]`).
+pub const NAMES_ARGS_LEN: usize = 32;
+/// Required length of `.wraith` name cell data (`spending_pk[33] || viewing_pk[33]`).
+pub const NAMES_DATA_LEN: usize = 66;
+
+/// Exit codes returned by `wraith-names-type`'s `Error` enum.
+pub mod names_exit_code {
+    pub const INDEX_OUT_OF_BOUND: i8 = 1;
+    pub const ITEM_MISSING: i8 = 2;
+    pub const LENGTH_NOT_ENOUGH: i8 = 3;
+    pub const ENCODING: i8 = 4;
+    pub const INVALID_DATA_LENGTH: i8 = 5;
+    pub const INVALID_ARGS_LENGTH: i8 = 6;
+    pub const DUPLICATE_NAME_CELL: i8 = 7;
+    pub const NO_MATCHING_CELLS: i8 = 8;
+    pub const UNEXPECTED_SYS_ERROR: i8 = 9;
+}
+
+/// Locate the compiled RISC-V `wraith-names-type` binary.
+pub fn names_binary_path() -> PathBuf {
+    if let Some(explicit) = std::env::var_os("WRAITH_NAMES_TYPE_BIN") {
+        return PathBuf::from(explicit);
+    }
+    crate_root()
+        .join("../target")
+        .join(TARGET)
+        .join("release")
+        .join(NAMES_BINARY_NAME)
+}
+
+/// Read the compiled `wraith-names-type` RISC-V binary.
+pub fn names_binary() -> Vec<u8> {
+    let path = names_binary_path();
+    fs::read(&path).unwrap_or_else(|err| {
+        panic!(
+            "could not read compiled names type script at {}: {err}\n\
+             Build it first:\n  \
+             CC_riscv64imac_unknown_none_elf=riscv64-elf-gcc \\\n    \
+             cargo build --target {TARGET} --release -p {NAMES_BINARY_NAME}\n\
+             or point WRAITH_NAMES_TYPE_BIN at a prebuilt binary.",
+            path.display()
+        )
+    })
+}
+
+impl LockHarness {
+    /// Build an unlock transaction supplying raw, unparsed witness bytes (e.g.
+    /// truncated or corrupted Molecule `WitnessArgs` headers/offsets).
+    pub fn build_unlock_with_raw_witnesses(
+        &mut self,
+        locked_cell: OutPoint,
+        raw_witnesses: &[Vec<u8>],
+        output_capacity: u64,
+    ) -> TransactionView {
+        let output = CellOutput::new_builder()
+            .capacity(output_capacity)
+            .lock(self.recipient_lock())
+            .build();
+
+        let mut builder = TransactionBuilder::default()
+            .input(CellInput::new_builder().previous_output(locked_cell).build())
+            .output(output)
+            .outputs_data(vec![Bytes::new()].pack());
+
+        for w in raw_witnesses {
+            builder = builder.witness(Bytes::from(w.clone()));
+        }
+
+        self.context.complete_tx(builder.build())
+    }
+}
+
+/// Deploys the real `wraith-names-type` RISC-V binary into a fresh simulator
+/// and builds Create, Update, Destroy, and adversarial transactions against it.
+pub struct NamesTypeHarness {
+    pub context: Context,
+    pub names_out_point: OutPoint,
+    pub owner_lock_out_point: OutPoint,
+    pub default_name_args: Vec<u8>,
+}
+
+impl Default for NamesTypeHarness {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl NamesTypeHarness {
+    pub fn new() -> Self {
+        let binary = names_binary();
+        let mut context = Context::default();
+        let names_out_point = context.deploy_cell(binary.into());
+        let owner_lock_out_point = context.deploy_cell(ALWAYS_SUCCESS.clone());
+        let default_name_args = blake2b_256(b"alice.wraith").to_vec();
+
+        Self {
+            context,
+            names_out_point,
+            owner_lock_out_point,
+            default_name_args,
+        }
+    }
+
+    pub fn owner_lock(&mut self) -> Script {
+        self.context
+            .build_script_with_hash_type(
+                &self.owner_lock_out_point,
+                ScriptHashType::Data2,
+                Bytes::new(),
+            )
+            .expect("owner lock deployed")
+    }
+
+    pub fn names_type_script(&mut self, args: &[u8]) -> Script {
+        self.context
+            .build_script_with_hash_type(
+                &self.names_out_point,
+                ScriptHashType::Data2,
+                Bytes::from(args.to_vec()),
+            )
+            .expect("names type cell deployed")
+    }
+
+    pub fn valid_name_data() -> Vec<u8> {
+        let mut data = vec![0u8; NAMES_DATA_LEN];
+        data[0] = 0x02;
+        data[1..33].copy_from_slice(&[0x31u8; 32]);
+        data[33] = 0x03;
+        data[34..66].copy_from_slice(&[0x42u8; 32]);
+        data
+    }
+
+    /// Build a transaction with `input_datas` matching name cells and `output_datas`
+    /// matching name cells (plus an optional plain funding input when `input_datas` is empty).
+    pub fn build_name_tx(
+        &mut self,
+        type_args: &[u8],
+        input_datas: &[Vec<u8>],
+        output_datas: &[Vec<u8>],
+        extra_plain_outputs: usize,
+        capacity_per_cell: u64,
+    ) -> TransactionView {
+        let owner = self.owner_lock();
+        let type_script = self.names_type_script(type_args);
+
+        let total_outputs =
+            output_datas.len() + extra_plain_outputs.max(usize::from(output_datas.is_empty()));
+        let total_out_cap = capacity_per_cell.saturating_mul(total_outputs as u64);
+
+        let mut inputs = Vec::new();
+        if input_datas.is_empty() {
+            let funding_out = CellOutput::new_builder()
+                .capacity(total_out_cap)
+                .lock(owner.clone())
+                .build();
+            let funding_op = self.context.create_cell(funding_out, Bytes::new());
+            inputs.push(CellInput::new_builder().previous_output(funding_op).build());
+        } else {
+            for (idx, data) in input_datas.iter().enumerate() {
+                let cell_cap = if idx == 0 {
+                    total_out_cap.saturating_sub(
+                        capacity_per_cell.saturating_mul((input_datas.len() - 1) as u64),
+                    )
+                } else {
+                    capacity_per_cell
+                };
+                let cell_out = CellOutput::new_builder()
+                    .capacity(cell_cap.max(capacity_per_cell))
+                    .lock(owner.clone())
+                    .type_(Some(type_script.clone()).pack())
+                    .build();
+                let op = self.context.create_cell(cell_out, Bytes::from(data.clone()));
+                inputs.push(CellInput::new_builder().previous_output(op).build());
+            }
+        }
+
+        let total_in_cap = if input_datas.is_empty() {
+            total_out_cap
+        } else {
+            total_out_cap.max(capacity_per_cell.saturating_mul(input_datas.len() as u64))
+        };
+
+        let mut outputs = Vec::new();
+        let mut outputs_data = Vec::new();
+        let mut remaining_cap = total_in_cap;
+
+        for (idx, data) in output_datas.iter().enumerate() {
+            let is_last = idx + 1 == output_datas.len() && extra_plain_outputs == 0;
+            let cap = if is_last { remaining_cap } else { capacity_per_cell };
+            remaining_cap = remaining_cap.saturating_sub(cap);
+            outputs.push(
+                CellOutput::new_builder()
+                    .capacity(cap)
+                    .lock(owner.clone())
+                    .type_(Some(type_script.clone()).pack())
+                    .build(),
+            );
+            outputs_data.push(Bytes::from(data.clone()));
+        }
+
+        let plain_count = if output_datas.is_empty() {
+            extra_plain_outputs.max(1)
+        } else {
+            extra_plain_outputs
+        };
+        for idx in 0..plain_count {
+            let is_last = idx + 1 == plain_count;
+            let cap = if is_last { remaining_cap } else { capacity_per_cell };
+            remaining_cap = remaining_cap.saturating_sub(cap);
+            outputs.push(
+                CellOutput::new_builder()
+                    .capacity(cap)
+                    .lock(owner.clone())
+                    .build(),
+            );
+            outputs_data.push(Bytes::new());
+        }
+
+        let tx = TransactionBuilder::default()
+            .inputs(inputs)
+            .outputs(outputs)
+            .outputs_data(outputs_data.pack())
+            .witness(Bytes::new())
+            .build();
+        self.context.complete_tx(tx)
+    }
+
+    pub fn verify(
+        &self,
+        tx: &TransactionView,
+        max_cycles: u64,
+        label: &str,
+    ) -> Result<(), VerifyFailure> {
+        match self.context.verify_tx(tx, max_cycles) {
+            Ok(_) => Ok(()),
+            Err(error) => {
+                let path = fixture_dir().join(format!("{label}.json"));
+                if let Some(parent) = path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                if let Ok(repr) = self.context.dump_tx(tx) {
+                    if let Ok(body) = serde_json::to_string_pretty(&repr) {
+                        let _ = fs::write(&path, body);
+                    }
+                }
+                Err(VerifyFailure {
+                    error,
+                    fixture: path,
+                })
+            }
+        }
+    }
+}

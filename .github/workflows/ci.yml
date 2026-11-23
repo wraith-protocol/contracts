@@ -9,6 +9,7 @@ on:
     - cron: '23 4 * * *'
     # Weekly gas baseline rotation (Mondays 05:17 UTC)
     - cron: '17 5 * * 1'
+  workflow_dispatch:
 
 # Reviewed toolchain pins. Bump them only through the process in SUPPLY_CHAIN.md.
 env:
@@ -653,13 +654,24 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: riscv64imac-unknown-none-elf
       - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
-      - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock
-      # Transaction-level tests (#195): run the compiled RISC-V artifact inside
-      # ckb-testtool's in-process simulator. Covers signature/argument validation,
-      # malformed cells, amount checks, the produced code hash, and writes a
-      # CKB-debugger-replayable fixture for every failing transaction.
-      - name: Run CKB lock-script integration tests
+      - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock -p wraith-names-type
+      # Transaction-level tests (#195, #281): run both compiled RISC-V artifacts
+      # inside ckb-testtool's in-process simulator, including minimized corpus
+      # regressions, a bounded deterministic VM sample, and ckb/fuzz unit replay.
+      - name: Run CKB lock and type-script integration tests
         run: make test-ci
+      - name: Install cargo-fuzz
+        working-directory: ckb/fuzz
+        run: cargo install cargo-fuzz --version "=0.12.0" --locked
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+      - name: Run bounded deterministic CKB cargo-fuzz sample
+        working-directory: ckb/fuzz
+        run: |
+          for target in lock_witness_and_args names_type_script ckb_auth_inputs cell_deps_and_announcement ckb_tx_layout; do
+            cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run "$target" -- -seed=281 -runs=512
+          done
       - name: Upload CKB transaction fixtures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -695,6 +707,42 @@ jobs:
         with:
           name: fuzz-artifacts
           path: stellar/stealth-sender/fuzz/artifacts/
+
+  fuzz-ckb:
+    # Nightly larger-corpus cargo-fuzz sweep for CKB lock/type scripts (#281).
+    # Scheduled/manual only — runs in parallel with Stellar's nightly fuzz job.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ckb/fuzz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version "=0.12.0" --locked
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+      # 15-minute total budget across the five CKB fuzz targets (180s each).
+      - name: Fuzz CKB lock_witness_and_args
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run lock_witness_and_args -- -max_total_time=180
+      - name: Fuzz CKB names_type_script
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run names_type_script -- -max_total_time=180
+      - name: Fuzz CKB ckb_auth_inputs
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run ckb_auth_inputs -- -max_total_time=180
+      - name: Fuzz CKB cell_deps_and_announcement
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run cell_deps_and_announcement -- -max_total_time=180
+      - name: Fuzz CKB ckb_tx_layout
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run ckb_tx_layout -- -max_total_time=180
+      - name: Upload CKB crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ckb-fuzz-artifacts
+          path: ckb/fuzz/artifacts/
 
   conformance:
     needs: changes
