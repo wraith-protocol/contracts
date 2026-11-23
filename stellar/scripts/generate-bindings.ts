@@ -1,332 +1,159 @@
-import { execSync } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadBindingInventory, compareGeneratedTrees } from './bindings-inventory.js';
+import {
+  normalizeBufferRuntimeSource,
+  normalizeReservedArguments,
+} from './bindings-normalization.js';
+export {
+  CLI_BUFFER_SHIM,
+  RUNTIME_NEUTRAL_BUFFER_SHIM,
+  normalizeBufferRuntimeSource,
+} from './bindings-normalization.js';
 
-/**
- * The stellar CLI template that generates each binding package ships a Buffer
- * polyfill targeted at DOM runtimes:
- *
- *   if (typeof window !== "undefined") {
- *     //@ts-ignore Buffer exists
- *     window.Buffer = window.Buffer || Buffer;
- *   }
- *
- * It relies on a `@ts-ignore` (failing strict type checks and linting) and is
- * skipped entirely in edge/worker runtimes, where `window` does not exist.
- * This is the exact string it emits, so regeneration can be normalized back
- * deterministically.
- */
-export const CLI_BUFFER_SHIM = `if (typeof window !== "undefined") {
-  //@ts-ignore Buffer exists
-  window.Buffer = window.Buffer || Buffer;
-}`;
+const stellar = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/**
- * Typed, runtime-neutral replacement: Node, browsers, and edge isolates all
- * share `globalThis`, and Node already defines `Buffer` there, so the guard
- * only assigns in non-Node runtimes. No `@ts-ignore`, and the assignment
- * targets the one object every runtime exposes — `window` is not consulted.
- * Kept free of TypeScript-only syntax so the semantics can also be executed
- * verbatim in an isolated runtime (see bindings-portability.test.ts).
- */
-export const RUNTIME_NEUTRAL_BUFFER_SHIM = `if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = Buffer;
-}`;
-
-/**
- * Rewrites the stellar CLI's window-targeted Buffer polyfill into the typed,
- * runtime-neutral form. Applied on every generated file so the checked-in
- * bindings stay byte-reproducible with `pnpm bindings:stellar`.
- */
-export function normalizeBufferRuntimeSource(content: string): string {
-  return content.replaceAll(CLI_BUFFER_SHIM, RUNTIME_NEUTRAL_BUFFER_SHIM);
+export function normalizePackage(directory: string, name: string): void {
+  const source = path.join(directory, 'src/index.ts');
+  const content = fs
+    .readFileSync(source, 'utf8')
+    .replaceAll('\r\n', '\n')
+    .replace(/[\t ]+$/gm, '')
+    .replace(/export default class (\w+)/g, 'export class $1');
+  fs.writeFileSync(source, normalizeReservedArguments(normalizeBufferRuntimeSource(content)));
+  const ignorePath = path.join(directory, '.gitignore');
+  fs.writeFileSync(ignorePath, fs.readFileSync(ignorePath, 'utf8').replaceAll('\r\n', '\n'));
+  const packagePath = path.join(directory, 'package.json');
+  const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  pkg.name = name;
+  // The CLI template's SDK 14 pulls vulnerable toml@3; pin the reviewed SDK
+  // that replaces it with smol-toml. Validate every generated API against it.
+  pkg.dependencies['@stellar/stellar-sdk'] = '16.4.1';
+  pkg.engines = { node: '>=22.0.0' };
+  pkg.exports = { '.': { types: './dist/index.d.ts', import: './dist/index.js' } };
+  pkg.files = ['dist'];
+  pkg.scripts = { build: 'tsc', check: 'tsc --noEmit' };
+  fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + '\n');
+  fs.writeFileSync(
+    path.join(directory, 'tsconfig.json'),
+    JSON.stringify(
+      {
+        compilerOptions: {
+          target: 'ES2022',
+          module: 'NodeNext',
+          moduleResolution: 'NodeNext',
+          strict: true,
+          declaration: true,
+          outDir: 'dist',
+          rootDir: 'src',
+          skipLibCheck: true,
+        },
+        include: ['src/**/*.ts'],
+      },
+      null,
+      2,
+    ) + '\n',
+  );
+  fs.writeFileSync(
+    path.join(directory, 'README.md'),
+    `# ${name}\n\nGenerated with Stellar CLI 26.1.0 from the local contract WASM.\nDo not edit generated files; run \`pnpm bindings:stellar\` from the repository root.\n\nBuild with \`npm run build\`; import the named \`Client\` export from \`${name}\`.\nSupply the deployment's contractId, networkPassphrase and rpcUrl explicitly.\nSee the parent bindings README for supported contracts and validation.\n`,
+  );
 }
 
-// Define paths
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const STELLAR_DIR = path.resolve(__dirname, '..');
-const BINDINGS_DIR = path.join(STELLAR_DIR, 'bindings', 'typescript');
-const CONFIG_FILE = path.join(STELLAR_DIR, 'contract-ids.json');
-
-// Contract Crates mapping to their package/class names and compiled WASM filenames
-interface ContractMetadata {
-  crateName: string;      // Crate directory name, e.g. "stealth-registry"
-  wasmName: string;       // Cargo output wasm file, e.g. "stealth_registry.wasm"
-  envVar: string;         // Environment variable name, e.g. "STEALTH_REGISTRY_CONTRACT_ID"
-}
-
-const CONTRACTS: ContractMetadata[] = [
-  {
-    crateName: 'stealth-announcer',
-    wasmName: 'stealth_announcer.wasm',
-    envVar: 'STEALTH_ANNOUNCER_CONTRACT_ID',
-  },
-  {
-    crateName: 'stealth-registry',
-    wasmName: 'stealth_registry.wasm',
-    envVar: 'STEALTH_REGISTRY_CONTRACT_ID',
-  },
-  {
-    crateName: 'stealth-sender',
-    wasmName: 'stealth_sender.wasm',
-    envVar: 'STEALTH_SENDER_CONTRACT_ID',
-  },
-  {
-    crateName: 'stealth-batch-sender',
-    wasmName: 'stealth_batch_sender.wasm',
-    envVar: 'STEALTH_BATCH_SENDER_CONTRACT_ID',
-  },
-  {
-    crateName: 'wraith-names',
-    wasmName: 'wraith_names.wasm',
-    envVar: 'WRAITH_NAMES_CONTRACT_ID',
-  },
-];
-
-// Helper to check if a command exists in the system path
-function checkCommandExists(cmd: string): boolean {
-  try {
-    const checkCmd = process.platform === 'win32' ? `where ${cmd}` : `which ${cmd}`;
-    execSync(checkCmd, { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Load deployed contract IDs from config file
-function loadConfig(): Record<string, string> {
-  if (fs.existsSync(CONFIG_FILE)) {
-    try {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    } catch (err) {
-      console.warn(`⚠️ Failed to parse config file: ${err}`);
-    }
-  }
-  return {};
-}
-
-// Walk generated output and normalize the runtime Buffer polyfill.
-function normalizeBufferRuntime(directory: string): void {
-  if (!fs.existsSync(directory)) return;
-
-  const files = fs.readdirSync(directory);
-  for (const file of files) {
-    const fullPath = path.join(directory, file);
-    const stat = fs.statSync(fullPath);
-
-    if (stat.isDirectory()) {
-      normalizeBufferRuntime(fullPath);
-    } else if (file.endsWith('.ts') || file.endsWith('.js')) {
-      const content = fs.readFileSync(fullPath, 'utf8');
-      const normalized = normalizeBufferRuntimeSource(content);
-      if (normalized !== content) {
-        fs.writeFileSync(fullPath, normalized, 'utf8');
-        console.log(`🧩 Normalized runtime Buffer polyfill: ${path.relative(STELLAR_DIR, fullPath)}`);
-      }
-    }
-  }
-}
-
-// Post-process generated files to convert default exports to named exports
-function postProcessBindings(directory: string): void {
-  if (!fs.existsSync(directory)) return;
-
-  const files = fs.readdirSync(directory);
-  for (const file of files) {
-    const fullPath = path.join(directory, file);
-    const stat = fs.statSync(fullPath);
-
-    if (stat.isDirectory()) {
-      postProcessBindings(fullPath);
-    } else if (file.endsWith('.ts') || file.endsWith('.js')) {
-      let content = fs.readFileSync(fullPath, 'utf8');
-      let changed = false;
-
-      // 1. Replace "export default class Client" with "export class Client"
-      if (content.includes('export default class Client')) {
-        content = content.replace(/export default class Client/g, 'export class Client');
-        changed = true;
-      }
-
-      // 2. Replace "export default class Contract" with "export class Contract"
-      if (content.includes('export default class Contract')) {
-        content = content.replace(/export default class Contract/g, 'export class Contract');
-        changed = true;
-      }
-
-      // 3. Replace any other "export default class [Name]" with "export class [Name]"
-      const defaultClassRegex = /export default class (\w+)/g;
-      if (defaultClassRegex.test(content)) {
-        content = content.replace(defaultClassRegex, 'export class $1');
-        changed = true;
-      }
-
-      // 4. Ensure we append a named export for default-exported entities if any remain
-      // and export them by name so both named and default imports work cleanly if desired.
-      const defaultExportRegex = /export default (\w+);/g;
-      if (defaultExportRegex.test(content)) {
-        // If it exports default, make sure we also add a named export just in case
-        content = content.replace(defaultExportRegex, (match, name) => {
-          return `export { ${name} };\nexport default ${name};`;
-        });
-        changed = true;
-      }
-
-      if (changed) {
-        fs.writeFileSync(fullPath, content, 'utf8');
-        console.log(`✨ Post-processed exports in: ${path.relative(STELLAR_DIR, fullPath)}`);
-      }
-    }
-  }
-}
-
-// Main runner function
-async function main() {
-  console.log('🚀 Starting Stellar TypeScript bindings generation...\n');
-
-  // Verify CLI tool presence
-  let cliCmd = 'stellar';
-  if (!checkCommandExists('stellar')) {
-    if (checkCommandExists('soroban')) {
-      console.log('ℹ️ "stellar" CLI not found. Falling back to legacy "soroban" CLI.');
-      cliCmd = 'soroban';
-    } else {
-      // Fallback for default Windows installation paths when PATH is not refreshed yet
-      const windowsPaths = [
-        'C:\\Program Files (x86)\\Stellar CLI\\stellar.exe',
-        'C:\\Program Files\\Stellar CLI\\stellar.exe',
-      ];
-      let foundWindowsFallback = false;
-      for (const winPath of windowsPaths) {
-        if (fs.existsSync(winPath)) {
-          console.log(`ℹ️ "stellar" CLI not found on PATH, but found at Windows default path: "${winPath}"`);
-          cliCmd = `"${winPath}"`;
-          foundWindowsFallback = true;
-          break;
-        }
-      }
-
-      if (!foundWindowsFallback) {
-        console.error('❌ Error: Neither "stellar" nor "soroban" CLI commands were found on your PATH.');
-        console.error('Please install the Stellar CLI: https://developers.stellar.org/docs/tools/developer-tools/cli/install-cli');
-        process.exit(1);
-      }
-    }
-  }
-
-  // Load contract IDs from config and environment variables
-  const config = loadConfig();
-  const network = process.env.STEALTH_NETWORK || 'testnet';
-
-  // Create bindings target directory
-  if (!fs.existsSync(BINDINGS_DIR)) {
-    fs.mkdirSync(BINDINGS_DIR, { recursive: true });
-  }
-
-  // Determine local compilation requirement
-  let needsLocalCompilation = false;
-  for (const contract of CONTRACTS) {
-    const contractId = process.env[contract.envVar] || config[contract.crateName];
-    if (!contractId) {
-      needsLocalCompilation = true;
-      break;
-    }
-  }
-
-  // Local compilation if in WASM mode. Reuse existing WASM artifacts when
-  // present so this step is idempotent alongside a preceding
-  // `cargo build --target wasm32-unknown-unknown --release` in CI.
-  if (needsLocalCompilation) {
-    console.log('⚙️ No contract IDs detected for some or all contracts. Using local WASM mode.');
-    const releaseDir = path.join(STELLAR_DIR, 'target', 'wasm32-unknown-unknown', 'release');
-    const artifactsPresent =
-      fs.existsSync(releaseDir) &&
-      CONTRACTS.every((c) => fs.existsSync(path.join(releaseDir, c.wasmName)));
-
-    if (artifactsPresent) {
-      console.log('♻️  Reusing existing WASM artifacts in target/wasm32-unknown-unknown/release/');
-    } else {
-      console.log('🔨 Compiling Soroban contracts to WASM locally (cargo build)...');
-      try {
-        execSync('cargo build --target wasm32-unknown-unknown --release', {
-          cwd: STELLAR_DIR,
-          stdio: 'inherit',
-        });
-        console.log('✅ Local compilation succeeded!\n');
-      } catch (err) {
-        console.error('❌ Local cargo build failed. Make sure you have the rust/wasm32 toolchain installed.');
-        process.exit(1);
-      }
-    }
-  }
-
-  // Generate bindings for each contract
-  for (const contract of CONTRACTS) {
-    const contractId = process.env[contract.envVar] || config[contract.crateName];
-    const outputDir = path.join(BINDINGS_DIR, contract.crateName);
-
-    // Clean existing bindings output folder
-    if (fs.existsSync(outputDir)) {
-      fs.rmSync(outputDir, { recursive: true, force: true });
-    }
-
-    let command = '';
-    if (contractId) {
-      console.log(`🌐 Generating bindings for "${contract.crateName}" from deployed Testnet ID: ${contractId}`);
-      command = `${cliCmd} contract bindings typescript --contract-id ${contractId} --network ${network} --output-dir "${outputDir}"`;
-    } else {
-      const wasmPath = path.join(STELLAR_DIR, 'target', 'wasm32-unknown-unknown', 'release', contract.wasmName);
-      if (!fs.existsSync(wasmPath)) {
-        console.error(`❌ Error: Compiled WASM file not found at ${wasmPath}`);
-        process.exit(1);
-      }
-      console.log(`📦 Generating bindings for "${contract.crateName}" from local WASM file: ${path.relative(STELLAR_DIR, wasmPath)}`);
-      command = `${cliCmd} contract bindings typescript --wasm "${wasmPath}" --output-dir "${outputDir}"`;
-    }
-
-    try {
-      execSync(command, { cwd: STELLAR_DIR, stdio: 'inherit' });
-      console.log(`✅ Generated bindings for ${contract.crateName}.`);
-
-      // Post-process output to use named exports, then normalize the
-      // window-targeted Buffer polyfill the CLI template emits.
-      postProcessBindings(outputDir);
-      normalizeBufferRuntime(outputDir);
-    } catch (err) {
-      console.error(`❌ Failed to generate bindings for ${contract.crateName}:`, err);
-      process.exit(1);
-    }
-    console.log();
-  }
-
-  // Create global index.ts file re-exporting all clients.
-  //
-  // Keep this byte-for-byte deterministic: CI regenerates the bindings and
-  // fails the PR on any diff, so a timestamp here would make every run look
-  // like drift.
-  const indexContent = `// Auto-generated Stellar TypeScript bindings re-exports
-
-export * as StealthAnnouncer from './stealth-announcer/src/index';
-export * as StealthRegistry from './stealth-registry/src/index';
-export * as StealthSender from './stealth-sender/src/index';
-export * as StealthBatchSender from './stealth-batch-sender/src/index';
-export * as WraithNames from './wraith-names/src/index';
-`;
-
-  const indexFilePath = path.join(BINDINGS_DIR, 'index.ts');
-  fs.writeFileSync(indexFilePath, indexContent, 'utf8');
-  console.log(`📝 Generated top-level index.ts: ${path.relative(STELLAR_DIR, indexFilePath)}`);
-
-  console.log('\n🎉 All bindings generated and post-processed successfully!');
-}
-
-// Run only when executed directly; importing this module from tests must not
-// regenerate anything.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((err) => {
-    console.error('❌ Script failed with error:', err);
-    process.exit(1);
+export function generateBindings(args = process.argv.slice(2)): void {
+  const allowed = new Set(['--check', '--abi-only', '--deployed']);
+  if (args.some((arg) => !allowed.has(arg)))
+    throw new Error('Usage: bindings:stellar [--check] [--abi-only] [--deployed]');
+  const check = args.includes('--check');
+  const abiOnly = args.includes('--abi-only');
+  const deployed = args.includes('--deployed');
+  if (check && deployed) throw new Error('Drift checks require local WASM, not deployed contracts');
+  const { contracts } = loadBindingInventory(stellar);
+  const cli = process.env.STELLAR_CLI ?? 'stellar';
+  const version = execFileSync(cli, ['--version'], { encoding: 'utf8' });
+  if (!/\b26\.1\.0\b/.test(version))
+    throw new Error('Use the reviewed Stellar CLI 26.1.0 pin (see SUPPLY_CHAIN.md)');
+  // Always build from current sources. Existing WASM may belong to an older checkout.
+  execFileSync('cargo', ['build', '--locked', '--target', 'wasm32-unknown-unknown', '--release'], {
+    cwd: stellar,
+    stdio: 'inherit',
   });
+  const release = path.join(
+    process.env.CARGO_TARGET_DIR ?? path.join(stellar, 'target'),
+    'wasm32-unknown-unknown/release',
+  );
+  const configPath = path.join(stellar, 'contract-ids.json');
+  const config =
+    deployed && fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf8')) : {};
+  if (deployed)
+    for (const contract of contracts) {
+      if (!(process.env[contract.envVar] || config[contract.name]))
+        throw new Error(`Missing deployed ID for ${contract.name}`);
+    }
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'wraith-bindings-'));
+  try {
+    const bindings = path.join(temporary, 'typescript');
+    const abi = path.join(temporary, 'abi');
+    fs.mkdirSync(bindings);
+    fs.mkdirSync(abi);
+    for (const contract of contracts) {
+      const wasm = path.join(release, contract.wasm);
+      if (!fs.existsSync(wasm)) throw new Error(`Missing WASM for ${contract.name}: ${wasm}`);
+      const snapshot = execFileSync(
+        cli,
+        ['contract', 'info', 'interface', '--wasm', wasm, '--output', 'json-formatted'],
+        { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 },
+      );
+      // Normalize formatting/newlines without changing the pinned CLI's schema.
+      fs.writeFileSync(
+        path.join(abi, contract.wasm.replace('.wasm', '.json')),
+        JSON.stringify(JSON.parse(snapshot), null, 2) + '\n',
+      );
+      if (abiOnly) continue;
+      const output = path.join(bindings, contract.name);
+      const source = deployed
+        ? [
+            '--contract-id',
+            process.env[contract.envVar] || config[contract.name],
+            '--network',
+            process.env.STEALTH_NETWORK || 'testnet',
+          ]
+        : ['--wasm', wasm];
+      execFileSync(cli, ['contract', 'bindings', 'typescript', ...source, '--output-dir', output], {
+        cwd: stellar,
+        stdio: 'inherit',
+      });
+      normalizePackage(output, contract.name);
+    }
+    if (!abiOnly)
+      fs.writeFileSync(
+        path.join(bindings, 'index.ts'),
+        '// Auto-generated Stellar TypeScript bindings re-exports\n\n' +
+          contracts
+            .map((c) => `export * as ${c.exportName} from './${c.name}/src/index.js';`)
+            .join('\n') +
+          '\n',
+      );
+    const destinations = [[abi, path.join(stellar, 'abi')]];
+    if (!abiOnly) destinations.push([bindings, path.join(stellar, 'bindings/typescript')]);
+    for (const [generated, checkedIn] of destinations) {
+      const differences = compareGeneratedTrees(generated, checkedIn);
+      if (check && differences.length)
+        throw new Error(`Stale or missing generated artifacts:\n${differences.join('\n')}`);
+      if (!check) fs.cpSync(generated, checkedIn, { recursive: true });
+    }
+    console.log(
+      check
+        ? 'All supported bindings and ABI snapshots are current.'
+        : 'Generated all supported bindings and ABI snapshots.',
+    );
+  } finally {
+    // mkdtemp returns a private directory beneath the fixed OS temporary root.
+    if (path.dirname(temporary) !== os.tmpdir()) throw new Error('Unexpected temporary path');
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
 }
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) generateBindings();

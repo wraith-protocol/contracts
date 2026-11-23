@@ -1,0 +1,29 @@
+{
+  "version": "0.0.0",
+  "name": "stealth-vault",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "typings": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.4.1",
+    "buffer": "6.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.2"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

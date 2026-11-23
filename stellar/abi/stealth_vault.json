@@ -1,0 +1,556 @@
+[
+  {
+    "function_v0": {
+      "doc": "Initialise the vault with its pause admin and announcer address.\\n\\nMust be called exactly once before any `deposit`. The grace period is\\nseeded to `DEFAULT_GRACE_PERIOD` and can be retuned by the admin.",
+      "name": "init",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "admin",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "announcer",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the pause admin.",
+      "name": "admin",
+      "inputs": [],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": "address",
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Claim a deposit. Callable while paused so recipients can always exit.",
+      "name": "claim",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "deposit_id",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "recipient",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Pause the contract \\xe2\\x80\\x94 admin only.\\n\\nBlocks new deposits. `claim`, `refund`, and `refund_permissionless`\\nstay callable so depositors and recipients can always exit.",
+      "name": "pause",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Refund an unclaimed deposit to its depositor. Callable while paused.\\n\\nRequires the depositor's authorisation and opens at `refund_after`.",
+      "name": "refund",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "deposit_id",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "",
+      "name": "deposit",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "sender",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "recipient",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "unlock_ledger",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "refund_after",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "ephemeral_pub_key",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "bytes_n": {
+                "n": 32
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Unpause the contract \\xe2\\x80\\x94 admin only.",
+      "name": "unpause",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns true if the contract is paused.",
+      "name": "is_paused",
+      "inputs": [],
+      "outputs": [
+        "bool"
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "tuple_v0": {
+            "doc": "Maps a deposit id to its `DepositEntry`.",
+            "name": "Deposit",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Address of the stealth announcer contract.",
+            "name": "Announcer"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Pause admin address.",
+            "name": "Admin"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Whether the contract is paused.",
+            "name": "Paused"
+          }
+        },
+        {
+          "void_v0": {
+            "doc": "Configurable grace period, in ledgers.",
+            "name": "GracePeriod"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Look up a stored deposit without mutating it.",
+      "name": "get_deposit",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "deposit_id",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "udt": {
+                "name": "DepositEntry"
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Returns the configured grace period in ledgers.",
+      "name": "grace_period",
+      "inputs": [],
+      "outputs": [
+        "u32"
+      ]
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "VaultError",
+      "cases": [
+        {
+          "doc": "",
+          "name": "AlreadyInitialized",
+          "value": 1
+        },
+        {
+          "doc": "",
+          "name": "NotInitialized",
+          "value": 2
+        },
+        {
+          "doc": "",
+          "name": "InvalidWindow",
+          "value": 3
+        },
+        {
+          "doc": "",
+          "name": "DepositNotFound",
+          "value": 4
+        },
+        {
+          "doc": "",
+          "name": "NotYetUnlocked",
+          "value": 5
+        },
+        {
+          "doc": "",
+          "name": "NotYetRefundable",
+          "value": 6
+        },
+        {
+          "doc": "",
+          "name": "WrongRecipient",
+          "value": 7
+        },
+        {
+          "doc": "The contract is paused; `deposit` is unavailable until an admin unpauses.",
+          "name": "Paused",
+          "value": 8
+        },
+        {
+          "doc": "The permissionless refund window has not opened yet.",
+          "name": "NotYetPermissionless",
+          "value": 9
+        },
+        {
+          "doc": "`set_grace_period` was called with zero.",
+          "name": "InvalidGracePeriod",
+          "value": 10
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "",
+      "lib": "",
+      "name": "DepositEntry",
+      "fields": [
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "recipient",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "refund_after",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "sender",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "unlock_ledger",
+          "type_": "u32"
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Retune the grace period \\xe2\\x80\\x94 admin only.\\n\\nApplies to deposits made after the change; already-stored deposits keep\\nthe absolute `unlock_ledger` / `refund_after` they were created with,\\nbut their permissionless refund window moves with the new value.",
+      "name": "set_grace_period",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "grace_period",
+          "type_": "u32"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Refund an unclaimed deposit to its depositor without the depositor's\\nsignature. Callable while paused.\\n\\nOpens one grace period after `refund_after`, so a depositor who has lost\\naccess to their key cannot strand funds in the vault forever. Funds\\nalways go to the recorded depositor \\xe2\\x80\\x94 `caller` only pays the fee and is\\nauthorised so the invocation is attributable.",
+      "name": "refund_permissionless",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "caller",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "deposit_id",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "VaultError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Wraith Protocol standard metric event schema.\\n\\nAll Wraith contracts emit metric events using this structure to enable\\nstandardized off-chain observability and monitoring.",
+      "lib": "",
+      "name": "WraithMetricEvent",
+      "fields": [
+        {
+          "doc": "Contract identifier (e.g., \"stealth-registry\", \"stealth-sender\")",
+          "name": "contract",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Optional dimensions for filtering/grouping (e.g., token_address, scheme_id)",
+          "name": "dimensions",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "tuple": {
+                  "value_types": [
+                    "symbol",
+                    "val"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "Metric name (e.g., \"register_count\", \"send_volume\")",
+          "name": "metric_name",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Numeric value of the metric",
+          "name": "value",
+          "type_": "i128"
+        }
+      ]
+    }
+  }
+]

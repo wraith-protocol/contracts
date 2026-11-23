@@ -25,8 +25,8 @@ export * from "@stellar/stellar-sdk";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
 
-if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = Buffer;
+if (typeof Reflect.get(globalThis, "Buffer") === "undefined") {
+  Object.assign(globalThis, { Buffer });
 }
 
 
@@ -290,7 +290,7 @@ export interface AdminRotationProposal {
 
 /**
  * Wraith Protocol standard metric event schema.
- * 
+ *
  * All Wraith contracts emit metric events using this structure to enable
  * standardized off-chain observability and monitoring.
  */
@@ -317,7 +317,7 @@ export interface Client {
   /**
    * Construct and simulate a init transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Initialise the contract by storing the pause admin.
-   * 
+   *
    * Must be called before `pause` / `unpause`. Idempotent: calling
    * more than once is a no-op (the first admin sticks).
    */
@@ -353,7 +353,7 @@ export interface Client {
   /**
    * Construct and simulate a resolve transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Resolve a name to its stealth meta-address.
-   * 
+   *
    * For a subdomain (`payments.alice`) resolution walks to the parent
    * (`alice`): if the parent no longer exists the subdomain does not resolve.
    */
@@ -392,11 +392,11 @@ export interface Client {
   /**
    * Construct and simulate a bulk_renew transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Renew (extend TTL for) multiple names in a single atomic transaction.
-   * 
+   *
    * `extend_to` is a TTL in ledgers counted from the current ledger, not a
    * ledger sequence. Each name ends up live for at least `extend_to` more
    * ledgers (capped by the network's max entry TTL).
-   * 
+   *
    * All names must exist. If any name is not found, the entire operation
    * reverts.
    */
@@ -437,7 +437,7 @@ export interface Client {
   /**
    * Construct and simulate a bulk_register transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Register multiple names in a single atomic transaction.
-   * 
+   *
    * All names must be valid and not already taken. If any name fails,
    * the entire operation reverts.
    */
@@ -446,7 +446,7 @@ export interface Client {
   /**
    * Construct and simulate a init_auctions transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * One-time initialization of the premium-name auction system.
-   * 
+   *
    * `admin` operates settlements per the runbook, `treasury` receives
    * winning bids, `token` is the payment asset (native XLM SAC on mainnet),
    * `reserve_price` is the minimum bid, and `commit_secs` / `reveal_secs`
@@ -487,7 +487,7 @@ export interface Client {
    * Construct and simulate a extend_name_ttl transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Extend the TTL of a registered name (its entry, reverse entry and the
    * contract instance) so it stays live for at least `extend_to` more ledgers.
-   * 
+   *
    * `extend_to` is a TTL in ledgers counted from the current ledger, not a
    * ledger sequence, and is capped by the network's max entry TTL. Entries
    * that already have at least that much TTL left are left untouched.
@@ -516,7 +516,7 @@ export interface Client {
   /**
    * Construct and simulate a compute_commitment transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Compute the sealed-bid commitment for the given parameters.
-   * 
+   *
    * Intended for off-chain use (simulation only): calling this in a real
    * transaction would leak the bid amount.
    */
@@ -578,7 +578,7 @@ export interface Client {
    * Construct and simulate a execute_rotate_auction_admin transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Execute the pending auction-admin rotation once quorum is met and the
    * timelock has elapsed. Emits `AuctionAdminRotated(old, new)`.
-   * 
+   *
    * Fails with `AuctionInProgress` while any auction is in its reveal or
    * settle phase, leaving the proposal intact so it can be retried after
    * settlement.

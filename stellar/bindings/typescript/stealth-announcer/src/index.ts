@@ -25,8 +25,8 @@ export * from "@stellar/stellar-sdk";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
 
-if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = Buffer;
+if (typeof Reflect.get(globalThis, "Buffer") === "undefined") {
+  Object.assign(globalThis, { Buffer });
 }
 
 
@@ -37,27 +37,27 @@ export interface Client {
   /**
    * Construct and simulate a announce transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Emits a Stellar v2 stealth address announcement event.
-   * 
+   *
    * This is a pure event-emission function with no access control and no
    * storage. Indexers watch for these events to let recipients detect
    * incoming payments.
-   * 
+   *
    * v2 event shape:
    * * topics: `("announce", scheme_id, view_tag_bucket, metadata_kind)`
    * * data: `(stealth_address, ephemeral_pub_key, metadata)`
-   * 
+   *
    * The stable `view_tag_bucket` derivation is `metadata[0] as u32`, where
    * `metadata_kind = 1` (`METADATA_KIND_VIEW_TAG`) means the first metadata
    * byte is the view tag and the remaining bytes are scheme-specific. This
    * lets wallets and indexers filter Stellar RPC `getEvents` by scheme and
    * bucket before doing client-side cryptographic validation.
-   * 
+   *
    * Migration note: v1 announcements used the old Stellar layout
    * `("announce", scheme_id, stealth_address)` with
    * `(caller, ephemeral_pub_key, metadata)`. Do not reinterpret historical v1
    * events as v2. The compatibility path is a new announcer deployment using
    * `scheme_id = 2`.
-   * 
+   *
    * # Arguments
    * * `scheme_id` - Must be `2` for the v2 St
    */

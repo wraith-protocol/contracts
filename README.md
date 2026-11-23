@@ -113,6 +113,8 @@ By default each property runs at least 1,024 generated cases. The scheduled `ste
 
 #### Generated Bindings
 
+See [the supported contract inventory and package checks](stellar/bindings/README.md).
+
 TypeScript bindings for the Stellar/Soroban contracts are automatically generated under `stellar/bindings/typescript/` and checked into the repository. These provide type-safe, compiled TS clients that the SDK can import directly.
 
 To regenerate the bindings locally (offline using compiled `.wasm` files):
@@ -133,7 +135,7 @@ To generate the bindings against live deployed contract IDs on testnet:
 1. Specify the contract IDs in `stellar/contract-ids.json` or as environment variables (e.g., `STEALTH_REGISTRY_CONTRACT_ID=...`).
 2. Run the generation script from the root:
    ```bash
-   pnpm bindings:stellar
+   pnpm bindings:stellar --deployed
    ```
 
 **When to Regenerate:**

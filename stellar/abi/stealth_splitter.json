@@ -1,0 +1,408 @@
+[
+  {
+    "function_v0": {
+      "doc": "Initialise the contract by storing the announcer address.\\n\\nMust be called exactly once before any `create_split` or `fund_split`.",
+      "name": "init",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "announcer",
+          "type_": "address"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "SplitterError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Query split details: beneficiaries and total funded amount.\\n\\n# Arguments\\n* `split_id` - The split to query.\\n\\n# Returns\\nSplitDetails with immutable beneficiary list and total_funded.",
+      "name": "get_split",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "split_id",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "udt": {
+                "name": "SplitDetails"
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "SplitterError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_union_v0": {
+      "doc": "Storage keys.",
+      "lib": "",
+      "name": "DataKey",
+      "cases": [
+        {
+          "void_v0": {
+            "doc": "Address of the deployed StealthAnnouncer contract.",
+            "name": "Announcer"
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Stores split definition: SplitDefinition for a given split_id.",
+            "name": "Split",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        },
+        {
+          "tuple_v0": {
+            "doc": "Tracks total funded amount for a given split_id.",
+            "name": "SplitFunded",
+            "type_": [
+              {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Fund a split: deposit amount and atomically distribute to all beneficiaries.\\n\\nEach beneficiary receives a proportional share based on their weight.\\nRounding error (dust) is absorbed by the first beneficiary.\\nAll transfers and announcements are atomic: any failure rolls back everything.\\n\\n# Arguments\\n* `funder` - The address funding the split (must authorise).\\n* `split_id` - The split to fund.\\n* `amount` - Total amount to distribute.\\n* `scheme_id` - Stealth address scheme identifier.\\n* `stealth_addresses` - One-time stealth address for each beneficiary.\\n* `ephemeral_pub_keys` - Ephemeral key for each beneficiary.\\n* `metadatas` - Metadata (e.g. view tag) for each beneficiary.",
+      "name": "fund_split",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "funder",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "split_id",
+          "type_": {
+            "bytes_n": {
+              "n": 32
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "amount",
+          "type_": "i128"
+        },
+        {
+          "doc": "",
+          "name": "scheme_id",
+          "type_": "u32"
+        },
+        {
+          "doc": "",
+          "name": "stealth_addresses",
+          "type_": {
+            "vec": {
+              "element_type": "address"
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "ephemeral_pub_keys",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "bytes_n": {
+                  "n": 32
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "metadatas",
+          "type_": {
+            "vec": {
+              "element_type": "bytes"
+            }
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "tuple": {
+                "value_types": []
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "SplitterError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "function_v0": {
+      "doc": "Create a split definition (immutable after creation).\\n\\nComputes a deterministic split_id from the beneficiaries, asset, and salt.\\nThe split is not funded until `fund_split` is called.\\n\\n# Arguments\\n* `creator` - The address creating the split (must authorise).\\n* `beneficiaries` - List of (meta_address, weight) pairs. Max 25.\\n* `asset` - The token contract address to be split.\\n* `salt` - Random bytes to ensure uniqueness.\\n\\n# Returns\\nThe deterministic split_id (32-byte hash).",
+      "name": "create_split",
+      "inputs": [
+        {
+          "doc": "",
+          "name": "creator",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "beneficiaries",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "udt": {
+                  "name": "Beneficiary"
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "",
+          "name": "salt",
+          "type_": "bytes"
+        }
+      ],
+      "outputs": [
+        {
+          "result": {
+            "ok_type": {
+              "bytes_n": {
+                "n": 32
+              }
+            },
+            "error_type": {
+              "udt": {
+                "name": "SplitterError"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "A single beneficiary in a split.",
+      "lib": "",
+      "name": "Beneficiary",
+      "fields": [
+        {
+          "doc": "Stealth meta-address of the beneficiary (64 bytes: spending_pubkey || viewing_pubkey).",
+          "name": "meta_address",
+          "type_": "bytes"
+        },
+        {
+          "doc": "Weight for proportional distribution.",
+          "name": "weight",
+          "type_": "u128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Details returned by get_split query.",
+      "lib": "",
+      "name": "SplitDetails",
+      "fields": [
+        {
+          "doc": "Immutable list of beneficiaries.",
+          "name": "beneficiaries",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "udt": {
+                  "name": "Beneficiary"
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "Total amount funded to date.",
+          "name": "total_funded",
+          "type_": "i128"
+        }
+      ]
+    }
+  },
+  {
+    "udt_error_enum_v0": {
+      "doc": "Errors that the splitter contract can produce.",
+      "lib": "",
+      "name": "SplitterError",
+      "cases": [
+        {
+          "doc": "The contract has already been initialised.",
+          "name": "AlreadyInitialized",
+          "value": 1
+        },
+        {
+          "doc": "The contract has not been initialised yet.",
+          "name": "NotInitialized",
+          "value": 2
+        },
+        {
+          "doc": "The split does not exist.",
+          "name": "SplitNotFound",
+          "value": 3
+        },
+        {
+          "doc": "Too many beneficiaries (max 25).",
+          "name": "TooManyBeneficiaries",
+          "value": 4
+        },
+        {
+          "doc": "Weight sum would overflow (internal sanity check).",
+          "name": "WeightOverflow",
+          "value": 5
+        },
+        {
+          "doc": "Invalid beneficiary meta-address length (must be 64 bytes).",
+          "name": "InvalidMetaAddressLength",
+          "value": 6
+        },
+        {
+          "doc": "Amount to fund is zero or negative.",
+          "name": "InvalidAmount",
+          "value": 7
+        },
+        {
+          "doc": "Empty beneficiary list.",
+          "name": "EmptyBeneficiaries",
+          "value": 8
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Complete definition of a split.",
+      "lib": "",
+      "name": "SplitDefinition",
+      "fields": [
+        {
+          "doc": "Token contract address.",
+          "name": "asset",
+          "type_": "address"
+        },
+        {
+          "doc": "List of beneficiaries (max 25 enforced at creation).",
+          "name": "beneficiaries",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "udt": {
+                  "name": "Beneficiary"
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "Creator address.",
+          "name": "creator",
+          "type_": "address"
+        },
+        {
+          "doc": "Salt used to create this split (for uniqueness).",
+          "name": "salt",
+          "type_": "bytes"
+        }
+      ]
+    }
+  },
+  {
+    "udt_struct_v0": {
+      "doc": "Wraith Protocol standard metric event schema.\\n\\nAll Wraith contracts emit metric events using this structure to enable\\nstandardized off-chain observability and monitoring.",
+      "lib": "",
+      "name": "WraithMetricEvent",
+      "fields": [
+        {
+          "doc": "Contract identifier (e.g., \"stealth-registry\", \"stealth-sender\")",
+          "name": "contract",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Optional dimensions for filtering/grouping (e.g., token_address, scheme_id)",
+          "name": "dimensions",
+          "type_": {
+            "vec": {
+              "element_type": {
+                "tuple": {
+                  "value_types": [
+                    "symbol",
+                    "val"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "doc": "Metric name (e.g., \"register_count\", \"send_volume\")",
+          "name": "metric_name",
+          "type_": "symbol"
+        },
+        {
+          "doc": "Numeric value of the metric",
+          "name": "value",
+          "type_": "i128"
+        }
+      ]
+    }
+  }
+]
