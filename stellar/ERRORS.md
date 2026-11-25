@@ -92,11 +92,11 @@ Code	Name	Meaning	Introduced in
 wraith-names
 Code	Name	Meaning	Introduced in
 1	NamesError::NameTaken	Name is already registered.	pre-catalog
-2	NamesError::NameTooShort	Name is shorter than the minimum length.	pre-catalog
+2	NamesError::NameTooShort	Name, or one of its dot-separated labels, is shorter than the minimum length.	pre-catalog
 3	NamesError::NameTooLong	Name exceeds the maximum length.	pre-catalog
 4	NamesError::InvalidNameCharacter	Name contains a character outside the allowed set.	pre-catalog
 5	NamesError::InvalidMetaAddress	Stealth meta-address is invalid, usually not 64 bytes.	pre-catalog
-6	NamesError::NameNotFound	Name or reverse lookup entry was not found.	pre-catalog
+6	NamesError::NameNotFound	Name or reverse lookup entry was not found, or the name is a subdomain whose parent was released.	pre-catalog
 7	NamesError::NotOwner	Caller is not authorized as owner or parent owner.	pre-catalog
 8	NamesError::SignatureExpired	On-behalf signature expiry ledger has passed.	pre-catalog
 9	NamesError::SignatureReplay	On-behalf signature was already used.	pre-catalog
@@ -109,7 +109,7 @@ Code	Name	Meaning	Introduced in
 16	NamesError::ThresholdNotMet	Recovery guardian threshold has not been met.	pre-catalog
 17	NamesError::TooManyGuardians	Guardian set exceeds the supported size.	pre-catalog
 18	NamesError::InvalidThreshold	Guardian or multisig threshold is invalid.	pre-catalog
-19	NamesError::InvalidExtendLedger	Requested TTL extension (`extend_to`, in ledgers from now) is zero.	pre-catalog
+19	NamesError::InvalidExtendLedger	Requested TTL extension ledger is not in the future.	pre-catalog
 20	NamesError::ParentNotFound	Subdomain parent name does not exist.	pre-catalog
 21	NamesError::MultisigNotInitialized	Protocol governance multisig has not been initialized.	pre-catalog
 22	NamesError::MultisigAlreadyInitialized	Protocol governance multisig initialization was attempted more than once.	pre-catalog
