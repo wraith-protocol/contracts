@@ -1,7 +1,5 @@
 use proptest::prelude::*;
-use soroban_sdk::testutils::{
-    storage::Persistent as _, Address as _, EnvTestConfig, Events, Ledger,
-};
+use soroban_sdk::testutils::{Address as _, EnvTestConfig, Events, Ledger};
 use soroban_sdk::{Address, Bytes, BytesN, Env, String};
 use wraith_names::{
     DataKey, NameEntry, NamesError, WraithNamesContract, WraithNamesContractClient,
@@ -121,12 +119,22 @@ fn expire_parent(env: &Env, contract_id: &Address) {
         .with_mut(|ledger| ledger.sequence_number += 518_401);
 }
 
-#[derive(Default)]
 struct Model {
     parent_owner: Option<usize>,
     parent_expired: bool,
     child_live: [bool; CHILDREN],
     child_meta: [[u8; 64]; CHILDREN],
+}
+
+impl Default for Model {
+    fn default() -> Self {
+        Self {
+            parent_owner: None,
+            parent_expired: false,
+            child_live: [false; CHILDREN],
+            child_meta: [[0u8; 64]; CHILDREN],
+        }
+    }
 }
 
 impl Model {
