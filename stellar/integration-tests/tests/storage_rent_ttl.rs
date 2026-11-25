@@ -331,32 +331,37 @@ fn names_extend_name_ttl_before_expiry_outlives_original_expiry() {
     assert_eq!(n.client.name_of(&n.meta), n.name);
 }
 
-/// `extend_to` is an absolute future ledger. The resulting live-until ledger
-/// must be exactly the requested value.
+/// `extend_to` is a TTL counted from the current ledger. The resulting
+/// `live_until` must be `current ledger + extend_to`, not `extend_to` added to
+/// a value that already contains the current ledger (the keeper once passed an
+/// absolute ledger here and the sequence was effectively counted twice).
 #[test]
-fn names_extend_name_ttl_live_until_is_exactly_extend_to() {
+fn names_extend_name_ttl_live_until_delta_is_exactly_extend_to() {
     let n = Names::new();
     advance(&n.env, TTL_EXTEND_TO - 10);
     let now = n.seq();
-    let extend_to = now + 100_000;
+    let extend_to = 100_000;
 
     n.client.extend_name_ttl(&n.name, &extend_to);
 
-    assert_eq!(now + n.ttl(&n.name_key), extend_to);
-    assert_eq!(now + n.ttl(&n.reverse_key), extend_to);
-    assert_eq!(now + instance_ttl(&n.env, &n.id), extend_to);
+    assert_eq!(now + n.ttl(&n.name_key), now + extend_to);
+    assert_eq!(now + n.ttl(&n.reverse_key), now + extend_to);
+    assert_eq!(now + instance_ttl(&n.env, &n.id), now + extend_to);
 }
 
 #[test]
-fn names_extend_name_ttl_uses_absolute_ledger() {
+fn names_extend_name_ttl_does_not_treat_extend_to_as_absolute_ledger() {
     let n = Names::new();
     advance(&n.env, TTL_EXTEND_TO - 10);
     let now = n.seq();
-    let extend_to = now + 100_000;
+    let extend_to = 100_000;
 
+    // Passing an absolute ledger number would extend far past the 30 days asked
+    // for; with relative semantics the delta stays at what was requested.
     n.client.extend_name_ttl(&n.name, &extend_to);
     let live_until = now + n.ttl(&n.name_key);
-    assert_eq!(live_until, extend_to);
+    assert!(live_until < now + now + extend_to);
+    assert_eq!(live_until - now, extend_to);
 }
 
 #[test]
@@ -378,17 +383,17 @@ fn names_extend_name_ttl_is_capped_at_max_entry_ttl() {
 }
 
 #[test]
-fn names_bulk_renew_live_until_is_exactly_extend_to() {
+fn names_bulk_renew_live_until_delta_is_exactly_extend_to() {
     let n = Names::new();
     advance(&n.env, TTL_EXTEND_TO - 10);
     let now = n.seq();
-    let extend_to = now + 100_000;
+    let extend_to = 100_000;
     let names: Vec<String> = vec![&n.env, n.name.clone()];
 
     n.client.bulk_renew(&names, &extend_to);
 
-    assert_eq!(now + n.ttl(&n.name_key), extend_to);
-    assert_eq!(now + n.ttl(&n.reverse_key), extend_to);
+    assert_eq!(now + n.ttl(&n.name_key), now + extend_to);
+    assert_eq!(now + n.ttl(&n.reverse_key), now + extend_to);
 }
 
 #[test]
@@ -429,7 +434,7 @@ fn names_bulk_renew_with_missing_entry_renews_nothing() {
     advance(&n.env, TTL_EXTEND_TO - 10);
     let names: Vec<String> = vec![&n.env, n.name.clone(), String::from_str(&n.env, "ghost")];
     assert_eq!(
-        n.client.try_bulk_renew(&names, &(n.seq() + TTL_EXTEND_TO)),
+        n.client.try_bulk_renew(&names, &TTL_EXTEND_TO),
         Err(Ok(NamesError::NameNotFound))
     );
     assert_eq!(n.ttl(&n.name_key), 10);
@@ -465,7 +470,7 @@ fn names_renewal_after_expiry_fails() {
     let n = Names::new();
     pin_instance(&n.env, &n.id);
     advance(&n.env, TTL_EXTEND_TO + 1);
-    let _ = n.client.try_extend_name_ttl(&n.name, &(n.seq() + 1));
+    let _ = n.client.try_extend_name_ttl(&n.name, &TTL_EXTEND_TO);
 }
 
 // ── Vault ───────────────────────────────────────────────────────────────────

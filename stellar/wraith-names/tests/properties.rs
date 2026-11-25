@@ -368,7 +368,7 @@ proptest! {
                 Operation::RenewChild(child) => {
                     let child = child as usize;
                     let child_name = property_name(&env, child);
-                    let extend_to = env.ledger().sequence() + 1_000;
+                    let extend_to = 1_000;
                     let result = client.try_extend_name_ttl(&child_name, &extend_to);
                     if model.parent_live() && model.child_live[child] {
                         prop_assert_eq!(result, Ok(Ok(())));
