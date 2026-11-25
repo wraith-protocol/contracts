@@ -1,7 +1,11 @@
 use proptest::prelude::*;
-use soroban_sdk::testutils::{storage::Persistent as _, Address as _, EnvTestConfig, Events, Ledger};
+use soroban_sdk::testutils::{
+    storage::Persistent as _, Address as _, EnvTestConfig, Events, Ledger,
+};
 use soroban_sdk::{Address, Bytes, BytesN, Env, String};
-use wraith_names::{DataKey, NameEntry, NamesError, WraithNamesContract, WraithNamesContractClient};
+use wraith_names::{
+    DataKey, NameEntry, NamesError, WraithNamesContract, WraithNamesContractClient,
+};
 
 fn cases() -> u32 {
     std::env::var("WRAITH_PROPTEST_CASES")
