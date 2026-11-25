@@ -2224,20 +2224,20 @@ mod test {
 
         let alice_ttl = TTL_EXTEND_TO + 1_000;
         client.extend_name_ttl(&String::from_str(&env, "pay.alice"), &alice_ttl);
-        assert_eq!(ttl("pay.alice"), seq + alice_ttl);
-        assert_eq!(ttl("alice"), seq + alice_ttl);
+        assert_eq!(ttl("pay.alice"), alice_ttl);
+        assert_eq!(ttl("alice"), alice_ttl);
 
         let mut names = Vec::new(&env);
         names.push_back(String::from_str(&env, "pay.bob"));
         let bob_ttl = TTL_EXTEND_TO + 2_000;
         client.bulk_renew(&names, &bob_ttl);
-        assert_eq!(ttl("pay.bob"), seq + bob_ttl);
-        assert_eq!(ttl("bob"), seq + bob_ttl);
+        assert_eq!(ttl("pay.bob"), bob_ttl);
+        assert_eq!(ttl("bob"), bob_ttl);
 
         // Renewing a parent alone leaves its subdomains as they were.
         let carol_ttl = TTL_EXTEND_TO + 3_000;
         client.extend_name_ttl(&String::from_str(&env, "carol"), &carol_ttl);
-        assert_eq!(ttl("carol"), seq + carol_ttl);
+        assert_eq!(ttl("carol"), carol_ttl);
         assert_eq!(ttl("pay.carol"), TTL_EXTEND_TO);
     }
 
