@@ -496,8 +496,7 @@ impl WraithNamesContract {
             return Err(NamesError::BulkLimitExceeded);
         }
 
-        let current_ledger = env.ledger().sequence();
-        if extend_to_ledger <= current_ledger {
+        if extend_to_ledger == 0 {
             return Err(NamesError::InvalidExtendLedger);
         }
 
@@ -526,12 +525,12 @@ impl WraithNamesContract {
 
             env.storage()
                 .persistent()
-                .extend_ttl(&name_key, current_ledger, extend_to_ledger);
+                .extend_ttl(&name_key, extend_to_ledger, extend_to_ledger);
             env.storage()
                 .persistent()
-                .extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+                .extend_ttl(&reverse_key, extend_to_ledger, extend_to_ledger);
             if let Some(parent) = parent {
-                Self::extend_parent_to(&env, &entry, &parent, current_ledger, extend_to_ledger);
+                Self::extend_parent_to(&env, &entry, &parent, extend_to_ledger);
             }
 
             env.events()
@@ -956,8 +955,7 @@ impl WraithNamesContract {
     ) -> Result<(), NamesError> {
         Self::require_not_paused(&env)?;
         // Validate that extend_to_ledger is in the future
-        let current_ledger = env.ledger().sequence();
-        if extend_to_ledger <= current_ledger {
+        if extend_to_ledger == 0 {
             return Err(NamesError::InvalidExtendLedger);
         }
 
@@ -982,17 +980,17 @@ impl WraithNamesContract {
         // Extend TTLs to the specified ledger
         env.storage()
             .persistent()
-            .extend_ttl(&name_key, current_ledger, extend_to_ledger);
+            .extend_ttl(&name_key, extend_to_ledger, extend_to_ledger);
         env.storage()
             .persistent()
-            .extend_ttl(&reverse_key, current_ledger, extend_to_ledger);
+            .extend_ttl(&reverse_key, extend_to_ledger, extend_to_ledger);
         // A subdomain is only usable while its parent is, so renew both.
         if let Some(parent) = parent {
-            Self::extend_parent_to(&env, &entry, &parent, current_ledger, extend_to_ledger);
+            Self::extend_parent_to(&env, &entry, &parent, extend_to_ledger);
         }
         env.storage()
             .instance()
-            .extend_ttl(current_ledger, extend_to_ledger);
+            .extend_ttl(extend_to_ledger, extend_to_ledger);
 
         // Emit extend event for observability
         env.events()
@@ -1024,18 +1022,18 @@ impl WraithNamesContract {
 
     /// Extend a subdomain's parent entry, its reverse entry and its subdomain
     /// era to `to`.
-    fn extend_parent_to(env: &Env, entry: &NameEntry, parent: &NameEntry, current: u32, to: u32) {
+    fn extend_parent_to(env: &Env, entry: &NameEntry, parent: &NameEntry, to: u32) {
         let storage = env.storage().persistent();
         if let Some(ref parent_hash) = entry.parent {
-            storage.extend_ttl(&DataKey::Name(parent_hash.clone()), current, to);
-            storage.extend_ttl(&DataKey::SubdomainEra(parent_hash.clone()), current, to);
+            storage.extend_ttl(&DataKey::Name(parent_hash.clone()), to, to);
+            storage.extend_ttl(&DataKey::SubdomainEra(parent_hash.clone()), to, to);
         }
         let reverse_key = DataKey::Reverse(BytesN::from_array(
             env,
             &env.crypto().sha256(&parent.stealth_meta_address).to_array(),
         ));
         if storage.has(&reverse_key) {
-            storage.extend_ttl(&reverse_key, current, to);
+            storage.extend_ttl(&reverse_key, to, to);
         }
     }
 
@@ -2224,18 +2222,18 @@ mod test {
             })
         };
 
-        client.extend_name_ttl(&String::from_str(&env, "pay.alice"), &(seq + 1_000));
+        client.extend_name_ttl(&String::from_str(&env, "pay.alice"), &1_000);
         assert_eq!(ttl("pay.alice"), seq + 1_000);
         assert_eq!(ttl("alice"), seq + 1_000);
 
         let mut names = Vec::new(&env);
         names.push_back(String::from_str(&env, "pay.bob"));
-        client.bulk_renew(&names, &(seq + 2_000));
+        client.bulk_renew(&names, &2_000);
         assert_eq!(ttl("pay.bob"), seq + 2_000);
         assert_eq!(ttl("bob"), seq + 2_000);
 
         // Renewing a parent alone leaves its subdomains as they were.
-        client.extend_name_ttl(&String::from_str(&env, "carol"), &(seq + 3_000));
+        client.extend_name_ttl(&String::from_str(&env, "carol"), &3_000);
         assert_eq!(ttl("carol"), seq + 3_000);
         assert_eq!(ttl("pay.carol"), TTL_EXTEND_TO);
     }
@@ -2436,7 +2434,7 @@ mod test {
         client.register(&owner, &name2, &Bytes::from_slice(&env, &[2u8; 64]));
 
         let names = soroban_sdk::vec![&env, name1.clone(), name2.clone()];
-        let extend_to = env.ledger().sequence() + 10000;
+        let extend_to = 10000u32;
         let result = client.try_bulk_renew(&names, &extend_to);
         assert_eq!(result, Ok(Ok(())));
     }
@@ -2461,7 +2459,7 @@ mod test {
             String::from_str(&env, "exists"),
             String::from_str(&env, "ghost"),
         ];
-        let extend_to = env.ledger().sequence() + 10000;
+        let extend_to = 10000u32;
         let result = client.try_bulk_renew(&names, &extend_to);
         assert_eq!(result, Err(Ok(NamesError::NameNotFound)));
     }
@@ -2478,7 +2476,7 @@ mod test {
         for i in 0..21 {
             names_vec.push_back(String::from_str(&env, &format!("name{}", i)));
         }
-        let extend_to = env.ledger().sequence() + 10000;
+        let extend_to = 10000u32;
         let result = client.try_bulk_renew(&names_vec, &extend_to);
         assert_eq!(result, Err(Ok(NamesError::BulkLimitExceeded)));
     }
@@ -2729,7 +2727,7 @@ mod test {
         client.pause(&admin);
 
         // extend_name_ttl should be rejected
-        let extend_to = env.ledger().sequence() + 1000;
+        let extend_to = 1000u32;
         let result = client.try_extend_name_ttl(&name, &extend_to);
         assert_eq!(result, Err(Ok(NamesError::Paused)));
     }
