@@ -14,9 +14,9 @@ export const EXPECTED_CONTRACTS: Record<Chain, string[]> = {
 /**
  * Chains whose records must account for every contract in EXPECTED_CONTRACTS:
  * each one is either recorded under `contracts` or listed under `undeployed`.
- * EVM is the first; add a chain here once its records are complete.
+ * Add a chain here once its records are complete.
  */
-export const EXPLICIT_COVERAGE_CHAINS: Chain[] = ['evm'];
+export const EXPLICIT_COVERAGE_CHAINS: Chain[] = ['evm', 'stellar'];
 
 export const CHAIN_LABEL: Record<Chain, string> = {
   evm: 'EVM',
