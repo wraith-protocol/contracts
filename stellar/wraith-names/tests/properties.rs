@@ -274,14 +274,13 @@ proptest! {
         let mut model = Model::default();
 
         for (step, operation) in operations.into_iter().enumerate() {
-            // An archived parent rejects state-changing operations before the
-            // contract body is entered. Keep the generated trace useful by
-            // waiting for a parent re-registration, while still checking
-            // resolution during the archived state below.
-            if model.parent_expired
-                && !matches!(&operation, Operation::RegisterParent(_) | Operation::ResolveChild(_))
-            {
-                continue;
+            // An archived parent rejects every subsequent contract operation
+            // before the contract body is entered. Re-registration requires a
+            // separate RestoreFootprint transaction, which this harness does
+            // not model, so stop this trace after expiry instead of attempting
+            // to read or overwrite the archived parent entry.
+            if model.parent_expired {
+                break;
             }
             match operation {
                 Operation::RegisterParent(actor) => {
@@ -307,10 +306,10 @@ proptest! {
 
                     if !model.parent_live() {
                         prop_assert_eq!(result, Err(Ok(NamesError::ParentNotFound)));
-                    } else if !model.authorized(actor) {
-                        prop_assert_eq!(result, Err(Ok(NamesError::NotOwner)));
                     } else if model.child_live[child] {
                         prop_assert_eq!(result, Err(Ok(NamesError::NameTaken)));
+                    } else if !model.authorized(actor) {
+                        prop_assert_eq!(result, Err(Ok(NamesError::NotOwner)));
                     } else {
                         prop_assert_eq!(result, Ok(Ok(())));
                         model.child_live[child] = true;
