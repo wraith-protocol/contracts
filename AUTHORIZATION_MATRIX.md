@@ -392,6 +392,11 @@ It covers:
 | Solana | (none) | — | — | — | — | — | — |
 | CKB | (none) | — | — | — | — | — | — |
 
+For Stellar `wraith-names`, signer rotation governs only the signer set; it
+does not authorize contract upgrades. No upgrade or renunciation entry point
+is implemented. The configurable signer set is initialized by the first
+caller of the permissionless, one-time `init_multisig` entry point.
+
 ---
 
 ### Upgrade Authority

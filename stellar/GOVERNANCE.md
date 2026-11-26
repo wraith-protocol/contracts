@@ -1,6 +1,9 @@
-# Stellar Contract Upgrade Governance & Migration Plan
+# Stellar Contract Governance & Migration Plan
 
-This document outlines the strategy for upgrading Wraith Protocol smart contracts on the Stellar network, ensuring security, transparency, and minimal disruption to users.
+This document records the current authorization model and proposed governance
+configuration for Wraith Protocol smart contracts on Stellar. A governance
+mechanism is not an upgrade path unless the contract exposes and authorizes an
+upgrade entry point.
 
 ## Mainnet Initial Configuration Recommendation
 If we have to ship mainnet next week, the governance configuration will be:
@@ -24,8 +27,17 @@ If we have to ship mainnet next week, the governance configuration will be:
 - **Protocol Fee Governance**: The optional protocol fee (`fee_recipient` and `fee_basis_points`) is set at initialization. The fee is capped at 50 bps (0.5%) by contract invariant to prevent exorbitant charges. Deploying fee configuration changes requires contract upgrades controlled by the multisig governance.
 
 ### 4. `wraith-names`
-- **Decision**: Timelock + Multisig Upgradable (eventually renounceable).
-- **Reasoning**: Handles naming logic and resolution. We may need to add complex resolution upgrades or support new scheme IDs. Once fully matured, we can renounce the upgrade capability.
+- **Current implementation**: No contract-upgrade or authority-renunciation
+  entry point. The contract is not upgradeable through its interface.
+- **Governance that exists**: A configurable on-chain signer set and quorum
+  protect signer-set rotation and premium-auction admin rotation. Both use a
+  7-day timelock. This governance does not authorize WASM upgrades and does not
+  control the separate pause admin.
+- **Initialization caveat**: `init_multisig(signers, threshold)` is a
+  permissionless, one-time initializer; its first caller chooses the signer
+  set and threshold. Deployment must initialize it before relying on that
+  governance set. The implementation does not enforce the recommended 3-of-5
+  configuration.
 
 ## Versioning & Migration
 When the protocol needs breaking changes or new data shapes that an upgrade cannot support directly:
@@ -47,44 +59,31 @@ To maintain ecosystem consistency, here is how our Stellar decisions map to thei
 | --- | --- |
 | Admin as 3-of-5 Multisig | Gnosis Safe (Safe{Wallet}) |
 | Frozen Contracts (Announcer, Registry) | Immutable Contracts (No Proxy) |
-| Timelock + Multisig (Sender, Names) | Proxy Admin with TimelockController |
+| Timelock + Multisig (Sender only) | Proxy Admin with TimelockController |
 | Scheme ID Bumps | Contract Registry Versioning |
 | Pause Mechanism | `Pausable` (OpenZeppelin) |
 
-## Upgrade Authority Enforcement Tests
+## Wraith Names governance tests
 
-As part of our commitment to transparent and verifiable governance, we maintain comprehensive test suites that prove the upgrade authorization model is correctly implemented and cannot be bypassed.
+`stellar/wraith-names/tests/upgrade_auth.rs` covers the implemented signer-set
+rotation lifecycle, despite the historical test filename. It exercises
+proposal, distinct-signer quorum, the 7-day delay, execution, cancellation,
+duplicate-approval and post-execution replay rejection, unauthorized callers,
+and signer replacement.
 
-### Test Coverage (Issue #57)
+Wraith Names has no upgrade or renunciation entry point, so there is no
+upgrade proposal to execute and no upgrade authority to renounce. The tests do
+not simulate either behavior. The on-chain signer set is configurable; 3-of-5
+is a deployment recommendation, not an enforced contract default.
 
-Each contract has a dedicated `tests/upgrade_auth.rs` file that validates:
-
-#### Frozen Contracts (`stealth-announcer`, `stealth-registry`)
-✅ No admin role exists in storage  
-✅ No upgrade function exposed in contract interface  
-✅ Deployer cannot upgrade the contract  
-✅ User data cannot be censored or altered by any admin  
-✅ Contract operates indefinitely without admin  
-✅ Behavior is deterministic and unchanging  
-
-#### Upgradeable Contracts (`stealth-sender`, `wraith-names`)
-✅ Non-admin cannot trigger upgrade  
-✅ Admin can upgrade to new WASM hash  
-✅ Post-upgrade state is preserved (including registrations, guardians, recovery proposals)  
-✅ Multisig threshold (3-of-5) is honored  
-✅ Renounced authority cannot be re-acquired  
-✅ Timelock delay (7 days) is enforced before upgrade execution  
-✅ Upgrade proposals can be cancelled within timelock window  
-✅ Contract remains fully functional during pending upgrade  
-
-### Running the Tests
+Run the focused suite:
 
 ```bash
 cd stellar
-cargo test upgrade_auth --workspace
+cargo test -p wraith-names --test upgrade_auth
 ```
 
-These tests run on every PR via CI and serve as living documentation of the governance model.
+The workspace test suite also runs these tests in CI.
 
 ---
 
@@ -134,7 +133,7 @@ These tests run on every PR via CI and serve as living documentation of the gove
 - **No proposal cancellation by proposer** — only admin can cancel during voting. The proposer should be able to withdraw their own proposal.
 - **Raw `Bytes` arguments** — the execution call is a single-argument `invoke_contract` with no type safety. A production system would use typed action structs.
 - **No minimum proposal threshold** — anyone can propose. In production, a token minimum (e.g. 1% of quorum) prevents spam.
-- **No upgrade authority integration** — this contract does not yet hold the upgrade keys for `stealth-sender`, `wraith-names`, or any other contract. That integration is the next step.
+- **No upgrade authority integration** — this contract does not hold upgrade keys for `stealth-sender`, `wraith-names`, or any other contract. Any such integration remains future work; Wraith Names currently has no contract-upgrade entry point.
 - **No emergency pause** — the PoC has no circuit breaker. Production governance should include a pausable module.
 - **Single token** — only one voting token is supported. Production may need multi-token or NFT-weighted voting.
 
