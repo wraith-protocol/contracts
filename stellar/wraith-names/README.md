@@ -25,6 +25,13 @@ Core features:
 - **Governance rotation** — the protocol signer set and the auction admin both
   rotate behind a quorum of governance signers and a 7-day timelock.
 
+The governance signer set is initialized once through the permissionless
+`init_multisig` entry point; the first caller supplies its signers and
+threshold. Wraith Names currently exposes no contract-upgrade or
+authority-renunciation entry point. Signer rotation does not grant upgrade
+authority. See [GOVERNANCE.md](../GOVERNANCE.md) and
+[MULTISIG.md](../MULTISIG.md) for the lifecycle and deployment caveat.
+
 Build and test:
 
 ```sh
