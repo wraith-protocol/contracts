@@ -82,7 +82,7 @@ fn rotation_requires_quorum_and_replaces_the_signer_set() {
 
     assert_eq!(setup.client.signers(), replacement);
     assert_eq!(setup.client.threshold(), 2);
-    assert_eq!(setup.client.pending_rotation(), None);
+    assert!(setup.client.pending_rotation().is_none());
 
     let events = setup.env.events().all();
     assert_eq!(events.len(), 1);
@@ -177,7 +177,7 @@ fn cancellation_clears_the_proposal_and_its_approvals() {
         .propose_rotate_signers(&proposer, &replacement, &2);
     setup.client.approve_rotate_signers(&second_signer);
     setup.client.cancel_rotate_signers(&second_signer);
-    assert_eq!(setup.client.pending_rotation(), None);
+    assert!(setup.client.pending_rotation().is_none());
 
     let result = setup.client.try_approve_rotate_signers(&second_signer);
     assert_eq!(result, Err(Ok(NamesError::NoPendingRotation)));
