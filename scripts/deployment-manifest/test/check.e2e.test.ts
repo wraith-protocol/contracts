@@ -133,7 +133,7 @@ describe('check', () => {
     [
       'Stellar contract IDs',
       'stellar/contract-ids.json',
-      '"stealth-announcer": ""',
+      '"stealth-announcer": "CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL"',
       '"stealth-announcer": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"',
       /contract-ids\.json/,
     ],
@@ -248,6 +248,11 @@ describe('build', () => {
           artifactHash: { algorithm: 'sha256', value: `0x${'11'.repeat(32)}` },
           deployment: { height: 123, txHash: null, deployer: null, timestamp: null },
         },
+      ],
+      undeployed: [
+        { name: 'stealth-registry', reason: 'Not deployed in this fixture.' },
+        { name: 'stealth-sender', reason: 'Not deployed in this fixture.' },
+        { name: 'wraith-names', reason: 'Not deployed in this fixture.' },
       ],
     };
     fs.mkdirSync(path.join(root, 'deployments/stellar'), { recursive: true });

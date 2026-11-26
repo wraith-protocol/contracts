@@ -74,6 +74,65 @@
       ]
     },
     {
+      "chain": "stellar",
+      "network": "stellar-testnet",
+      "networkId": "Test SDF Network ; September 2015",
+      "rpcUrl": "https://soroban-testnet.stellar.org",
+      "recordedBy": "chain-query",
+      "contracts": [
+        {
+          "name": "stealth-announcer",
+          "id": "CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL",
+          "version": "2.0.0",
+          "sourceCommit": null,
+          "provenance": {
+            "status": "chain-verified",
+            "reason": "Soroban RPC getLedgerEntries returned the recorded WASM hash; no repository commit has been shown to reproduce it."
+          },
+          "artifactHash": {
+            "algorithm": "sha256",
+            "value": "0x7ef72be0b50f6b25ddd935aa0c0abcf18af28754a2e16fb5b40dcf9a4b497fc8"
+          },
+          "deployment": {
+            "height": 1977426,
+            "txHash": "0x0fe756baf48597c50604f2af15f7b1434aadec549dbf1b3ae74578999b2e65f7",
+            "deployer": "GAZ5FCGQJTSEQJVDZG5G5L43X72BWGYKWBVPSJWUYNLV2PIJU7VWHYNA",
+            "timestamp": "2026-04-11T07:03:03Z"
+          }
+        },
+        {
+          "name": "wraith-names",
+          "id": "CDEMB3MAE62ZOCCKZPTYSXR5CS5WVENPOU5MDVK4PNKTZXFVDC74AFBV",
+          "version": "1.0.0",
+          "sourceCommit": null,
+          "provenance": {
+            "status": "chain-verified",
+            "reason": "Soroban RPC getLedgerEntries returned the recorded WASM hash; no repository commit has been shown to reproduce it."
+          },
+          "artifactHash": {
+            "algorithm": "sha256",
+            "value": "0xd850b75b39eacadfb576d18b238080266d22265d6161dc903d38f83cd33233eb"
+          },
+          "deployment": {
+            "height": 1978203,
+            "txHash": "0x16eb64a9976ff90cfa67b9f692159457802135430d07c50f454508c48e32acf5",
+            "deployer": "GAZ5FCGQJTSEQJVDZG5G5L43X72BWGYKWBVPSJWUYNLV2PIJU7VWHYNA",
+            "timestamp": "2026-04-11T08:07:54Z"
+          }
+        }
+      ],
+      "undeployed": [
+        {
+          "name": "stealth-registry",
+          "reason": "No Stellar testnet deployment is recorded by the SDK or documentation."
+        },
+        {
+          "name": "stealth-sender",
+          "reason": "No Stellar testnet deployment is recorded by the SDK or documentation."
+        }
+      ]
+    },
+    {
       "chain": "solana",
       "network": "solana-devnet",
       "networkId": "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG",

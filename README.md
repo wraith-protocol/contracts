@@ -210,9 +210,14 @@ Generated from [`deployments/manifest.json`](./deployments/manifest.json), the s
 
 Not yet deployed: WraithSender, WraithNames, WraithWithdrawer.
 
-### Stellar
+### Stellar: stellar-testnet
 
-No deployment recorded yet (stealth-announcer, stealth-registry, stealth-sender, wraith-names).
+| Contract | Contract ID | Ledger |
+|---|---|---|
+| stealth-announcer | `CCJLJ2QRBJAAKIG6ELNQVXLLWMKKWVN5O2FKWUETHZGMPAD4MHK7WVWL` | 1977426 |
+| wraith-names | `CDEMB3MAE62ZOCCKZPTYSXR5CS5WVENPOU5MDVK4PNKTZXFVDC74AFBV` | 1978203 |
+
+Not yet deployed: stealth-registry, stealth-sender.
 
 ### Solana: solana-devnet
 

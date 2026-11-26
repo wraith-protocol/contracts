@@ -221,7 +221,9 @@ describe('coverage', () => {
     expect(errors).toMatch(/ERC6538Registry\) abi is required/);
   });
 
-  it('only applies to chains that require explicit coverage', () => {
-    expect(coverageErrors({ ...evmDeployment(), chain: 'stellar' })).toEqual([]);
+  it('requires explicit coverage for EVM and Stellar', () => {
+    const errors = coverageErrors({ ...evmDeployment(), chain: 'stellar' });
+    expect(errors).toHaveLength(4);
+    expect(errors.join('\n')).toMatch(/stealth-announcer|stealth-registry|stealth-sender|wraith-names/);
   });
 });
