@@ -9,7 +9,7 @@ export const CHAINS = ['evm', 'stellar', 'solana', 'ckb'] as const;
 export type Chain = (typeof CHAINS)[number];
 
 export interface Provenance {
-  status: 'source-verified' | 'unverifiable';
+  status: 'source-verified' | 'chain-verified' | 'unverifiable';
   reason?: string;
 }
 
@@ -27,15 +27,16 @@ export function commitError(value: unknown): string | null {
 
 /**
  * Provenance rules JSON Schema cannot express. A first-party contract is either
- * source-verified (a well-formed commit that `verify-source` reproduces) or an
- * explicitly unverifiable historical record. Records written by a deploy script
- * can only be the former.
+ * source-verified (a well-formed commit that `verify-source` reproduces),
+ * chain-verified (the recorded artifact hash matches the live chain, but no
+ * source commit reproduces it), or an explicitly unverifiable historical
+ * record. Records written by a deploy script can only be source-verified.
  */
 export function provenanceErrors(deployment: Deployment, contract: Contract): string[] {
   if (contract.external) return [];
   const { provenance, sourceCommit } = contract;
   if (!provenance) {
-    return ['provenance is required on first-party contracts (source-verified or unverifiable)'];
+    return ['provenance is required on first-party contracts (source-verified, chain-verified, or unverifiable)'];
   }
   const errors: string[] = [];
   if (provenance.status === 'source-verified') {
@@ -45,6 +46,14 @@ export function provenanceErrors(deployment: Deployment, contract: Contract): st
       const problem = commitError(sourceCommit);
       if (problem) errors.push(`sourceCommit ${problem}`);
     }
+  } else if (provenance.status === 'chain-verified') {
+    if (deployment.recordedBy === 'deploy-script') {
+      errors.push('records written by a deploy script must be source-verified, not chain-verified');
+    }
+    if (sourceCommit !== null) {
+      errors.push('provenance chain-verified contradicts a non-null sourceCommit');
+    }
+    if (!provenance.reason) errors.push('provenance chain-verified requires a reason');
   } else {
     if (deployment.recordedBy === 'deploy-script') {
       errors.push('records written by a deploy script must be source-verified, not unverifiable');

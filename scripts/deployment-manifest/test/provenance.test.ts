@@ -187,8 +187,11 @@ describe('provenance validation', () => {
     ],
   });
 
-  it('accepts an unverifiable historical record and a source-verified one', () => {
+  it('accepts unverifiable, chain-verified, and source-verified records', () => {
     expect(validateDeployment(base())).toEqual([]);
+    const chain = base();
+    chain.contracts[0].provenance = { status: 'chain-verified', reason: 'RPC hash match' };
+    expect(validateDeployment(chain)).toEqual([]);
     const d = base();
     d.contracts[0].sourceCommit = 'a'.repeat(40);
     d.contracts[0].provenance = { status: 'source-verified' };
@@ -213,6 +216,18 @@ describe('provenance validation', () => {
     const c = base();
     c.contracts[0].provenance = { status: 'unverifiable' };
     expect(validateDeployment(c).join()).toMatch(/requires a reason/);
+
+    const chain = base();
+    chain.contracts[0].provenance = { status: 'chain-verified' };
+    expect(validateDeployment(chain).join()).toMatch(/requires a reason/);
+
+    const chainWithCommit = base();
+    chainWithCommit.contracts[0].sourceCommit = 'a'.repeat(40);
+    chainWithCommit.contracts[0].provenance = {
+      status: 'chain-verified',
+      reason: 'RPC hash match',
+    };
+    expect(validateDeployment(chainWithCommit).join()).toMatch(/contradicts/);
 
     for (const bad of ['abc', 'A'.repeat(40), '0'.repeat(40)]) {
       const d = base();

@@ -121,12 +121,12 @@
           "oneOf": [{ "$ref": "#/$defs/commit" }, { "type": "null" }]
         },
         "provenance": {
-          "description": "Whether sourceCommit is proven. source-verified: building sourceCommit reproduces artifactHash (checked by `verify-source`). unverifiable: a historical record whose source commit cannot be proven; sourceCommit is null and reason says why. Required on every first-party (non-external) contract; enforced by the manifest tool.",
+          "description": "Whether the deployed artifact is proven. source-verified: building sourceCommit reproduces artifactHash (checked by `verify-source`). chain-verified: artifactHash matches the live chain, but no source commit reproduces it. unverifiable: the artifact has not been verified against the chain and no source commit is proven. Required on every first-party (non-external) contract; enforced by the manifest tool.",
           "type": "object",
           "additionalProperties": false,
           "required": ["status"],
           "properties": {
-            "status": { "enum": ["source-verified", "unverifiable"] },
+            "status": { "enum": ["source-verified", "chain-verified", "unverifiable"] },
             "reason": { "type": "string", "minLength": 1 }
           }
         },

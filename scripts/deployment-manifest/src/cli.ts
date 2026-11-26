@@ -403,6 +403,7 @@ async function verify(): Promise<void> {
             problems.push(
               `${where}: on-chain wasm hash ${hash}, manifest has ${c.artifactHash.value}`,
             );
+          else console.log(`✓ ${where}: on-chain wasm hash ${hash}`);
           continue;
         }
         const live =
@@ -463,6 +464,12 @@ async function verifySource(argv: string[]): Promise<void> {
       for (const c of d.contracts) {
         if (c.external || (values.contract && c.name !== values.contract)) continue;
         const where = `${d.network}/${c.name}`;
+        if (c.provenance?.status === 'chain-verified') {
+          console.log(
+            `- ${where}: chain-verified artifact, source commit unavailable (${c.provenance.reason})`,
+          );
+          continue;
+        }
         if (c.provenance?.status !== 'source-verified') {
           console.log(
             `- ${where}: unverifiable historical record, skipped (${c.provenance?.reason ?? 'no provenance'})`,
