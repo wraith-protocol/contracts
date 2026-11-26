@@ -80,10 +80,6 @@ fn rotation_requires_quorum_and_replaces_the_signer_set() {
         .approve_rotate_signers(&setup.signers.get(2).unwrap());
     setup.client.execute_rotate_signers(&proposer);
 
-    assert_eq!(setup.client.signers(), replacement);
-    assert_eq!(setup.client.threshold(), 2);
-    assert!(setup.client.pending_rotation().is_none());
-
     let events = setup.env.events().all();
     assert_eq!(events.len(), 1);
     let (contract, topics, data) = events.last().unwrap();
@@ -97,6 +93,10 @@ fn rotation_requires_quorum_and_replaces_the_signer_set() {
     assert_eq!(rotated_signers, replacement);
     assert_eq!(old_threshold, 3);
     assert_eq!(new_threshold, 2);
+
+    assert_eq!(setup.client.signers(), replacement);
+    assert_eq!(setup.client.threshold(), 2);
+    assert!(setup.client.pending_rotation().is_none());
 
     let result = setup
         .client
