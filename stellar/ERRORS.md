@@ -7,7 +7,7 @@ Code allocation policy
 Error codes are only unique within a contract enum at the Soroban ABI layer, but Wraith keeps disjoint reserved ranges so logs and SDK helpers can map raw codes without re-deriving context from Rust source.
 
 Contract or enum	Reserved range	Notes
-stealth-announcer	none	Panic-only/stateless event emitter today. Reserve 1000-1099 if it gains #[contracterror].
+stealth-announcer / Error	1000-1099	Existing deployed code is 1 (MetadataTooLarge). Future variants should use the reserved range.
 stealth-registry / RegistryError	1100-1199	Existing deployed codes are 1-2; do not renumber them. Add future variants in the reserved range unless a breaking ABI migration is planned.
 stealth-sender / SenderError	1200-1299	Existing deployed codes are 1-16; do not renumber them.
 stealth-batch-sender / BatchSenderError	1300-1399	Existing deployed codes are 1300-1316; do not renumber them.
@@ -20,9 +20,8 @@ governance / GovernanceError	1900-1999	Proof-of-concept governance contract; exi
 For existing public enums, numeric codes are part of the contract ABI. Append new variants; never recycle or renumber old codes.
 
 stealth-announcer
-No #[contracterror] enum is defined. Current validation failures are panics/assertions in stealth-announcer/src/lib.rs.
-
 Code	Name	Meaning	Introduced in
+1	Error::MetadataTooLarge	Metadata payload length exceeds MAX_METADATA_LEN (4096 bytes).	issue #270
 N/A	Panic-only	announce rejects non-v2 scheme IDs or missing view-tag metadata by panic/assertion.	pre-catalog
 stealth-registry
 Code	Name	Meaning	Introduced in

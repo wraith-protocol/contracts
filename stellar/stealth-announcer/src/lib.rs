@@ -2,7 +2,10 @@
 
 mod ed25519;
 
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, Bytes, BytesN, Env, panic_with_error, contracterror};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, panic_with_error, symbol_short, Address, Bytes, BytesN,
+    Env,
+};
 
 /// Stellar v2 deployment scheme id.
 ///
@@ -24,11 +27,6 @@ pub const STELLAR_V2_SCHEME_ID: u32 = 2;
 /// Maximum allowed metadata length (bytes) for announce function.
 /// Determined from benchmark measurements to stay within Soroban resource limits.
 pub const MAX_METADATA_LEN: u32 = 4096;
-
-
-/// Maximum allowed metadata length (bytes) for announce function.
-/// Determined from benchmark measurements to stay within Soroban resource limits.
-pub const MAX_METADATA_LEN: u32 = 1024;
 
 /// Initial metadata kind for v2 announcements.
 ///
@@ -218,6 +216,69 @@ mod test {
         let addr = Address::generate(&env);
         let epk = BytesN::from_array(&env, &[0x06u8; 32]);
         let meta = Bytes::new(&env);
+
+        client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_announce_rejects_zero_length_metadata() {
+        let env = Env::new_with_config(EnvTestConfig {
+            capture_snapshot_at_drop: false,
+        });
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+
+        let addr = Address::generate(&env);
+        let epk = BytesN::from_array(&env, &[0x06u8; 32]);
+        let meta = Bytes::new(&env);
+
+        client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
+    }
+
+    #[test]
+    fn test_announce_accepts_metadata_one_byte_below_limit() {
+        let env = Env::default();
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+
+        let addr = Address::generate(&env);
+        let epk = BytesN::from_array(&env, &[0x06u8; 32]);
+        let raw = [42u8; (MAX_METADATA_LEN - 1) as usize];
+        let meta = Bytes::from_slice(&env, &raw);
+
+        client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
+        assert_eq!(env.events().all().len(), 1);
+    }
+
+    #[test]
+    fn test_announce_accepts_metadata_exactly_at_limit() {
+        let env = Env::default();
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+
+        let addr = Address::generate(&env);
+        let epk = BytesN::from_array(&env, &[0x06u8; 32]);
+        let raw = [42u8; MAX_METADATA_LEN as usize];
+        let meta = Bytes::from_slice(&env, &raw);
+
+        client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
+        assert_eq!(env.events().all().len(), 1);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_announce_rejects_metadata_one_byte_above_limit() {
+        let env = Env::new_with_config(EnvTestConfig {
+            capture_snapshot_at_drop: false,
+        });
+        let contract_id = env.register(StealthAnnouncerContract, ());
+        let client = StealthAnnouncerContractClient::new(&env, &contract_id);
+
+        let addr = Address::generate(&env);
+        let epk = BytesN::from_array(&env, &[0x06u8; 32]);
+        let raw = [42u8; (MAX_METADATA_LEN + 1) as usize];
+        let meta = Bytes::from_slice(&env, &raw);
 
         client.announce(&STELLAR_V2_SCHEME_ID, &addr, &epk, &meta);
     }
