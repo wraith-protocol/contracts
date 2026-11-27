@@ -9,8 +9,12 @@ Core features:
 - **Register / update / release** — names are 3-32 chars, lowercase
   alphanumeric, owned by a Stellar address. Reverse lookup (`name_of`) maps a
   meta-address back to its name.
-- **Subdomains** — one level (`payments.alice`), controlled by the parent
-  owner.
+- **Subdomains** — one level (`payments.alice`), registered with
+  `register_subdomain` (or `register` with the dotted name) and controlled by
+  the parent's current owner. Releasing the parent retires its subdomains, and
+  a subdomain is only usable while its parent is live; see
+  [Hierarchical names](../../README.md#hierarchical-names-wraith-names) for the
+  full rules.
 - **Gasless on-behalf calls** — `*_on_behalf` variants accept an ed25519
   signature from the owner so a sponsor can pay fees.
 - **Social recovery** — per-name guardian sets with threshold + delay.
@@ -20,6 +24,13 @@ Core features:
   or fewer during the first 90 days after launch (see below).
 - **Governance rotation** — the protocol signer set and the auction admin both
   rotate behind a quorum of governance signers and a 7-day timelock.
+
+The governance signer set is initialized once through the permissionless
+`init_multisig` entry point; the first caller supplies its signers and
+threshold. Wraith Names currently exposes no contract-upgrade or
+authority-renunciation entry point. Signer rotation does not grant upgrade
+authority. See [GOVERNANCE.md](../GOVERNANCE.md) and
+[MULTISIG.md](../MULTISIG.md) for the lifecycle and deployment caveat.
 
 Build and test:
 

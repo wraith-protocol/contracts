@@ -25,8 +25,8 @@ export * from "@stellar/stellar-sdk";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
 
-if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = Buffer;
+if (typeof Reflect.get(globalThis, "Buffer") === "undefined") {
+  Object.assign(globalThis, { Buffer });
 }
 
 
@@ -65,7 +65,7 @@ stealth_address: string;
 
 /**
  * Errors that the batch-sender contract can produce.
- * 
+ *
  * Codes are allocated from the `1300-1399` range reserved for
  * `stealth-batch-sender` in `ERRORS.md`'s code-allocation policy.
  */
@@ -159,7 +159,7 @@ export interface RotationProposal {
 
 /**
  * Wraith Protocol standard metric event schema.
- * 
+ *
  * All Wraith contracts emit metric events using this structure to enable
  * standardized off-chain observability and monitoring.
  */
@@ -188,7 +188,7 @@ export interface Client {
    * Initialise the contract by storing the pause admin, the announcer
    * address, and an optional asset policy. Idempotent: a second call
    * returns `AlreadyInitialized` rather than overwriting the config.
-   * 
+   *
    * Must be called before `batch_send`.
    */
   init: ({admin, announcer, asset_policy}: {admin: string, announcer: string, asset_policy: Option<string>}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
@@ -227,17 +227,17 @@ export interface Client {
    * Construct and simulate a batch_send transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Atomically send `asset` tokens from `from` to N pre-computed stealth
    * addresses in a single transaction.
-   * 
+   *
    * # All-or-nothing semantics
    * Soroban reverts every state change made during a failed invocation —
    * whether the failure is a panic or a returned contract error — so a
    * rejected batch never leaves partial transfers behind.
-   * 
+   *
    * # Received amount
    * Fails with `ReceivedAmountMismatch` if any stealth address does not
    * receive exactly its `amount`, so no announcement claims more than
    * arrived.
-   * 
+   *
    * # Resource budget
    * Capped at MAX_BATCH_SIZE (100) transfers. This keeps instruction usage
    * well under Soroban's per-transaction limit while still being ~100x more

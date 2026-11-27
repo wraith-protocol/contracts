@@ -5,7 +5,10 @@ The `setup-multisig.sh` script configures signer weights and thresholds on a Ste
 
 ## Recommended Starting Config (3-of-5)
 
-Per [GOVERNANCE.md](./GOVERNANCE.md), the admin account for `stealth-sender` and `wraith-names` should be a **3-of-5 Security Council multisig**.
+Per [GOVERNANCE.md](./GOVERNANCE.md), the Stellar account used as the
+`stealth-sender` admin and `wraith-names` pause admin should be a **3-of-5
+Security Council multisig**. This account-level configuration is separate from
+Wraith Names' on-chain governance signer set.
 
 | Role | Named Guardian | Stellar Key |
 |---|---|---|
@@ -142,10 +145,12 @@ Commit `multisig-setup.log` to your ops runbook repo (not this repository) after
 ## On-Chain Signer Rotation (`stealth-sender`, `stealth-batch-sender`, `wraith-names`)
 
 The account-level Stellar multisig above governs the *admin key* that submits
-transactions. Separately, `stealth-sender` and `wraith-names` — the two
-contracts GOVERNANCE.md marks **Timelock + Multisig Upgradable** — each keep
-their own on-chain governance signer set and quorum threshold, used to
-authorise a `rotate_signers` flow without a contract redeploy (issue #104).
+transactions. Separately, `stealth-sender` and `wraith-names` keep their own
+on-chain governance signer set and quorum threshold, used to authorise a
+`rotate_signers` flow without a contract redeploy (issue #104). For
+`wraith-names`, this signer set authorizes signer rotation and auction-admin
+rotation only; it does not authorize contract upgrades or control the pause
+admin.
 `stealth-batch-sender` reuses the identical `propose_/approve_/execute_/
 cancel_rotate_signers` shape and 7-day timelock as of issue #155, though
 GOVERNANCE.md itself has not yet been updated to classify it alongside
@@ -187,8 +192,7 @@ call.
    ```
 
 3. **Wait out the timelock** — 7 days from the `propose` call
-   (`ROTATION_TIMELOCK_SECS`), mirroring the upgrade timelock in
-   GOVERNANCE.md.
+   (`ROTATION_TIMELOCK_SECS`).
 
 4. **Execute** — once quorum is met and the timelock has elapsed, any
    current signer executes the rotation. This swaps in the new signer set

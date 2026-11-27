@@ -330,7 +330,7 @@ It covers:
 
 | Operation | Expected Caller | Auth Required | Errors | Governance |
 |-----------|----------------|---------------|--------|------------|
-| `program_entry` (unlock) | Spender | 🔐 secp256k1 sig via ckb-auth | `SignatureLengthNotEnough`, `ArgsLengthNotEnough`, `AuthError` | None (immutable script) |
+| `program_entry` (unlock) | Spender | 🔐 secp256k1 sig via ckb-auth | `SignatureLengthNotEnough`, `ArgsLengthNotEnough`, `AuthError`, `UnexpectedSysError` | None (immutable script) |
 
 **Notes**: Validates secp256k1 signature against `blake160(stealth_pubkey)` in lock args. Delegates to on-chain `ckb-auth` cell. No admin, no upgrade (script hash fixed).
 
@@ -340,9 +340,9 @@ It covers:
 
 | Operation | Expected Caller | Auth Required | Errors | Governance |
 |-----------|----------------|---------------|--------|------------|
-| `program_entry` (validate) | Tx builder | — (cell lock proves ownership) | `InvalidDataLength` (≠66 bytes) | None (immutable script) |
+| `program_entry` (validate) | Tx builder | — (cell lock proves ownership) | `InvalidDataLength` (≠66 bytes), `InvalidArgsLength` (≠32 bytes), `DuplicateNameCell`, `NoMatchingCells`, `UnexpectedSysError` | None (immutable script) |
 
-**Notes**: Validates name cell data = 66 bytes (spending_pubkey + viewing_pubkey). Create/Update require 66-byte output; Destroy (release) always allowed. Ownership via cell's lock script. No admin, no upgrade.
+**Notes**: Validates 32-byte `blake2b(name)` type args, singleton cell uniqueness (`≤1` matching input and `≤1` matching output), and 66-byte output cell data (`spending_pubkey` + `viewing_pubkey`). Create/Update require 66-byte output; Destroy (`1 → 0` release) allowed. Ownership via cell's lock script. No admin, no upgrade.
 
 ---
 
@@ -391,6 +391,11 @@ It covers:
 | EVM | (none) | — | — | — | — | — | — |
 | Solana | (none) | — | — | — | — | — | — |
 | CKB | (none) | — | — | — | — | — | — |
+
+For Stellar `wraith-names`, signer rotation governs only the signer set; it
+does not authorize contract upgrades. No upgrade or renunciation entry point
+is implemented. The configurable signer set is initialized by the first
+caller of the permissionless, one-time `init_multisig` entry point.
 
 ---
 
@@ -581,6 +586,7 @@ It covers:
 | 5 | ArgsLengthNotEnough | Lock args ≠53 bytes |
 | 6 | SignatureLengthNotEnough | Sig ≠65 bytes |
 | 7 | AuthError | ckb-auth verification failed |
+| 8 | UnexpectedSysError | Unmapped syscall failure |
 
 #### `wraith-names-type` (`Error`)
 | Code | Error | Condition |
@@ -590,6 +596,10 @@ It covers:
 | 3 | LengthNotEnough | Data too short |
 | 4 | Encoding | Serialization error |
 | 5 | InvalidDataLength | Cell data ≠66 bytes |
+| 6 | InvalidArgsLength | Type args ≠32 bytes |
+| 7 | DuplicateNameCell | >1 input or >1 output cell shares type hash |
+| 8 | NoMatchingCells | Type script invoked without matching cells |
+| 9 | UnexpectedSysError | Unmapped syscall failure |
 
 ---
 

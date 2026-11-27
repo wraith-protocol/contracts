@@ -25,8 +25,8 @@ export * from "@stellar/stellar-sdk";
 export * as contract from "@stellar/stellar-sdk/contract";
 export * as rpc from "@stellar/stellar-sdk/rpc";
 
-if (typeof globalThis.Buffer === "undefined") {
-  globalThis.Buffer = Buffer;
+if (typeof Reflect.get(globalThis, "Buffer") === "undefined") {
+  Object.assign(globalThis, { Buffer });
 }
 
 
@@ -145,7 +145,7 @@ export interface RotationProposal {
 
 /**
  * Wraith Protocol standard metric event schema.
- * 
+ *
  * All Wraith contracts emit metric events using this structure to enable
  * standardized off-chain observability and monitoring.
  */
@@ -173,7 +173,7 @@ export interface Client {
    * Construct and simulate a init transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Initialise the contract by storing the announcer address, optional asset policy,
    * and optional protocol fee configuration.
-   * 
+   *
    * Must be called exactly once before any `send` or `batch_send`.
    */
   init: ({announcer, asset_policy, fee_recipient, fee_basis_points, admin}: {announcer: string, asset_policy: Option<string>, fee_recipient: Option<string>, fee_basis_points: u32, admin: string}, options?: MethodOptions) => Promise<AssembledTransaction<Result<void>>>
@@ -181,10 +181,10 @@ export interface Client {
   /**
    * Construct and simulate a send transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Transfer tokens to a stealth address and emit an announcement.
-   * 
+   *
    * Fails with `ReceivedAmountMismatch`, before announcing, if the stealth
    * address does not receive exactly `amount` minus the protocol fee.
-   * 
+   *
    * # Arguments
    * * `sender`            - The address sending funds (must authorise).
    * * `token`             - SAC token contract address (works for native XLM too).
@@ -231,7 +231,7 @@ export interface Client {
    * Construct and simulate a batch_send transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Batch version of `send` — transfers tokens to multiple stealth addresses
    * and emits an announcement for each.
-   * 
+   *
    * All input vectors must have the same length. Fails with
    * `ReceivedAmountMismatch` if any stealth address does not receive exactly
    * its amount minus the protocol fee; the whole batch is then rolled back.
@@ -248,7 +248,7 @@ export interface Client {
   /**
    * Construct and simulate a withdraw_many transaction. Returns an `AssembledTransaction` object which will have a `result` field containing the result of the simulation. If this transaction changes contract state, you will need to call `signAndSend()` on the returned object.
    * Withdraw assets to multiple destinations in a single atomic transaction.
-   * 
+   *
    * The batch is capped at 30 entries. If any single entry cannot be
    * processed, the entire batch aborts and no state changes are retained.
    */

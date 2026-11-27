@@ -1,6 +1,15 @@
+import { resolve } from 'node:path';
+
 import express from 'express';
 import { Registry, Counter, Gauge } from 'prom-client';
 
+import {
+  createFileCheckpointStore,
+  CursorIntegrityError,
+  emptyCheckpoint,
+  emptyContractState,
+  planPage,
+} from './cursor-store.js';
 import { createRpcClient } from './rpc-client.js';
 import { redactUrl } from './redact.js';
 import { createPoller, deriveHealthState, summarizeError } from './runtime.js';
@@ -29,6 +38,18 @@ const HEALTH_STALE_AFTER_MS = positiveInt(
   POLL_INTERVAL_MS * 3
 );
 const HEALTH_FAILURE_THRESHOLD = positiveInt(process.env.HEALTH_FAILURE_THRESHOLD, 3);
+
+// Durable ingestion state: aggregates and per-contract cursors are committed
+// together to this file (see cursor-store.js).
+const INDEXER_STATE_PATH = resolve(process.env.INDEXER_STATE_PATH || 'metrics-indexer-state.json');
+const EVENTS_PAGE_LIMIT = 100;
+// How many ledgers a provider may lag behind the committed position before its
+// pages are refused instead of deduplicated.
+const MAX_REWIND_LEDGERS = positiveInt(process.env.MAX_REWIND_LEDGERS, 120);
+// Consecutive full pages that move nothing before the cursor counts as stalled.
+const CURSOR_STALL_POLLS = positiveInt(process.env.CURSOR_STALL_POLLS, 3);
+// Cursor used before anything has been committed (the RPC's default start).
+const DEFAULT_CURSOR = '0';
 
 // Contract addresses to monitor (add your deployed contract addresses here)
 const CONTRACTS = {
@@ -108,9 +129,6 @@ const server = createRpcClient({
   },
 });
 
-// Initialize Prometheus registry
-export const register = new Registry();
-
 // Metric specifications.
 //
 // `kind` selects the aggregation:
@@ -152,24 +170,7 @@ const METRIC_SPECS = {
   execution_count: { kind: 'counter', name: 'wraith_execution_count', help: 'Total number of governance proposals executed', labels: ['proposal_id'] },
 };
 
-// Instantiate one Prometheus collector per spec. Every collector carries a
-// `contract` label so a single panel can break down by emitting contract.
-const metrics = {};
-for (const [metricName, spec] of Object.entries(METRIC_SPECS)) {
-  const options = {
-    name: spec.name,
-    help: spec.help,
-    labelNames: ['contract', ...spec.labels],
-    registers: [register],
-  };
-  metrics[metricName] = spec.kind === 'counter' ? new Counter(options) : new Gauge(options);
-}
-
-// In-memory metric storage: metricName -> Map(seriesKey -> running total)
-const metricStore = {};
-for (const metricName of Object.keys(METRIC_SPECS)) {
-  metricStore[metricName] = new Map();
-}
+const KNOWN_METRICS = new Set(Object.keys(METRIC_SPECS));
 
 // Generate key for metric storage
 function getMetricKey(contract, dimensions) {
@@ -232,42 +233,6 @@ export function parseMetricEvent(event) {
   }
 }
 
-// Update metric storage
-export function updateMetric(metricEvent) {
-  const { contract, metricName, value, dimensions } = metricEvent;
-  const spec = METRIC_SPECS[metricName];
-
-  if (!spec) {
-    console.log(`Unknown metric name: ${metricName}`);
-    return;
-  }
-
-  const key = getMetricKey(contract, dimensions);
-  const labels = buildLabels(spec, contract, dimensions);
-
-  switch (spec.kind) {
-    case 'counter': {
-      const total = (metricStore[metricName].get(key) || 0) + value;
-      metricStore[metricName].set(key, total);
-      metrics[metricName].inc(labels, value);
-      break;
-    }
-
-    case 'sum_gauge': {
-      const total = (metricStore[metricName].get(key) || 0) + value;
-      metricStore[metricName].set(key, total);
-      metrics[metricName].set(labels, total);
-      break;
-    }
-
-    case 'gauge': {
-      metricStore[metricName].set(key, value);
-      metrics[metricName].set(labels, value);
-      break;
-    }
-  }
-}
-
 /**
  * Raised when the indexer has no contract to poll. This is a configuration
  * fault, not a transient RPC failure: it must surface as a poll failure
@@ -280,87 +245,270 @@ export class IndexerConfigurationError extends Error {
   }
 }
 
-// Health + poll state shared with the /health endpoint.
-const startedAt = Date.now();
-const health = { lastFailures: 0, lastError: null };
-let activePollController = null;
-
-// Fetch one page of events for a contract through the bounded RPC client.
-// The client enforces an abortable timeout, a bounded retry budget with
-// jitter, and a cap on the response body it will read.
-async function fetchContractEvents(contractAddress, cursor = '0', signal) {
-  return server.getEvents(
-    {
-      filters: [
-        {
-          type: 'contract',
-          contractIds: [contractAddress],
-        },
-      ],
-      cursor,
-      limit: 100,
-    },
-    { signal }
-  );
-}
-
-// Poll every configured contract once.
-//
-// A failure for one address is tolerated so it cannot stall the others; the
-// poll only rejects when every configured contract failed, which is what turns
-// the health endpoint unhealthy. Errors are logged through `summarizeError`,
-// so no provider body is ever replayed in full.
-//
-// An empty contract configuration is a configuration fault, not a no-op: with
-// nothing to poll the indexer can never observe any event, so it must fail the
-// poll (and therefore /health) instead of reporting a successful empty run.
-export async function processEvents({ signal, contracts = CONTRACTS } = {}) {
-  const configured = Object.entries(contracts).filter(([, address]) => Boolean(address));
-
-  if (configured.length === 0) {
-    health.lastFailures = 0;
-    health.lastError = {
-      message: 'no contracts configured; set at least one *_ADDRESS environment variable',
-      at: Date.now(),
+/**
+ * Build one indexer: Prometheus collectors, aggregates, and the polling body.
+ *
+ * Aggregates and per-contract cursors are committed together through `store`
+ * before anything is published to Prometheus, so a crash between "events
+ * counted" and "cursor saved" cannot happen: on restart the indexer reloads
+ * both from the same checkpoint and resumes from that cursor.
+ *
+ * @param {object} options
+ * @param {{ getEvents: Function }} options.client Bounded RPC client.
+ * @param {Record<string, string|undefined>} options.contracts Name -> address.
+ * @param {{ load: () => object|null, save: (checkpoint: object) => void }} options.store
+ * @param {Registry} [options.registry]
+ * @param {number} [options.pageLimit] Events requested per contract per poll.
+ * @param {number} [options.maxRewindLedgers] How far a provider may lag behind.
+ * @param {number} [options.stallPolls] Full, non-advancing pages before a stall is reported.
+ * @param {() => number} [options.now]
+ */
+export function createIndexer({
+  client,
+  contracts = {},
+  store,
+  registry = new Registry(),
+  pageLimit = EVENTS_PAGE_LIMIT,
+  maxRewindLedgers = MAX_REWIND_LEDGERS,
+  stallPolls = CURSOR_STALL_POLLS,
+  now = () => Date.now(),
+} = {}) {
+  // Instantiate one Prometheus collector per spec. Every collector carries a
+  // `contract` label so a single panel can break down by emitting contract.
+  const metrics = {};
+  for (const [metricName, spec] of Object.entries(METRIC_SPECS)) {
+    const options = {
+      name: spec.name,
+      help: spec.help,
+      labelNames: ['contract', ...spec.labels],
+      registers: [registry],
     };
-    throw new IndexerConfigurationError(
-      'no contracts configured: set at least one *_ADDRESS environment variable'
-    );
+    metrics[metricName] = spec.kind === 'counter' ? new Counter(options) : new Gauge(options);
   }
 
-  const failures = [];
-  let succeeded = 0;
+  // Aggregates: `${metricName}|${seriesKey}` -> { metric, key, labels, value }.
+  let series = new Map();
+  let checkpoint = null;
+  const progress = {};
+  const health = { lastFailures: 0, lastError: null };
 
-  for (const [name, address] of configured) {
-    try {
-      const response = await fetchContractEvents(address, '0', signal);
-      for (const event of response?.events ?? []) {
-        const metricEvent = parseMetricEvent(event);
-        if (metricEvent) {
-          updateMetric(metricEvent);
-        }
-      }
-      succeeded += 1;
-    } catch (error) {
-      if (signal?.aborted) {
-        throw error;
-      }
-      failures.push({ contract: name, error });
-      console.error(`Error fetching events for ${name}: ${summarizeError(error)}`);
+  // Fold one parsed event into `stage` and return what to publish, or null
+  // when the event cannot be aggregated without corrupting a total.
+  function stageMetric(stage, metricEvent) {
+    const { contract, metricName, value, dimensions } = metricEvent;
+    const spec = METRIC_SPECS[metricName];
+    if (!spec) {
+      console.log(`Unknown metric name: ${metricName}`);
+      return null;
+    }
+    if (!Number.isFinite(value) || (spec.kind === 'counter' && value < 0)) {
+      console.warn(`Ignoring invalid value for ${metricName}`);
+      return null;
+    }
+    const key = `${metricName}|${getMetricKey(contract, dimensions)}`;
+    const labels = buildLabels(spec, contract, dimensions);
+    const total = spec.kind === 'gauge' ? value : (stage.get(key)?.value ?? 0) + value;
+    stage.set(key, { metric: metricName, key, labels, value: total });
+    return { metricName, kind: spec.kind, labels, value, total };
+  }
+
+  function publish(op) {
+    if (op.kind === 'counter') {
+      metrics[op.metricName].inc(op.labels, op.value);
+    } else {
+      metrics[op.metricName].set(op.labels, op.total);
     }
   }
 
-  health.lastFailures = failures.length;
-  if (failures.length > 0) {
-    health.lastError = { message: summarizeError(failures[0].error), at: Date.now() };
+  // Aggregate without persistence (synthetic-stream verification).
+  function updateMetric(metricEvent) {
+    const op = stageMetric(series, metricEvent);
+    if (op) {
+      publish(op);
+    }
   }
 
-  if (configured.length > 0 && succeeded === 0) {
-    throw new Error(`all ${configured.length} configured contract poll(s) failed`);
+  // Load the checkpoint once. A corrupt checkpoint fails every poll (and so
+  // /health) until an operator fixes or removes it; it is never overwritten.
+  function ensureLoaded() {
+    if (checkpoint) {
+      return;
+    }
+    const doc = store.load() ?? emptyCheckpoint();
+    const restored = new Map();
+    for (const entry of doc.series) {
+      restored.set(entry.key, { ...entry });
+      publish({
+        metricName: entry.metric,
+        kind: METRIC_SPECS[entry.metric].kind,
+        labels: entry.labels,
+        value: entry.value,
+        total: entry.value,
+      });
+    }
+    series = restored;
+    checkpoint = doc;
   }
 
-  return { succeeded, failed: failures.length };
+  // Fetch one page of events for a contract through the bounded RPC client.
+  // The client enforces an abortable timeout, a bounded retry budget with
+  // jitter, and a cap on the response body it will read.
+  async function fetchContractEvents(contractAddress, cursor, signal) {
+    return client.getEvents(
+      {
+        filters: [
+          {
+            type: 'contract',
+            contractIds: [contractAddress],
+          },
+        ],
+        cursor,
+        limit: pageLimit,
+      },
+      { signal }
+    );
+  }
+
+  async function pollContract(name, address, signal) {
+    const state = checkpoint.contracts[address] ?? emptyContractState();
+    const response = await fetchContractEvents(address, state.cursor ?? DEFAULT_CURSOR, signal);
+    const plan = planPage({ state, response, limit: pageLimit, maxRewindLedgers });
+
+    const stage = new Map(series);
+    const ops = [];
+    for (const event of plan.events) {
+      const metricEvent = parseMetricEvent(event);
+      const op = metricEvent && stageMetric(stage, metricEvent);
+      if (op) {
+        ops.push(op);
+      }
+    }
+
+    const track = (progress[name] ??= { duplicatesSkipped: 0, stalledPolls: 0, lastAdvancedAt: null });
+    if (plan.advanced) {
+      const next = {
+        version: checkpoint.version,
+        contracts: { ...checkpoint.contracts, [address]: plan.next },
+        series: [...stage.values()],
+      };
+      // Commit first: if this throws, neither the cursor nor any aggregate
+      // moved, and the same page is fetched and counted once on the next poll.
+      store.save(next);
+      checkpoint = next;
+      series = stage;
+      ops.forEach(publish);
+      track.lastAdvancedAt = now();
+    }
+    track.duplicatesSkipped += plan.duplicates;
+    track.scannedLedger = plan.next.scannedLedger;
+    track.lastEventId = plan.next.lastEventId;
+    // A full page that moves nothing means the provider keeps serving the
+    // same events: the cursor is stuck and new events are not being read.
+    track.stalledPolls = !plan.advanced && response.events.length >= pageLimit ? track.stalledPolls + 1 : 0;
+    if (track.stalledPolls >= stallPolls) {
+      throw new CursorIntegrityError('stalled', `cursor has not advanced for ${track.stalledPolls} full pages`);
+    }
+  }
+
+  // Poll every configured contract once.
+  //
+  // A failure for one address is tolerated so it cannot stall the others; the
+  // poll only rejects when every configured contract failed, which is what turns
+  // the health endpoint unhealthy. Errors are logged through `summarizeError`,
+  // so no provider body is ever replayed in full.
+  //
+  // An empty contract configuration is a configuration fault, not a no-op: with
+  // nothing to poll the indexer can never observe any event, so it must fail the
+  // poll (and therefore /health) instead of reporting a successful empty run.
+  async function processEvents({ signal, contracts: override = contracts } = {}) {
+    const configured = Object.entries(override).filter(([, address]) => Boolean(address));
+
+    if (configured.length === 0) {
+      health.lastFailures = 0;
+      health.lastError = {
+        message: 'no contracts configured; set at least one *_ADDRESS environment variable',
+        at: now(),
+      };
+      throw new IndexerConfigurationError(
+        'no contracts configured: set at least one *_ADDRESS environment variable'
+      );
+    }
+
+    try {
+      ensureLoaded();
+    } catch (error) {
+      health.lastFailures = configured.length;
+      health.lastError = { message: summarizeError(error), at: now() };
+      throw error;
+    }
+
+    const failures = [];
+    let succeeded = 0;
+
+    for (const [name, address] of configured) {
+      try {
+        await pollContract(name, address, signal);
+        succeeded += 1;
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        failures.push({ contract: name, error });
+        console.error(`Error fetching events for ${name}: ${summarizeError(error)}`);
+      }
+    }
+
+    health.lastFailures = failures.length;
+    if (failures.length > 0) {
+      health.lastError = { message: summarizeError(failures[0].error), at: now() };
+    }
+
+    if (configured.length > 0 && succeeded === 0) {
+      throw new Error(`all ${configured.length} configured contract poll(s) failed`);
+    }
+
+    return { succeeded, failed: failures.length };
+  }
+
+  // Per-contract progress for /health. The opaque cursor itself is omitted.
+  function cursorProgress() {
+    const out = {};
+    for (const [name, track] of Object.entries(progress)) {
+      out[name] = {
+        scannedLedger: track.scannedLedger ?? null,
+        lastEventId: track.lastEventId ?? null,
+        lastAdvancedAt: track.lastAdvancedAt,
+        duplicatesSkipped: track.duplicatesSkipped,
+        stalled: track.stalledPolls >= stallPolls,
+      };
+    }
+    return out;
+  }
+
+  return { register: registry, health, processEvents, updateMetric, cursorProgress };
 }
+
+const indexer = createIndexer({
+  client: server,
+  contracts: CONTRACTS,
+  store: createFileCheckpointStore({ path: INDEXER_STATE_PATH, knownMetrics: KNOWN_METRICS }),
+});
+
+// Initialize Prometheus registry
+export const register = indexer.register;
+
+// Update metric storage
+export function updateMetric(metricEvent) {
+  indexer.updateMetric(metricEvent);
+}
+
+export function processEvents(options) {
+  return indexer.processEvents(options);
+}
+
+// Health + poll state shared with the /health endpoint.
+const startedAt = Date.now();
+let activePollController = null;
 
 // Serialized poller: a slow poll delays the next tick instead of overlapping
 // it, and `runOnce` guards against any concurrent manual invocation.
@@ -380,17 +528,20 @@ const poller = createPoller({
 // Public, bounded health snapshot. Secrets stay out of it (only the redacted
 // RPC host is reported) and the error summary is truncated.
 export function healthSnapshot(now = Date.now()) {
-  return deriveHealthState({
-    now,
-    startedAt,
-    stats: poller.stats,
-    lastFailures: health.lastFailures,
-    lastError: health.lastError,
-    staleAfterMs: HEALTH_STALE_AFTER_MS,
-    failureThreshold: HEALTH_FAILURE_THRESHOLD,
-    rpcHost: redactUrl(RPC_URL),
-    pollIntervalMs: POLL_INTERVAL_MS,
-  });
+  return {
+    ...deriveHealthState({
+      now,
+      startedAt,
+      stats: poller.stats,
+      lastFailures: indexer.health.lastFailures,
+      lastError: indexer.health.lastError,
+      staleAfterMs: HEALTH_STALE_AFTER_MS,
+      failureThreshold: HEALTH_FAILURE_THRESHOLD,
+      rpcHost: redactUrl(RPC_URL),
+      pollIntervalMs: POLL_INTERVAL_MS,
+    }),
+    cursors: indexer.cursorProgress(),
+  };
 }
 
 export function start() {

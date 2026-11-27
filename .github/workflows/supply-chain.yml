@@ -64,7 +64,7 @@ jobs:
 
       - name: npm lockfiles install cleanly with verified registry signatures
         run: |
-          for dir in evm evm/subgraph stellar/scripts/metrics-indexer; do
+          for dir in evm evm/subgraph stellar/scripts/metrics-indexer stellar/scripts/fixtures/bindings; do
             echo "::group::$dir"
             (cd "$dir" && npm ci --ignore-scripts --no-audit --no-fund && npm audit signatures)
             echo "::endgroup::"

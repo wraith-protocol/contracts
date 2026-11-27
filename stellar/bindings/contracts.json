@@ -1,0 +1,85 @@
+{
+  "contracts": [
+    {
+      "name": "stealth-announcer",
+      "path": "stealth-announcer",
+      "wasm": "stealth_announcer.wasm",
+      "exportName": "StealthAnnouncer",
+      "envVar": "STEALTH_ANNOUNCER_CONTRACT_ID"
+    },
+    {
+      "name": "stealth-registry",
+      "path": "stealth-registry",
+      "wasm": "stealth_registry.wasm",
+      "exportName": "StealthRegistry",
+      "envVar": "STEALTH_REGISTRY_CONTRACT_ID"
+    },
+    {
+      "name": "stealth-sender",
+      "path": "stealth-sender",
+      "wasm": "stealth_sender.wasm",
+      "exportName": "StealthSender",
+      "envVar": "STEALTH_SENDER_CONTRACT_ID"
+    },
+    {
+      "name": "stealth-batch-sender",
+      "path": "stealth-batch-sender",
+      "wasm": "stealth_batch_sender.wasm",
+      "exportName": "StealthBatchSender",
+      "envVar": "STEALTH_BATCH_SENDER_CONTRACT_ID"
+    },
+    {
+      "name": "wraith-names",
+      "path": "wraith-names",
+      "wasm": "wraith_names.wasm",
+      "exportName": "WraithNames",
+      "envVar": "WRAITH_NAMES_CONTRACT_ID"
+    },
+    {
+      "name": "stealth-splitter",
+      "path": "stealth-splitter",
+      "wasm": "stealth_splitter.wasm",
+      "exportName": "StealthSplitter",
+      "envVar": "STEALTH_SPLITTER_CONTRACT_ID"
+    },
+    {
+      "name": "stealth-vault",
+      "path": "stealth-vault",
+      "wasm": "stealth_vault.wasm",
+      "exportName": "StealthVault",
+      "envVar": "STEALTH_VAULT_CONTRACT_ID"
+    },
+    {
+      "name": "wraith-asset-policy",
+      "path": "wraith-asset-policy",
+      "wasm": "wraith_asset_policy.wasm",
+      "exportName": "WraithAssetPolicy",
+      "envVar": "WRAITH_ASSET_POLICY_CONTRACT_ID"
+    },
+    {
+      "name": "governance",
+      "path": "contracts/governance",
+      "wasm": "governance.wasm",
+      "exportName": "Governance",
+      "envVar": "GOVERNANCE_CONTRACT_ID"
+    }
+  ],
+  "excluded": [
+    {
+      "path": "wraith-metrics",
+      "reason": "Shared Rust event-emission/types library; no contract entry points or cdylib artifact."
+    },
+    {
+      "path": "bench",
+      "reason": "Host-only resource benchmark harness; enables soroban-sdk/testutils."
+    },
+    {
+      "path": "bench-crossover",
+      "reason": "Host-only crossover benchmark harness; no application contract."
+    },
+    {
+      "path": "integration-tests",
+      "reason": "Host-only test harness; no deployable application contract."
+    }
+  ]
+}

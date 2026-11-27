@@ -6,11 +6,15 @@
   "scripts": {
     "bindings:stellar": "tsx stellar/scripts/generate-bindings.ts",
     "build:stellar": "pnpm bindings:stellar && cd stellar && cargo build --target wasm32-unknown-unknown --release",
-    "test:stellar-bindings": "vitest run stellar/scripts/stealth-batch-sender-bindings.test.ts stellar/scripts/bindings-portability.test.ts",
-    "test:stellar-keeper": "vitest run stellar/scripts/keeper"
+    "test:stellar-bindings": "vitest run stellar/scripts/stealth-batch-sender-bindings.test.ts stellar/scripts/bindings-portability.test.ts stellar/scripts/bindings-inventory.test.ts",
+    "test:stellar-keeper": "vitest run stellar/scripts/keeper",
+    "check:stellar-bindings": "tsx stellar/scripts/generate-bindings.ts --check",
+    "validate:stellar-bindings": "tsx stellar/scripts/validate-bindings.ts"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   },
   "devDependencies": {
     "@stellar/stellar-sdk": "^15.1.0",
@@ -21,8 +25,5 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.0",
     "vitest": "^2.1.9"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild"]
   }
 }

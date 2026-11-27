@@ -9,6 +9,7 @@ on:
     - cron: '23 4 * * *'
     # Weekly gas baseline rotation (Mondays 05:17 UTC)
     - cron: '17 5 * * 1'
+  workflow_dispatch:
 
 # Reviewed toolchain pins. Bump them only through the process in SUPPLY_CHAIN.md.
 env:
@@ -73,7 +74,7 @@ jobs:
       - run: npm run validate-subgraph
 
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
           version: ${{ env.FOUNDRY_VERSION }}
 
@@ -102,7 +103,7 @@ jobs:
 
       - name: Upload Slither SARIF
         if: always() && hashFiles('evm/results.sarif') != ''
-        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: evm/results.sarif
           category: slither
@@ -280,33 +281,13 @@ jobs:
       - name: Run Upgrade Authority Enforcement Tests
         run: cargo test upgrade_auth --workspace
 
-      - name: Generate Stellar TypeScript bindings
-        run: pnpm bindings:stellar
+      - name: Check all supported bindings and ABI snapshots
+        run: pnpm check:stellar-bindings
         working-directory: .
 
-      # Scoped to the generated artifacts: `cargo test --workspace` earlier in
-      # this job rewrites soroban test_snapshots, and that churn must not be
-      # attributed to the bindings.
-      - name: Check for bindings drift (diff detection)
+      - name: Build, type-check, pack and import all binding packages
+        run: pnpm validate:stellar-bindings
         working-directory: .
-        run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- stellar/bindings)" ]; then
-            git --no-pager status --short --untracked-files=all -- stellar/bindings
-            git --no-pager diff -- stellar/bindings
-            echo "Error: Stellar bindings are out of date. Run pnpm bindings:stellar and commit the result."
-            exit 1
-          fi
-
-      - name: Extract ABI snapshots
-        run: ./abi/update.sh
-      - name: Check ABI snapshots
-        run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- abi/)" ]; then
-            git --no-pager status --short --untracked-files=all -- abi/
-            git --no-pager diff --stat -- abi/
-            echo "Error: ABI snapshots are out of date. Run stellar/abi/update.sh and commit the result."
-            exit 1
-          fi
 
       - name: Test validate-deployment script (mocked CLI)
         run: bash scripts/validate-deployment.test.sh
@@ -506,7 +487,7 @@ jobs:
         run: python3 bench/update_perf_md.py PERF.md bench/results.json
 
       - name: Commit PERF.md if changed
-        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.2.1
         with:
           commit_message: 'chore(perf): auto-update Stellar PERF.md bench table'
           file_pattern: stellar/PERF.md
@@ -533,7 +514,7 @@ jobs:
 
       - name: Download weekly baseline artifact
         id: download-baseline
-        uses: dawidd6/action-download-artifact@eab87c9830c39eff17e5a6eadb20bfb4bc880477 # v27
+        uses: dawidd6/action-download-artifact@a92c7ae74cf1df8810783758581e485ac3aaa309 # v28
         continue-on-error: true
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -613,7 +594,7 @@ jobs:
           retention-days: 90
 
       - name: Commit rotated baseline.json
-        uses: stefanzweifel/git-auto-commit-action@4a55954c782fc1ea30b9056cd3e7a2b40ca8887d # v7.2.0
+        uses: stefanzweifel/git-auto-commit-action@d0b01107b5db882071f96de5dd4b54961ea93f4c # v7.2.1
         with:
           commit_message: 'chore(perf): rotate Stellar gas bench baseline'
           file_pattern: stellar/bench/baseline.json
@@ -653,13 +634,24 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
           targets: riscv64imac-unknown-none-elf
       - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-unknown-elf
-      - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock
-      # Transaction-level tests (#195): run the compiled RISC-V artifact inside
-      # ckb-testtool's in-process simulator. Covers signature/argument validation,
-      # malformed cells, amount checks, the produced code hash, and writes a
-      # CKB-debugger-replayable fixture for every failing transaction.
-      - name: Run CKB lock-script integration tests
+      - run: CC_riscv64imac_unknown_none_elf=riscv64-unknown-elf-gcc cargo build --target riscv64imac-unknown-none-elf --release -p wraith-stealth-lock -p wraith-names-type
+      # Transaction-level tests (#195, #281): run both compiled RISC-V artifacts
+      # inside ckb-testtool's in-process simulator, including minimized corpus
+      # regressions, a bounded deterministic VM sample, and ckb/fuzz unit replay.
+      - name: Run CKB lock and type-script integration tests
         run: make test-ci
+      - name: Install cargo-fuzz
+        working-directory: ckb/fuzz
+        run: cargo install cargo-fuzz --version "=0.12.0" --locked
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+      - name: Run bounded deterministic CKB cargo-fuzz sample
+        working-directory: ckb/fuzz
+        run: |
+          for target in lock_witness_and_args names_type_script ckb_auth_inputs cell_deps_and_announcement ckb_tx_layout; do
+            cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run "$target" -- -seed=281 -runs=512
+          done
       - name: Upload CKB transaction fixtures
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -695,6 +687,42 @@ jobs:
         with:
           name: fuzz-artifacts
           path: stellar/stealth-sender/fuzz/artifacts/
+
+  fuzz-ckb:
+    # Nightly larger-corpus cargo-fuzz sweep for CKB lock/type scripts (#281).
+    # Scheduled/manual only — runs in parallel with Stellar's nightly fuzz job.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: ckb/fuzz
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --version "=0.12.0" --locked
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: ${{ env.RUST_NIGHTLY_TOOLCHAIN }}
+      # 15-minute total budget across the five CKB fuzz targets (180s each).
+      - name: Fuzz CKB lock_witness_and_args
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run lock_witness_and_args -- -max_total_time=180
+      - name: Fuzz CKB names_type_script
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run names_type_script -- -max_total_time=180
+      - name: Fuzz CKB ckb_auth_inputs
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run ckb_auth_inputs -- -max_total_time=180
+      - name: Fuzz CKB cell_deps_and_announcement
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run cell_deps_and_announcement -- -max_total_time=180
+      - name: Fuzz CKB ckb_tx_layout
+        run: cargo +${RUST_NIGHTLY_TOOLCHAIN} fuzz run ckb_tx_layout -- -max_total_time=180
+      - name: Upload CKB crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ckb-fuzz-artifacts
+          path: ckb/fuzz/artifacts/
 
   conformance:
     needs: changes
